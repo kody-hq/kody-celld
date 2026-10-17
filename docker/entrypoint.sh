@@ -119,8 +119,21 @@ run_single() {
 	eval "$(node /app/docker/single-local.mjs node-env --project /app --state "$single_state")"
 	export CELLD_INTERNAL_DEV_STORE CELLD_WATCH CELLD_NODE
 
+	# Epoch GC (denoland/celld#240): celld leaves CELLD_LTX_RETENTION_SECS unset,
+	# which means no deletion. Threshold compaction only folds within the current
+	# epoch, so superseded-epoch L0 prefixes accumulate forever in the local
+	# store and make every cold restore's source lookup scan huge (issue #89).
+	# celld's owner GC deletes only prefixes below the restore-chain base that
+	# are proven unreachable (crates/logic/epoch_gc.rs). Default 1 day grace;
+	# set CELLD_LTX_RETENTION_SECS=0 to keep celld's no-deletion default. Epoch
+	# GC runs only under CELLD_DURABILITY=fleet (celld's default); do not set
+	# bucket durability on a single node if you want this cleanup.
+	if [[ -z "${CELLD_LTX_RETENTION_SECS:-}" ]]; then
+		export CELLD_LTX_RETENTION_SECS=86400
+	fi
+
 	echo "[kody-celld] single node: MCP at $KODY_PUBLIC_URL/mcp (listening on 0.0.0.0:$port)"
-	echo "[kody-celld] single node: running celld directly against the local store (node=$CELLD_NODE)"
+	echo "[kody-celld] single node: running celld directly against the local store (node=$CELLD_NODE, CELLD_LTX_RETENTION_SECS=$CELLD_LTX_RETENTION_SECS)"
 	exec celld \
 		--no-control-plane \
 		--bucket celld-dev \

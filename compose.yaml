@@ -100,6 +100,10 @@ services:
       KODY_QUOTA_EMAIL_RECEIVES_PER_DAY: ${KODY_QUOTA_EMAIL_RECEIVES_PER_DAY:-}
       KODY_SECRET_PROVIDER_CACHE_SECONDS: ${KODY_SECRET_PROVIDER_CACHE_SECONDS:-}
       KODY_SECRET_PROVIDER_TIMEOUT_MS: ${KODY_SECRET_PROVIDER_TIMEOUT_MS:-}
+      # celld LTX epoch GC grace (docs/operations.md). Empty = single-mode
+      # default of 86400 (1 day). Set 0 to disable deletion of superseded epochs.
+      CELLD_LTX_RETENTION_SECS: ${CELLD_LTX_RETENTION_SECS:-}
+      CELLD_DEV_FLAGS: ${CELLD_DEV_FLAGS:-}
     volumes:
       - kody-data:/data
     extra_hosts:

@@ -80,4 +80,12 @@ describe('single-local helpers', () => {
 		assert.match(body, /bucket celld-dev/)
 		assert.doesNotMatch(body, /exec celld dev /)
 	})
+
+	it('entrypoint defaults CELLD_LTX_RETENTION_SECS for single-mode epoch GC', () => {
+		const body = readFileSync(new URL('./entrypoint.sh', import.meta.url), 'utf8')
+		assert.match(body, /CELLD_LTX_RETENTION_SECS=86400/)
+		assert.match(body, /CELLD_LTX_RETENTION_SECS/)
+		// Operators can set 0; the default only fills when unset/empty.
+		assert.match(body, /-z "\$\{CELLD_LTX_RETENTION_SECS:-\}"/)
+	})
 })
