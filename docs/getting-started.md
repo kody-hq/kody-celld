@@ -252,8 +252,9 @@ entrypoint deploys the Worker into that store, then runs the celld node
 directly (not under the `celld.dev` supervisor). That keeps long-lived installs
 from crash-looping on the supervisor's fixed announce deadline once LTX state
 has grown. The same start also defaults `CELLD_LTX_RETENTION_SECS=86400` so
-celld's epoch GC can delete superseded LTX prefixes after a one-day grace
-(set `0` to disable; see [operations.md](./operations.md)). If you later want
+celld's epoch GC can delete superseded LTX prefixes after a one-day grace.
+**Existing installs pick up that default on upgrade;** set `0` to keep the old
+no-deletion behavior (see [operations.md](./operations.md)). If you later want
 failover, move to Path B: the code, users, and MCP contract are identical; only
 the storage layer changes.
 

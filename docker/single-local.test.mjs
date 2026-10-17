@@ -84,8 +84,12 @@ describe('single-local helpers', () => {
 	it('entrypoint defaults CELLD_LTX_RETENTION_SECS for single-mode epoch GC', () => {
 		const body = readFileSync(new URL('./entrypoint.sh', import.meta.url), 'utf8')
 		assert.match(body, /CELLD_LTX_RETENTION_SECS=86400/)
-		assert.match(body, /CELLD_LTX_RETENTION_SECS/)
-		// Operators can set 0; the default only fills when unset/empty.
-		assert.match(body, /-z "\$\{CELLD_LTX_RETENTION_SECS:-\}"/)
+		// Empty compose values are unset before celld sees them ("" is not a u64).
+		assert.match(body, /unset CELLD_LTX_RETENTION_SECS/)
+		// Default only when the variable is absent; 0 must remain 0 (opt out).
+		assert.match(body, /-z "\$\{CELLD_LTX_RETENTION_SECS\+x\}"/)
+		// Epoch GC maintenance requires fleet durability (celld default).
+		assert.match(body, /CELLD_DURABILITY=fleet/)
+		assert.match(body, /bucket durability never runs epoch GC/)
 	})
 })

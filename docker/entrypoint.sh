@@ -78,6 +78,52 @@ run_single() {
 		rm -rf /app/.celld
 		ln -s "$state_dir/celld" /app/.celld
 	fi
+
+	# Compose passes unset optional vars as empty strings. celld's env parser
+	# treats "" as an invalid u64 for CELLD_LTX_RETENTION_SECS and aborts at
+	# validate() (smoke saw celld.dev exit 1 before deploy/current.json).
+	# Empty CELLD_DEV_FLAGS must also be absent so the deploy argv stays clean.
+	if [[ -z "${CELLD_LTX_RETENTION_SECS:-}" ]]; then
+		unset CELLD_LTX_RETENTION_SECS || true
+	fi
+	if [[ -z "${CELLD_DEV_FLAGS:-}" ]]; then
+		unset CELLD_DEV_FLAGS || true
+	fi
+
+	# Epoch GC (denoland/celld#240): celld leaves CELLD_LTX_RETENTION_SECS unset,
+	# which means no deletion. Threshold compaction only folds within the current
+	# epoch, so superseded-epoch L0 prefixes accumulate forever in the local
+	# store and make every cold restore's source lookup scan huge (issue #89).
+	# celld's owner GC deletes only prefixes below the restore-chain base that
+	# are proven unreachable (crates/logic/epoch_gc.rs). Default 1 day grace;
+	# set CELLD_LTX_RETENTION_SECS=0 to keep celld's no-deletion default.
+	#
+	# Proof that GC runs on Docker `single` (not a multi-node fleet): there is
+	# no CELLD_DURABILITY=single. celld only accepts `fleet` | `bucket`, and
+	# defaults to `fleet`. Our entrypoint never sets durability. With
+	# `--bucket celld-dev` + CELLD_INTERNAL_DEV_STORE, main.rs installs
+	# DurabilityOwner::new(manager, durability == "fleet") and
+	# start_background spawns node_log maintenance, whose tick calls
+	# Manager::gc_superseded_epochs (crates/celld/node_log.rs). That pass is a
+	# no-op unless CELLD_LTX_RETENTION_SECS is positive (LtxRepl::epoch_gc_grace_ms).
+	# CELLD_DURABILITY=bucket skips spawn_maintenance entirely, so fail loudly.
+	if [[ -z "${CELLD_LTX_RETENTION_SECS+x}" ]]; then
+		export CELLD_LTX_RETENTION_SECS=86400
+	fi
+	case "${CELLD_DURABILITY:-fleet}" in
+	fleet) ;;
+	bucket)
+		if [[ "${CELLD_LTX_RETENTION_SECS}" != "0" ]]; then
+			echo "[kody-celld] error: CELLD_LTX_RETENTION_SECS=${CELLD_LTX_RETENTION_SECS} needs CELLD_DURABILITY=fleet (celld default); bucket durability never runs epoch GC" >&2
+			exit 1
+		fi
+		;;
+	*)
+		echo "[kody-celld] error: CELLD_DURABILITY must be fleet or bucket (got ${CELLD_DURABILITY})" >&2
+		exit 1
+		;;
+	esac
+
 	# .dev.vars overrides wrangler.jsonc vars; the deploy step reads it beside
 	# the config and bakes values into the Worker deployment. Email /
 	# private-host / insecure-host smoke values are not in wrangler.jsonc, so
@@ -119,21 +165,8 @@ run_single() {
 	eval "$(node /app/docker/single-local.mjs node-env --project /app --state "$single_state")"
 	export CELLD_INTERNAL_DEV_STORE CELLD_WATCH CELLD_NODE
 
-	# Epoch GC (denoland/celld#240): celld leaves CELLD_LTX_RETENTION_SECS unset,
-	# which means no deletion. Threshold compaction only folds within the current
-	# epoch, so superseded-epoch L0 prefixes accumulate forever in the local
-	# store and make every cold restore's source lookup scan huge (issue #89).
-	# celld's owner GC deletes only prefixes below the restore-chain base that
-	# are proven unreachable (crates/logic/epoch_gc.rs). Default 1 day grace;
-	# set CELLD_LTX_RETENTION_SECS=0 to keep celld's no-deletion default. Epoch
-	# GC runs only under CELLD_DURABILITY=fleet (celld's default); do not set
-	# bucket durability on a single node if you want this cleanup.
-	if [[ -z "${CELLD_LTX_RETENTION_SECS:-}" ]]; then
-		export CELLD_LTX_RETENTION_SECS=86400
-	fi
-
 	echo "[kody-celld] single node: MCP at $KODY_PUBLIC_URL/mcp (listening on 0.0.0.0:$port)"
-	echo "[kody-celld] single node: running celld directly against the local store (node=$CELLD_NODE, CELLD_LTX_RETENTION_SECS=$CELLD_LTX_RETENTION_SECS)"
+	echo "[kody-celld] single node: running celld directly against the local store (node=$CELLD_NODE, CELLD_LTX_RETENTION_SECS=$CELLD_LTX_RETENTION_SECS, CELLD_DURABILITY=${CELLD_DURABILITY:-fleet})"
 	exec celld \
 		--no-control-plane \
 		--bucket celld-dev \

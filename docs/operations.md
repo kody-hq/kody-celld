@@ -53,12 +53,23 @@ its time in an unindexed full-table listing of the local store (celld
 `LocalStore::list` over `objects.sqlite3`).
 
 `single` mode therefore defaults `CELLD_LTX_RETENTION_SECS` to `86400` (one day
-of grace) when the variable is unset or empty. celld then deletes only epoch
-prefixes that sit below the cell's restore-chain base and are proven
-unreachable by the owner GC plan (`denoland/celld` `crates/logic/epoch_gc.rs`).
-Set `CELLD_LTX_RETENTION_SECS=0` to keep celld's no-deletion default. Epoch GC
-runs only under `CELLD_DURABILITY=fleet` (celld's default); do not set
-`CELLD_DURABILITY=bucket` on a single node if you want this cleanup.
+of grace) when the variable is unset or empty. **This changes the default for
+existing single-mode installs on upgrade:** celld begins deleting eligible
+superseded epochs after the grace. Set `CELLD_LTX_RETENTION_SECS=0` to keep
+celld's previous no-deletion default.
+
+celld deletes only epoch prefixes that sit below the cell's restore-chain base
+and are proven unreachable by the owner GC plan (`denoland/celld`
+`crates/logic/epoch_gc.rs`): never the current owner epoch, never the epoch
+immediately before it, never the chain base or anything above it, and nothing
+while a paged cell still pins older objects. See `docker/epoch-gc-plan.test.mjs`
+for the locked predicates.
+
+There is no `CELLD_DURABILITY=single`. celld only accepts `fleet` or `bucket`
+and defaults to `fleet`. Docker `single` leaves that default alone, so the
+node_log maintenance tick (which calls `gc_superseded_epochs`) runs. Setting
+`CELLD_DURABILITY=bucket` with a positive retention fails startup loudly,
+because bucket durability never spawns that maintenance loop.
 
 After upgrading an already-large volume, leave the node running: cells must
 activate, finish any paged hydrate, and take a write before a pass can delete,
