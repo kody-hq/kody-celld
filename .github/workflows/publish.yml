@@ -26,6 +26,7 @@ jobs:
       packages: write
     outputs:
       digest: ${{ steps.build.outputs.digest }}
+      version: ${{ steps.meta.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
@@ -92,6 +93,18 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # Self-hosters pull without credentials, so check that before logging in.
+      # A private package (the GHCR default for new org packages) fails here.
+      - name: Anonymous pull of the pushed tag (no auth)
+        env:
+          DOCKER_CONFIG: ${{ runner.temp }}/docker-anon
+          TAG_REF: ghcr.io/${{ github.repository }}:${{ needs.image.outputs.version }}
+        run: |
+          mkdir -p "$DOCKER_CONFIG"
+          if ! docker pull "$TAG_REF"; then
+            echo "::error::Anonymous pull of $TAG_REF failed. Is the GHCR package public?"
+            exit 1
+          fi
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
