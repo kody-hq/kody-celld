@@ -55,9 +55,7 @@ export function claRerunEventOrder(input: {
 	baseRepoFullName: string
 }): Array<ClaCheckEventName> {
 	const isFork = input.headRepoFullName !== input.baseRepoFullName
-	return isFork
-		? ['pull_request_target', 'pull_request']
-		: ['pull_request', 'pull_request_target']
+	return isFork ? ['pull_request_target', 'pull_request'] : ['pull_request', 'pull_request_target']
 }
 
 /**
@@ -65,9 +63,7 @@ export function claRerunEventOrder(input: {
  * (same-repo `pull_request_target` / fork `pull_request`) are ignored so we
  * do not re-trigger a no-op while the real check stays red.
  */
-export function pickClaRerunCandidate(
-	runs: Array<ClaWorkflowRunSummary>,
-): ClaWorkflowRunSummary | null {
+export function pickClaRerunCandidate(runs: Array<ClaWorkflowRunSummary>): ClaWorkflowRunSummary | null {
 	for (const run of runs) {
 		if (run.status !== 'completed') {
 			return run
