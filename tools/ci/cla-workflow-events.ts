@@ -1,7 +1,8 @@
 /**
  * Event routing for `.github/workflows/cla.yml` job `cla`.
  *
- * Mirrored in the workflow `if:` expression. Keep them in sync.
+ * Mirrored in the workflow `if:` expression and the record job's re-run
+ * lookup. Keep them in sync.
  *
  * Why two triggers exist (interim):
  * - `pull_request` gives fork PRs a read-only GITHUB_TOKEN, so comment steps 403.
@@ -22,6 +23,13 @@ export type ClaCheckEventRouteInput = {
 	baseRepoFullName: string
 }
 
+export type ClaWorkflowRunSummary = {
+	id: number
+	event: string
+	status: string
+	conclusion: string | null
+}
+
 /**
  * Returns whether the CLA check job should run for this event.
  * Forks: only `pull_request_target`. Same-repo: only `pull_request` (interim).
@@ -36,4 +44,37 @@ export function shouldRunClaCheckJob(input: ClaCheckEventRouteInput): boolean {
 	}
 	const _exhaustive: never = input.eventName
 	return _exhaustive
+}
+
+/**
+ * Event order for post-sign re-run lookup: the event whose `cla` job actually
+ * ran for this PR, then the other as a fallback.
+ */
+export function claRerunEventOrder(input: {
+	headRepoFullName: string
+	baseRepoFullName: string
+}): Array<ClaCheckEventName> {
+	const isFork = input.headRepoFullName !== input.baseRepoFullName
+	return isFork
+		? ['pull_request_target', 'pull_request']
+		: ['pull_request', 'pull_request_target']
+}
+
+/**
+ * Pick a workflow run that is worth waiting on or re-running. Skipped runs
+ * (same-repo `pull_request_target` / fork `pull_request`) are ignored so we
+ * do not re-trigger a no-op while the real check stays red.
+ */
+export function pickClaRerunCandidate(
+	runs: Array<ClaWorkflowRunSummary>,
+): ClaWorkflowRunSummary | null {
+	for (const run of runs) {
+		if (run.status !== 'completed') {
+			return run
+		}
+		if (run.conclusion !== 'skipped') {
+			return run
+		}
+	}
+	return null
 }

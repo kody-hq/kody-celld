@@ -233,11 +233,18 @@ jobs:
               pull_number: context.payload.issue.number,
             })
             const headSha = pull.data.head.sha
+            const headRepo = pull.data.head.repo.full_name
+            const baseRepo = `${owner}/${repo}`
+            // Match the cla job routing: forks run on pull_request_target,
+            // same-repo on pull_request (interim). Skip "skipped" runs so we
+            // do not re-trigger a no-op while the real check stays red.
+            const events =
+              headRepo === baseRepo
+                ? ['pull_request', 'pull_request_target']
+                : ['pull_request_target', 'pull_request']
 
-            // Prefer pull_request_target (fork-capable). Fall back to
-            // pull_request while the interim same-repo trigger still exists.
             async function latestClaRun() {
-              for (const event of ['pull_request_target', 'pull_request']) {
+              for (const event of events) {
                 const runs = await github.rest.actions.listWorkflowRuns({
                   owner,
                   repo,
@@ -246,9 +253,12 @@ jobs:
                   head_sha: headSha,
                   per_page: 5,
                 })
-                const latest = runs.data.workflow_runs[0]
-                if (latest) {
-                  return latest
+                const candidate = runs.data.workflow_runs.find(
+                  (run) =>
+                    run.status !== 'completed' || run.conclusion !== 'skipped',
+                )
+                if (candidate) {
+                  return candidate
                 }
               }
               return null
