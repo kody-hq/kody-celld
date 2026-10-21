@@ -35,7 +35,9 @@ There is no exception for docs-only or one-line patches.
 
 4. The `CLA` workflow records your GitHub username in
    [`.github/cla-signers.json`](../../.github/cla-signers.json) on `main` and
-   re-runs the check.
+   re-runs the check. Fork pull requests use `pull_request_target` for the
+   check so the unsigned-instructions comment can post; the job still checks
+   out only `main` and never runs pull request head code.
 
 Signing once covers past, present, and future contributions from that GitHub
 identity. Unsigned prior contributors sign the same way before their next merge.

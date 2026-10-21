@@ -1,6 +1,19 @@
 name: ✍️ CLA
 
 on:
+  # Prefer pull_request_target so fork PRs get a write-capable GITHUB_TOKEN
+  # (pull_request is read-only for forks regardless of the permissions block).
+  # Keep pull_request temporarily so same-repo PRs (including the PR that
+  # introduces this file) still run CLA from the merge-ref workflow before
+  # base has pull_request_target. Remove pull_request after merge; see the
+  # cleanup issue linked from the introducing PR.
+  pull_request_target:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
   pull_request:
     branches:
       - main
@@ -18,7 +31,14 @@ permissions:
 
 jobs:
   cla:
-    if: github.event_name == 'pull_request'
+    # One run per PR: forks need pull_request_target (write token); same-repo
+    # uses pull_request until the cleanup removes that trigger and this job
+    # runs only on pull_request_target.
+    if: >
+      (github.event_name == 'pull_request_target' &&
+      github.event.pull_request.head.repo.full_name != github.repository) ||
+      (github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     name: ✍️ CLA
     timeout-minutes: 5
@@ -29,6 +49,8 @@ jobs:
       - name: 📦 Checkout base
         uses: actions/checkout@v6.0.2
         with:
+          # Trusted base branch tip only (never the PR head). Use the branch
+          # name so a post-sign re-run sees the updated signers file on main.
           ref: ${{ github.event.pull_request.base.ref }}
           persist-credentials: false
 
@@ -212,16 +234,24 @@ jobs:
             })
             const headSha = pull.data.head.sha
 
+            // Prefer pull_request_target (fork-capable). Fall back to
+            // pull_request while the interim same-repo trigger still exists.
             async function latestClaRun() {
-              const runs = await github.rest.actions.listWorkflowRuns({
-                owner,
-                repo,
-                workflow_id: 'cla.yml',
-                event: 'pull_request',
-                head_sha: headSha,
-                per_page: 5,
-              })
-              return runs.data.workflow_runs[0] ?? null
+              for (const event of ['pull_request_target', 'pull_request']) {
+                const runs = await github.rest.actions.listWorkflowRuns({
+                  owner,
+                  repo,
+                  workflow_id: 'cla.yml',
+                  event,
+                  head_sha: headSha,
+                  per_page: 5,
+                })
+                const latest = runs.data.workflow_runs[0]
+                if (latest) {
+                  return latest
+                }
+              }
+              return null
             }
 
             const deadline = Date.now() + 180_000
