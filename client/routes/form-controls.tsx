@@ -50,6 +50,7 @@ type FieldProps = {
 	value?: string
 	placeholder?: string
 	autocomplete?: string
+	autofocus?: boolean
 	required?: boolean
 	minlength?: number
 	maxlength?: number
@@ -85,6 +86,7 @@ export function Field(handle: Handle<FieldProps>) {
 						type="password"
 						placeholder={p.placeholder}
 						autocomplete={p.autocomplete}
+						autofocus={p.autofocus}
 						required={p.required}
 						minlength={p.minlength}
 						maxlength={p.maxlength}
@@ -99,6 +101,7 @@ export function Field(handle: Handle<FieldProps>) {
 						value={p.value}
 						placeholder={p.placeholder}
 						autocomplete={p.autocomplete}
+						autofocus={p.autofocus}
 						required={p.required}
 						minlength={p.minlength}
 						maxlength={p.maxlength}

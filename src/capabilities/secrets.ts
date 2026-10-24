@@ -24,7 +24,7 @@ export const secretSave = defineCapability<{
 	domain: 'secrets',
 	name: 'secretSave',
 	description:
-		'Save or rotate a secret by name. Returns metadata and the placeholder to use in requests. Saving a secret does not approve any host: an account admin must approve destination hosts separately.',
+		'Save or rotate a secret by name. Returns metadata and the placeholder to use in requests. Saving a secret does not approve any host: an account admin or the owner through a setup link must approve destination hosts separately.',
 	tags: ['secrets', 'write'],
 	keywords: ['api key', 'token', 'credential', 'password', 'store secret', 'placeholder'],
 	inputSchema: {
@@ -76,7 +76,7 @@ export const secretList = defineCapability<Record<string, never>>({
 				placeholder: buildSecretPlaceholder(s.name, s.scope === 'user' ? null : s.scope),
 			})),
 			approvedHosts: hosts,
-			approvalNote: `Hosts are approved by an account admin at ${ctx.baseUrl}/admin/users/${ctx.user.id}/secret-hosts, never through MCP or package code.`,
+			approvalNote: `Hosts are approved by an account admin at ${ctx.baseUrl}/admin/users/${ctx.user.id}/secret-hosts or by the signed-in owner through /connect/secret-set, never through MCP or package code.`,
 		}
 	},
 })
@@ -112,7 +112,7 @@ export const secretHostList = defineCapability<Record<string, never>>({
 	domain: 'secrets',
 	name: 'secretHostList',
 	description:
-		'List destination hosts an account admin approved for secret injection. Read-only: approvals change only through the admin API.',
+		'List destination hosts approved for secret injection by an account admin or through an owner setup link. Read-only: approvals cannot change through MCP.',
 	tags: ['secrets', 'read', 'hosts'],
 	keywords: ['allowed hosts', 'approved hosts', 'host approval', 'secret_host_not_approved'],
 	inputSchema: { type: 'object', properties: {} },
