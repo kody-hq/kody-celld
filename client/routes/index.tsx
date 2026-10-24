@@ -14,6 +14,7 @@ import { AccountMcpOauthClients } from './account-mcp-oauth-clients.tsx'
 import { AccountPackages } from './account-packages.tsx'
 import { AccountPackageDetail } from './account-package-detail.tsx'
 import { AccountSecrets } from './account-secrets.tsx'
+import { AccountSecretsApprove } from './account-secrets-approve.tsx'
 import { AccountSessions } from './account-sessions.tsx'
 import { AccountWebhooks } from './account-webhooks.tsx'
 import { AdminAudit } from './admin-audit.tsx'
@@ -70,6 +71,8 @@ export function RouteView(
 				return <AccountApiTokens data={data} pathname={pathname} />
 			case 'accountSecrets':
 				return <AccountSecrets data={data} pathname={pathname} />
+			case 'accountSecretApprove':
+				return <AccountSecretsApprove data={data} pathname={pathname} />
 			case 'accountPackages':
 				return <AccountPackages data={data} pathname={pathname} />
 			case 'accountPackageDetail':
