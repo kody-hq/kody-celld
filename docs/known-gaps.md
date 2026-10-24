@@ -92,7 +92,8 @@ roadmap is now shipped; the roadmap below is kept as the change log.
   one-minute cron, so run times have approximately one-minute precision.
   Pinned source revisions are unsupported. Cancelling a running workflow does
   not interrupt its attempt; its result is discarded and it is not retried.
-  The account Workflows page is not included.
+  The account Workflows page lists the newest 100 runs, with no search or
+  status filter yet.
 - **Quotas** default to unlimited; a shared node should set
   `KODY_QUOTA_RUNS_PER_DAY` and friends. The daily execute-time budget is
   checked before a run starts, so the final run of the day may overshoot it.

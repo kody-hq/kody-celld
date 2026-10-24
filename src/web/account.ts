@@ -44,6 +44,7 @@ import { summarizeJobSchedule } from './job-schedule-summary.ts'
 import { assertCsrf, readWebSession, type WebSession } from './session.ts'
 import { passwordFormView } from './signin.ts'
 import { matchesSearchQuery } from './search-filter.ts'
+import { workflowView } from './workflow-view.ts'
 
 const registry = (env: Env) => env.REGISTRY.getByName('registry')
 
@@ -718,6 +719,27 @@ export async function handleAccount(request: Request, env: Env, url: URL): Promi
 						lastStatus: job.lastStatus,
 						lastError: job.lastError,
 					})),
+				},
+			})
+		}
+
+		case 'workflows': {
+			if (post) {
+				if (form.action === 'cancel' && form.id) {
+					const result = await userCell.workflowCancel(form.id)
+					if (result?.cancelled) await audit('workflow.cancel', form.id, { via: 'web' })
+				}
+				return redirect('/account/workflows?flash=saved')
+			}
+			const workflows = await userCell.workflowsList(100)
+			return view(session, {
+				title: 'Workflows',
+				current: '/account/workflows',
+				flash,
+				data: {
+					page: 'accountWorkflows',
+					csrf: session.csrf,
+					workflows: workflows.map(workflowView),
 				},
 			})
 		}
