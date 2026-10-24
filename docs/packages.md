@@ -49,6 +49,31 @@ Rules enforced by `src/packages/manifest.ts` on `packageSave`:
   time packages simply `import` each other via `kody:@scope/pkg/...` (there is
   no install step).
 
+## Credential slots
+
+Declare package credential slots under `kody.credentials`. Slot names start
+with a letter and may contain letters, numbers, dots, underscores, and
+hyphens. Each slot requires a description from 1 to 500 characters.
+
+```json
+{
+  "kody": {
+    "credentials": {
+      "github": {
+        "kind": "oauth",
+        "provider": "github",
+        "description": "Read issues from GitHub"
+      }
+    }
+  }
+}
+```
+
+`kind` is optional and accepts `secret`, `oauth`, `mcp`, `url`, `login`, or
+`signing`. `provider` is optional, trimmed to 1-64 characters, and defaults to
+the slot name. `multiple` is an optional boolean. Celld warns and drops unknown
+slot fields, `placement`, and `ownerCredentialForVisitors`.
+
 ### TypeScript and JSX
 
 `.ts`, `.mts`, `.tsx` and `.jsx` package files are compiled when they run, as hosted kody does with esbuild; here it's sucrase. Ad hoc `execute` code is read as TypeScript. Package files are stored exactly as written. Types are removed, not checked.
