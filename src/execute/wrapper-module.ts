@@ -88,6 +88,8 @@ export default {
 			packageName: context.packageName ?? null,
 			trigger: context.trigger ?? null,
 			eventDepth: context.eventDepth ?? 0,
+			computedImportDepth: context.computedImportDepth ?? 0,
+			timeoutMs: context.timeoutMs,
 			logs: [],
 		}
 		__setPackageContext(
@@ -154,7 +156,13 @@ export default {
 		const appRequest = new Request(request, { headers })
 		const packageContext = { ...(context.packageContext ?? {}), runId: context.runId ?? null }
 		__setPackageContext(packageContext)
-		const store = { runId: context.runId ?? null, packageName: packageContext.packageName ?? null, logs: [] }
+		const store = {
+			runId: context.runId ?? null,
+			packageName: packageContext.packageName ?? null,
+			computedImportDepth: context.computedImportDepth ?? 0,
+			timeoutMs: context.timeoutMs,
+			logs: [],
+		}
 		const report = (status, error) => {
 			const pending = env.KODY.appRunReport({ status, error, logs: store.logs }).catch(() => {})
 			if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(pending)

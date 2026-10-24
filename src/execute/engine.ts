@@ -5,7 +5,7 @@ import { KodyError } from '../lib/errors.ts'
 import { defaultLimits, limitsFromEnv } from '../lib/limits.ts'
 import { extractMcpContent, mcpContentKey, summarizeMcpContent, type McpContentBlock } from '../mcp/content.ts'
 import { normalizeModulePath, resolvePackageExport, type PackageManifest } from '../packages/manifest.ts'
-import { buildModuleGraph, type GraphEntry } from './module-graph.ts'
+import { buildModuleGraph, type GraphEntry, type ModuleGraph } from './module-graph.ts'
 import { npmConfigFromEnv } from './npm-config.ts'
 
 export const defaultResponseLimitBytes = defaultLimits.responseLimitBytes
@@ -20,6 +20,7 @@ export type ExecuteInput = {
 	idempotencyKey?: string | undefined
 	trigger?: string | undefined
 	eventDepth?: number | undefined
+	computedImportDepth?: number | undefined
 	/** Job id for `kind: 'job'` runs, so a later success can resolve earlier errors (kody). */
 	jobId?: string | undefined
 	workflowId?: string | undefined
@@ -49,9 +50,22 @@ export type ExecuteResult = {
 	packages: Array<string>
 }
 
-type WrapperResponse =
+export type WrapperResponse =
 	| { ok: true; result: unknown; logs: Array<unknown> }
 	| { ok: false; error: { name: string; message: string; stack?: string }; logs: Array<unknown> }
+
+export type RunModuleGraphInput = {
+	graph: ModuleGraph
+	user: { id: string; email: string }
+	params: unknown
+	packageName: string | null
+	packageVersion?: string | null | undefined
+	runId?: string | null | undefined
+	trigger?: string | null | undefined
+	eventDepth?: number | undefined
+	computedImportDepth?: number | undefined
+	timeoutMs: number
+}
 
 export function getUserCell(env: Env, userId: string) {
 	return env.USER.getByName(userId)
@@ -67,17 +81,61 @@ function truncateResult(result: unknown, limit: number) {
 	}
 }
 
-async function graphHash(userId: string, modules: Record<string, string>) {
+async function graphHash(userId: string, modules: Record<string, string>, packageName: string | null) {
 	const parts = Object.keys(modules)
 		.sort()
 		.map((key) => `${key}\u0000${modules[key] ?? ''}`)
-	return sha256Hex(`${userId}\u0000${parts.join('\u0001')}`)
+	return sha256Hex(`${userId}\u0000${packageName ?? ''}\u0000${parts.join('\u0001')}`)
+}
+
+export async function runModuleGraph(
+	env: Env,
+	exports: ExecutionContext['exports'],
+	input: RunModuleGraphInput,
+): Promise<WrapperResponse> {
+	const isolateName = `kody-${await graphHash(input.user.id, input.graph.modules, input.packageName)}`
+	const props = { userId: input.user.id, email: input.user.email, packageName: input.packageName }
+	const worker = env.LOADER.get(isolateName, () => ({
+		compatibilityDate: '2026-01-01',
+		compatibilityFlags: ['nodejs_compat'],
+		mainModule: input.graph.mainModule,
+		modules: input.graph.modules,
+		env: { KODY: exports.RuntimeHost({ props }) },
+		globalOutbound: exports.FetchGateway({ props }),
+	}))
+	const timeout = new Promise<never>((_resolve, reject) => {
+		setTimeout(
+			() => reject(new KodyError('execute_timeout', `Execution exceeded ${input.timeoutMs / 1000}s.`, { status: 504 })),
+			input.timeoutMs,
+		)
+	})
+	const response = await Promise.race([
+		worker.getEntrypoint().fetch('https://kody-celld.invalid/run', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				params: input.params,
+				context: {
+					runId: input.runId ?? null,
+					packageName: input.packageName,
+					packageVersion: input.packageVersion ?? null,
+					trigger: input.trigger ?? null,
+					eventDepth: input.eventDepth ?? 0,
+					computedImportDepth: input.computedImportDepth ?? 0,
+					timeoutMs: input.timeoutMs,
+				},
+			}),
+		}),
+		timeout,
+	])
+	return (await response.json()) as WrapperResponse
 }
 
 /**
  * Runs a module graph in a Worker Loader isolate. Isolates are keyed by the
- * hash of (user, module graph) so repeated calls with the same code reuse the
- * same isolate; per-run identity travels in the request/RPC context instead.
+ * user, package context, and module graph so repeated calls with the same code
+ * and package context reuse the same isolate. Per-run identity travels in the
+ * request/RPC context instead.
  */
 export async function executeRun(
 	env: Env,
@@ -145,46 +203,22 @@ export async function executeRun(
 		return finish('error', { error: toErrorShape(error) })
 	}
 
-	const isolateName = `kody-${await graphHash(input.user.id, graph.modules)}`
 	const packageVersion = pkg?.version ?? null
-	const props = { userId: input.user.id, email: input.user.email, packageName }
-
-	const worker = env.LOADER.get(isolateName, () => ({
-		compatibilityDate: '2026-01-01',
-		compatibilityFlags: ['nodejs_compat'],
-		mainModule: graph.mainModule,
-		modules: graph.modules,
-		env: { KODY: exports.RuntimeHost({ props }) },
-		globalOutbound: exports.FetchGateway({ props }),
-	}))
-
 	const timeoutMs = input.timeoutMs ?? limits.executeTimeoutMs
-	const timeout = new Promise<never>((_resolve, reject) => {
-		setTimeout(
-			() => reject(new KodyError('execute_timeout', `Execution exceeded ${timeoutMs / 1000}s.`, { status: 504 })),
-			timeoutMs,
-		)
-	})
 
 	try {
-		const response = await Promise.race([
-			worker.getEntrypoint().fetch('https://kody-celld.invalid/run', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({
-					params: input.params ?? {},
-					context: {
-						runId: run.id,
-						packageName,
-						packageVersion,
-						trigger: input.trigger ?? null,
-						eventDepth: input.eventDepth ?? 0,
-					},
-				}),
-			}),
-			timeout,
-		])
-		const payload = (await response.json()) as WrapperResponse
+		const payload = await runModuleGraph(env, exports, {
+			graph,
+			user: input.user,
+			params: input.params ?? {},
+			packageName,
+			packageVersion,
+			runId: run.id,
+			trigger: input.trigger ?? null,
+			eventDepth: input.eventDepth ?? 0,
+			computedImportDepth: input.computedImportDepth ?? 0,
+			timeoutMs,
+		})
 		const warnings = [...graph.warnings]
 		if (!payload.ok) {
 			return finish('error', { error: payload.error, logs: payload.logs, warnings })

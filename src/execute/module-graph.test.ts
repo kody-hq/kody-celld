@@ -250,6 +250,49 @@ describe('stampPackageStorage', () => {
 })
 
 describe('buildModuleGraph', () => {
+	it('guards computed imports once while leaving static and literal imports on their existing paths', async () => {
+		const graph = await buildModuleGraph({
+			entry: {
+				kind: 'adhoc',
+				code: [
+					"import { packageStorage } from 'kody:runtime'",
+					"const literal = import('./literal.js')",
+					'export default async (name) => {',
+					'\tconst first = await import(name)',
+					'\tconst second = await import(`${name}/extra`)',
+					'\treturn { first, second, packageStorage: typeof packageStorage }',
+					'}',
+				].join('\n'),
+			},
+			userCell: fakeUserCell,
+			allowNpm: false,
+		})
+		const source = graph.modules['main.js'] ?? ''
+		assert.ok(source.startsWith('const __kodyDynamicImportGuard = async (specifier) =>'))
+		assert.equal((source.match(/const __kodyDynamicImportGuard = async/g) ?? []).length, 1)
+		assert.ok(source.includes("import { packageStorage } from './kody-runtime.js'"))
+		assert.ok(source.includes("const literal = import('./literal.js')"))
+		assert.ok(source.includes('__kodyDynamicImportGuard(name)'))
+		assert.ok(source.includes('__kodyDynamicImportGuard(`${name}/extra`)'))
+	})
+
+	it('uses a collision-free helper name when the source already contains the base name', async () => {
+		const graph = await buildModuleGraph({
+			entry: {
+				kind: 'adhoc',
+				code: [
+					'const __kodyDynamicImportGuard = 1',
+					'export default async (name) => (await import(name)).default',
+				].join('\n'),
+			},
+			userCell: fakeUserCell,
+			allowNpm: false,
+		})
+		const source = graph.modules['main.js'] ?? ''
+		assert.ok(source.startsWith('const __kodyDynamicImportGuard1 = async (specifier) =>'))
+		assert.ok(source.includes('__kodyDynamicImportGuard1(name)'))
+	})
+
 	it('rewrites kody:runtime, kody:<pkg>/<export>, and intra-package imports; drops docs from the isolate', async () => {
 		const graph = await buildModuleGraph({
 			entry: { kind: 'adhoc', code: "import inc from 'kody:@t/counter/increment'\nexport default async () => inc()" },

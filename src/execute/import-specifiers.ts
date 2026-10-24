@@ -23,6 +23,25 @@ export type ImportSpecifierRange = {
 	typeOnly: boolean
 }
 
+export type ComputedDynamicImportRange = {
+	start: number
+	end: number
+	expressionStart: number
+	expressionEnd: number
+}
+
+function parseImportEntries(source: string, modulePath: string) {
+	try {
+		const [imports] = parse(source, modulePath)
+		return imports
+	} catch (error) {
+		throw new KodyError(
+			'invalid_module',
+			`Cannot read the imports of ${modulePath}: ${error instanceof Error ? error.message : String(error)}.`,
+		)
+	}
+}
+
 /**
  * True for TypeScript `import type …` / `export type … from`.
  * `import type from '…'` is a value import (binding name `type`), not type-only.
@@ -39,15 +58,7 @@ function isTypeOnlyImportStatement(source: string, statementStart: number) {
 }
 
 export function lexImportSpecifiers(source: string, modulePath: string): Array<ImportSpecifierRange> {
-	let imports
-	try {
-		;[imports] = parse(source, modulePath)
-	} catch (error) {
-		throw new KodyError(
-			'invalid_module',
-			`Cannot read the imports of ${modulePath}: ${error instanceof Error ? error.message : String(error)}.`,
-		)
-	}
+	const imports = parseImportEntries(source, modulePath)
 	const ranges: Array<ImportSpecifierRange> = []
 	for (const entry of imports) {
 		// d === -2 is import.meta; a dynamic import of a computed value has no name.
@@ -75,6 +86,17 @@ export function lexImportSpecifiers(source: string, modulePath: string): Array<I
 		}
 	}
 	return ranges
+}
+
+export function lexComputedDynamicImports(source: string, modulePath: string): Array<ComputedDynamicImportRange> {
+	return parseImportEntries(source, modulePath)
+		.filter((entry) => entry.d > -1 && entry.n === undefined && entry.a <= -1)
+		.map((entry) => ({
+			start: entry.ss,
+			end: entry.se,
+			expressionStart: entry.s,
+			expressionEnd: entry.e,
+		}))
 }
 
 /**

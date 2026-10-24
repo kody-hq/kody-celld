@@ -19,6 +19,7 @@ import { accountCapabilities, accountDomain } from './account.ts'
 import { communityCapabilities, communityDomain } from './community.ts'
 import { workflowCapabilities } from './workflows.ts'
 import { eventCapabilities, eventsDomain } from './events.ts'
+import { computedImportCapabilities } from './computed-import.ts'
 
 export const domains: Array<DomainDefinition> = [
 	systemDomain,
@@ -61,6 +62,7 @@ export const capabilities: Array<CapabilityDefinition> = [
 	...communityCapabilities,
 	...workflowCapabilities,
 	...eventCapabilities,
+	...computedImportCapabilities,
 ]
 
 const capabilityRegistry = createCapabilityRegistry(capabilities)

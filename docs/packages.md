@@ -194,6 +194,19 @@ relative to the importing module, and stamps `packageStorage()` →
 `packageStorage('<name>')`. Transitive `kody:` imports between packages work
 the same way. Cycles are rejected.
 
+### Importing packages with a computed name
+
+When the package name is known only at runtime, use a computed dynamic import:
+
+```ts
+const name = '@kody-smoke/counter'
+const counter = await import(`kody:${name}/increment`)
+return await counter.default({ by: 2 })
+```
+
+The selected package export runs in a nested isolate. Other computed import
+specifiers keep their normal dynamic-import behavior.
+
 ## `packageStorage()`
 
 ```ts

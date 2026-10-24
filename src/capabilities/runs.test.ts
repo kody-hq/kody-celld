@@ -56,6 +56,7 @@ test('runList uses workflow, error-triage, and limit filters through SQL', async
 		packageName: null,
 		runId: null,
 		eventDepth: 0,
+		computedImportDepth: 0,
 		baseUrl: 'http://example.test',
 		fromRuntime: false,
 	} satisfies CapabilityContext

@@ -21,6 +21,7 @@ function context(userCell: Record<string, unknown>): CapabilityContext {
 		packageName: null,
 		runId: null,
 		eventDepth: 0,
+		computedImportDepth: 0,
 		baseUrl: 'https://kody.example',
 		fromRuntime: false,
 	}

@@ -233,8 +233,9 @@ roadmap is now shipped; the roadmap below is kept as the change log.
   keeping both models.
 - Import resolution in Worker Loader isolates follows the importing module's
   directory (celld 0.6). The module graph rewrites every static import to a
-  relative path. Packages that build specifiers dynamically
-  (`import(\`./${x}.js\`)`) are not rewritten and will fail.
+  relative path. Computed `kody:@` package imports are resolved at runtime in a
+  nested isolate. Other computed specifiers are not rewritten and keep their
+  existing behavior.
 - Worker Loader accepts only JS source and wasm; JSON is converted to
   `export default`, and non-code assets (README/AGENTS, images) are not
   available to running code.

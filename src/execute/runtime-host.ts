@@ -11,7 +11,13 @@ import { errorToJson, KodyError } from '../lib/errors.ts'
 import { callMcpTool } from '../mcp-client/service.ts'
 
 export type RuntimeProps = { userId: string; email: string; packageName: string | null }
-type CallContext = { runId?: string; packageName?: string | null; eventDepth?: number } | null
+type CallContext = {
+	runId?: string
+	packageName?: string | null
+	eventDepth?: number
+	computedImportDepth?: number
+	timeoutMs?: number
+} | null
 const credentialNamePattern = /^[a-zA-Z0-9._-]{1,64}$/
 const credentialErrorDetailsMarker = '\n__kody_credential_error_details__:'
 
@@ -41,6 +47,8 @@ export class RuntimeHost extends WorkerEntrypoint<Env, RuntimeProps> {
 			packageName: this.ctx.props.packageName,
 			runId: call?.runId ?? null,
 			eventDepth: call?.eventDepth ?? 0,
+			computedImportDepth: call?.computedImportDepth ?? 0,
+			timeoutMs: call?.timeoutMs,
 			waitUntil: (promise) => this.ctx.waitUntil(promise),
 			baseUrl: this.env.KODY_PUBLIC_URL,
 			fromRuntime: true,

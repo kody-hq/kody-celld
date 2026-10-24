@@ -10,6 +10,8 @@ let __env = null
 
 export function __init(env) {
 	__env = env
+	globalThis[Symbol.for('kody.computedPackageImport')] = (input) =>
+		host().capability('packageComputedImport', input ?? {}, __callContext())
 }
 
 export function __run(context, fn) {
@@ -22,7 +24,15 @@ export function __current() {
 
 function __callContext() {
 	const store = __current()
-	return store ? { runId: store.runId, packageName: store.packageName, eventDepth: store.eventDepth ?? 0 } : null
+	return store
+		? {
+				runId: store.runId,
+				packageName: store.packageName,
+				eventDepth: store.eventDepth ?? 0,
+				computedImportDepth: store.computedImportDepth ?? 0,
+				...(store.timeoutMs === undefined ? {} : { timeoutMs: store.timeoutMs }),
+			}
+		: null
 }
 
 function host() {
