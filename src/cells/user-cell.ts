@@ -2023,6 +2023,7 @@ export class UserCell extends DurableObject<Env> {
 		packageName?: string | null | undefined
 		idempotencyKey?: string | null | undefined
 		jobId?: string | null | undefined
+		workflowId?: string | null | undefined
 	}): Promise<{ run: RunRecord; replayed: boolean }> {
 		if (input.idempotencyKey) {
 			const existing = await this.runGet({ idempotencyKey: input.idempotencyKey })
@@ -2034,13 +2035,14 @@ export class UserCell extends DurableObject<Env> {
 		this.assertQuota('executeMsPerDay', usage.executeMs, 'Daily execute-time')
 		const id = randomId('run')
 		this.ctx.storage.sql.exec(
-			`INSERT INTO runs (id, kind, package_name, idempotency_key, status, created_at, job_id) VALUES (?, ?, ?, ?, 'running', ?, ?)`,
+			`INSERT INTO runs (id, kind, package_name, idempotency_key, status, created_at, job_id, workflow_id) VALUES (?, ?, ?, ?, 'running', ?, ?, ?)`,
 			id,
 			input.kind,
 			input.packageName ?? null,
 			input.idempotencyKey ?? null,
 			nowIso(),
 			input.jobId ?? null,
+			input.workflowId ?? null,
 		)
 		this.ctx.storage.sql.exec(
 			`INSERT INTO usage_daily (day, runs) VALUES (?, 1) ON CONFLICT(day) DO UPDATE SET runs = runs + 1`,
@@ -2172,16 +2174,19 @@ export class UserCell extends DurableObject<Env> {
 		filter: {
 			limit?: number | undefined
 			errorTriage?: ErrorTriageFilter | undefined
+			workflowId?: string | undefined
 		} = {},
 	): Promise<Array<Omit<RunRecord, 'resultJson' | 'logsJson' | 'gateway'>>> {
 		const limit = Math.min(Math.max(filter.limit ?? 20, 1), 200)
+		const workflowFilter = filter.workflowId === undefined ? '' : ' AND workflow_id = ?'
+		const bindings = filter.workflowId === undefined ? [limit] : [filter.workflowId, limit]
 		return (
 			this.ctx.storage.sql
 				.exec(
 					`SELECT id, kind, package_name, idempotency_key, status, created_at, finished_at, duration_ms, error_json, warnings_json,
 						error_triage, triage_note, triaged_at, triaged_by, job_id
-					FROM runs WHERE ${errorTriageWhere(filter.errorTriage ?? 'all')} ORDER BY created_at DESC, id DESC LIMIT ?`,
-					limit,
+					FROM runs WHERE ${errorTriageWhere(filter.errorTriage ?? 'all')}${workflowFilter} ORDER BY created_at DESC, id DESC LIMIT ?`,
+					...bindings,
 				)
 				.toArray() as Array<{
 				id: string
