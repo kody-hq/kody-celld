@@ -1,6 +1,22 @@
 const fullHtmlDocumentPattern = /^<!DOCTYPE\s+html\b/i
 const htmlRootPattern = /^<html[\s>]/i
 
+/**
+ * `sandbox` value for the email HTML preview iframe. Popups are allowed (and
+ * escape the sandbox) so links open in a normal new tab; scripts, forms and
+ * same-origin access stay blocked.
+ */
+export const emailHtmlPreviewSandbox =
+	'allow-popups allow-popups-to-escape-sandbox'
+
+/**
+ * Head tags for the preview document: no referrer on any request, and every
+ * link opens in a new tab. A `_blank` target without an opener-granting `rel`
+ * gets noopener semantics, and no-referrer covers noreferrer.
+ */
+const previewHeadTags =
+	'<meta name="referrer" content="no-referrer"><base target="_blank">'
+
 /** Strip script blocks from inbound email HTML before sandboxed preview. */
 export function stripDangerousEmailHtml(html: string) {
 	return html.replaceAll(
@@ -9,17 +25,100 @@ export function stripDangerousEmailHtml(html: string) {
 	)
 }
 
+const linkTagStartPattern = /<(?:a|area)(?=[\s/>])/gi
+const droppedLinkAttributes = new Set(['target', 'rel'])
+const whitespaceOrSlashPattern = /[\s/]/
+const whitespacePattern = /\s/
+const attributeNameEndPattern = /[\s/>=]/
+const unquotedValueEndPattern = /[\s>]/
+
+function skipWhile(html: string, index: number, pattern: RegExp) {
+	let i = index
+	while (i < html.length && pattern.test(html.charAt(i))) i++
+	return i
+}
+
+function skipUntil(html: string, index: number, pattern: RegExp) {
+	let i = index
+	while (i < html.length && !pattern.test(html.charAt(i))) i++
+	return i
+}
+
+/**
+ * Read one start tag's attributes the way the HTML tokenizer does (quoted
+ * values may contain `>`), dropping `target` and `rel`. Returns the kept tag
+ * text after the tag name and the index just past the tag.
+ */
+function readLinkTagRest(html: string, from: number) {
+	let kept = ''
+	let dropped = false
+	let i = from
+	while (i < html.length) {
+		const segmentStart = i
+		i = skipWhile(html, i, whitespaceOrSlashPattern)
+		if (i >= html.length || html.charAt(i) === '>') {
+			const tagEnd = Math.min(i + 1, html.length)
+			return { kept: kept + html.slice(segmentStart, tagEnd), end: tagEnd }
+		}
+		const nameStart = i
+		i = skipUntil(html, i + 1, attributeNameEndPattern)
+		const name = html.slice(nameStart, i).toLowerCase()
+		const afterName = skipWhile(html, i, whitespacePattern)
+		if (html.charAt(afterName) === '=') {
+			const valueStart = skipWhile(html, afterName + 1, whitespacePattern)
+			const quote = html.charAt(valueStart)
+			if (quote === '"' || quote === "'") {
+				const close = html.indexOf(quote, valueStart + 1)
+				i = close < 0 ? html.length : close + 1
+			} else {
+				i = skipUntil(html, valueStart, unquotedValueEndPattern)
+			}
+		}
+		if (droppedLinkAttributes.has(name)) {
+			dropped = true
+			continue
+		}
+		const segment = html.slice(segmentStart, i)
+		kept += dropped && nameStart === segmentStart ? ` ${segment}` : segment
+		dropped = false
+	}
+	return { kept, end: html.length }
+}
+
+/**
+ * Drop `target` and `rel` from links so the injected `<base target="_blank">`
+ * applies to every link (no in-frame or named-window navigation) and no `rel`
+ * can hand the new tab a reference back to the preview.
+ */
+function normalizeEmailLinks(html: string) {
+	let out = ''
+	let last = 0
+	for (const match of html.matchAll(linkTagStartPattern)) {
+		if (match.index < last) continue
+		const nameEnd = match.index + match[0].length
+		const { kept, end } = readLinkTagRest(html, nameEnd)
+		out += html.slice(last, nameEnd) + kept
+		last = end
+	}
+	return out + html.slice(last)
+}
+
 function isFullHtmlDocument(html: string) {
 	const trimmed = html.trimStart()
 	return fullHtmlDocumentPattern.test(trimmed) || htmlRootPattern.test(trimmed)
 }
 
-function injectReferrerMeta(html: string) {
-	const referrerMeta = '<meta name="referrer" content="no-referrer">'
-	if (/<head[\s>]/i.test(html)) {
-		return html.replace(/<head([^>]*)>/i, `<head$1>${referrerMeta}`)
-	}
-	return `${referrerMeta}${html}`
+const leadingDoctypePattern = /^\s*<!DOCTYPE[^>]*>/i
+
+/**
+ * Put the head tags at the very start of the document (after a leading
+ * doctype). The parser opens the implicit head for them and merges a later
+ * `<html>` start tag's attributes, so they always land first in the real head
+ * even if a `<head>` lookalike appears earlier in a comment or attribute.
+ */
+function injectPreviewHeadTags(html: string) {
+	const doctype = leadingDoctypePattern.exec(html)?.[0] ?? ''
+	return `${doctype}${previewHeadTags}${html.slice(doctype.length)}`
 }
 
 function wrapEmailHtmlFragment(html: string) {
@@ -27,8 +126,7 @@ function wrapEmailHtmlFragment(html: string) {
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="referrer" content="no-referrer">
-<base target="_blank" rel="noopener noreferrer">
+${previewHeadTags}
 <style>
 html, body { margin: 0; padding: 0; }
 body {
@@ -50,9 +148,9 @@ ${html}
 
 /** Build srcdoc HTML for a sandboxed admin email preview iframe. */
 export function buildAdminEmailHtmlPreviewDocument(htmlBody: string) {
-	const sanitized = stripDangerousEmailHtml(htmlBody)
+	const sanitized = normalizeEmailLinks(stripDangerousEmailHtml(htmlBody))
 	if (isFullHtmlDocument(sanitized)) {
-		return injectReferrerMeta(sanitized)
+		return injectPreviewHeadTags(sanitized)
 	}
 	return wrapEmailHtmlFragment(sanitized)
 }

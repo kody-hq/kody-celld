@@ -1,5 +1,8 @@
 import { css, type Handle, unsafeHTML } from 'remix/component'
-import { buildAdminEmailHtmlPreviewDocument } from '#client/email-html-preview.ts'
+import {
+	buildAdminEmailHtmlPreviewDocument,
+	emailHtmlPreviewSandbox,
+} from '#client/email-html-preview.ts'
 import {
 	type AppLoaderData,
 	type EmailBodyView,
@@ -52,11 +55,12 @@ function EmailBody(
 		if (view === 'html') {
 			return message.html ? (
 				// Same rendering as hosted Kody (account-email-detail.tsx): scripts
-				// stripped, then an empty `sandbox` (no scripts, forms, popups or
-				// same-origin access) and no referrer. Links open in a new tab.
+				// stripped, then a `sandbox` that only allows popups (no scripts,
+				// forms or same-origin access) and no referrer. Links open in a
+				// normal new tab.
 				<iframe
 					title="Email HTML preview"
-					sandbox=""
+					sandbox={emailHtmlPreviewSandbox}
 					referrerpolicy="no-referrer"
 					srcDoc={unsafeHTML(buildAdminEmailHtmlPreviewDocument(message.html))}
 					mix={css(htmlPreviewCss)}

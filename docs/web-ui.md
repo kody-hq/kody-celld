@@ -257,9 +257,12 @@ no-store` (`src/app/security-headers.ts`). `remix/component` escapes all
   Raw HTML (`innerHTML`, `srcdoc`) only renders through an explicit
   `unsafeHTML()`. The one caller is the Email page's message body, which
   uses hosted Kody's renderer (`client/email-html-preview.ts`, synced
-  verbatim): `<script>` blocks stripped, a `no-referrer` meta and
-  `<base target="_blank">` added, then shown in an `<iframe sandbox="">`
-  (no scripts, forms, popups or same-origin access) via `srcdoc`.
+  verbatim): `<script>` blocks stripped, per-link `target` and `rel`
+  dropped, a `no-referrer` meta and `<base target="_blank">` added first in
+  the head, then shown via `srcdoc` in an
+  `<iframe sandbox="allow-popups allow-popups-to-escape-sandbox">`. Scripts,
+  forms and same-origin access stay blocked; links open in a normal new tab
+  with no opener and no referrer.
 - Secrets, token values, master keys and admin tokens never appear on a page
   except the one-time token reveal after creation.
 - Failed sign-ins (password, token, console) are audited with the method but
