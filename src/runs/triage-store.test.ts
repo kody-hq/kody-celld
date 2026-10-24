@@ -6,6 +6,7 @@ import {
 	autoResolveNote,
 	ensureRunTriageColumns,
 	errorTriageWhere,
+	runListRows,
 	RunTriageStore,
 	triageFieldsFromRow,
 } from './triage-store.ts'
@@ -37,6 +38,7 @@ type Seed = {
 	createdAt: string
 	packageName?: string | null
 	jobId?: string | null
+	workflowId?: string | null
 	error?: { name: string; message: string } | null
 	triage?: 'ignored' | 'resolved' | null
 }
@@ -47,7 +49,7 @@ function setup(seeds: Array<Seed> = []) {
 	ensureRunTriageColumns(sql)
 	for (const s of seeds) {
 		sql.exec(
-			`INSERT INTO runs (id, kind, package_name, status, created_at, error_json, job_id, error_triage) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO runs (id, kind, package_name, status, created_at, error_json, job_id, workflow_id, error_triage) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			s.id,
 			s.kind ?? 'execute',
 			s.packageName ?? null,
@@ -55,6 +57,7 @@ function setup(seeds: Array<Seed> = []) {
 			s.createdAt,
 			s.status === 'error' ? JSON.stringify(s.error ?? { name: 'Error', message: 'boom' }) : null,
 			s.jobId ?? null,
+			s.workflowId ?? null,
 			s.triage ?? null,
 		)
 	}
@@ -75,7 +78,7 @@ describe('ensureRunTriageColumns', () => {
 		const columns = (sql.exec(`SELECT name FROM pragma_table_info('runs')`).toArray() as Array<{ name: string }>).map(
 			(c) => c.name,
 		)
-		for (const column of ['error_triage', 'triage_note', 'triaged_at', 'triaged_by', 'job_id']) {
+		for (const column of ['error_triage', 'triage_note', 'triaged_at', 'triaged_by', 'job_id', 'workflow_id']) {
 			assert.equal(columns.filter((c) => c === column).length, 1, column)
 		}
 		const old = sql.exec(`SELECT * FROM runs WHERE id = 'run_old'`).toArray()[0] as Record<string, unknown>
@@ -85,8 +88,35 @@ describe('ensureRunTriageColumns', () => {
 			triagedAt: null,
 			triagedBy: null,
 			jobId: null,
+			workflowId: null,
 		})
 		assert.equal(new RunTriageStore(sql).summary(null).errors, 1)
+	})
+})
+
+describe('run record workflow metadata', () => {
+	it('maps workflow_id for runGet and selects it through runList SQL', () => {
+		const { sql, row } = setup([
+			{
+				id: 'run-1',
+				kind: 'job',
+				status: 'error',
+				createdAt: '2026-10-08T01:00:00Z',
+				jobId: '@a/b#tick',
+				workflowId: 'pkgwf-1',
+			},
+		])
+		assert.deepEqual(triageFieldsFromRow(row('run-1')), {
+			errorTriage: null,
+			triageNote: null,
+			triagedAt: null,
+			triagedBy: null,
+			jobId: '@a/b#tick',
+			workflowId: 'pkgwf-1',
+		})
+		const [listed] = runListRows(sql, { errorTriage: 'open' })
+		assert.ok(listed)
+		assert.equal(listed.workflowId, 'pkgwf-1')
 	})
 })
 
@@ -144,6 +174,7 @@ describe('RunTriageStore.update', () => {
 			triagedAt: '2026-10-08T12:00:00.000Z',
 			triagedBy: 'user_1',
 			jobId: null,
+			workflowId: null,
 		})
 		store.update({ runId: 'r1', triage: 'resolved', note: undefined, by: 'user_1' })
 		assert.equal(triageFieldsFromRow(row('r1')).errorTriage, 'resolved')
@@ -386,6 +417,7 @@ describe('RunTriageStore.autoResolveJob', () => {
 			triagedAt: '2026-10-08T12:00:00.000Z',
 			triagedBy: autoResolveBy,
 			jobId: '@a/b#tick',
+			workflowId: null,
 		})
 		assert.equal(triageFieldsFromRow(row('a2')).errorTriage, 'ignored')
 		assert.equal(triageFieldsFromRow(row('b1')).errorTriage, null)

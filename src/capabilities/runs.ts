@@ -31,7 +31,7 @@ const runTriageUpdateSchema = {
 	description: 'ignored (noise), resolved (fixed), or open (clear triage).',
 }
 
-export const runList = defineCapability<{ limit?: number; errorTriage?: string }>({
+export const runList = defineCapability<{ limit?: number; errorTriage?: string; workflow_id?: string }>({
 	domain: 'runs',
 	name: 'runList',
 	description:
@@ -43,6 +43,7 @@ export const runList = defineCapability<{ limit?: number; errorTriage?: string }
 		properties: {
 			limit: { type: 'integer' },
 			errorTriage: errorTriageFilterSchema,
+			workflow_id: { type: 'string', description: 'Return only attempts belonging to this workflow.' },
 		},
 	},
 	readOnly: true,
@@ -51,6 +52,7 @@ export const runList = defineCapability<{ limit?: number; errorTriage?: string }
 			runs: await ctx.userCell.runList({
 				limit: args.limit,
 				errorTriage: parseErrorTriageFilter(args.errorTriage, 'all'),
+				workflowId: args.workflow_id,
 			}),
 		}
 	},

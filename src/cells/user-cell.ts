@@ -69,11 +69,11 @@ import {
 import type { ErrorTriageFilter, RunKind, RunTriageBulkInput, RunTriageUpdate } from '../runs/triage-args.ts'
 import {
 	ensureRunTriageColumns,
-	errorTriageWhere,
 	type RunSummary,
 	type RunTriageBulkResult,
 	type RunTriageFields,
 	RunTriageStore,
+	runListRows,
 	triageFieldsFromRow,
 } from '../runs/triage-store.ts'
 import { signatureMatches } from '../webhooks/verify.ts'
@@ -2023,6 +2023,7 @@ export class UserCell extends DurableObject<Env> {
 		packageName?: string | null | undefined
 		idempotencyKey?: string | null | undefined
 		jobId?: string | null | undefined
+		workflowId?: string | null | undefined
 	}): Promise<{ run: RunRecord; replayed: boolean }> {
 		if (input.idempotencyKey) {
 			const existing = await this.runGet({ idempotencyKey: input.idempotencyKey })
@@ -2034,13 +2035,14 @@ export class UserCell extends DurableObject<Env> {
 		this.assertQuota('executeMsPerDay', usage.executeMs, 'Daily execute-time')
 		const id = randomId('run')
 		this.ctx.storage.sql.exec(
-			`INSERT INTO runs (id, kind, package_name, idempotency_key, status, created_at, job_id) VALUES (?, ?, ?, ?, 'running', ?, ?)`,
+			`INSERT INTO runs (id, kind, package_name, idempotency_key, status, created_at, job_id, workflow_id) VALUES (?, ?, ?, ?, 'running', ?, ?, ?)`,
 			id,
 			input.kind,
 			input.packageName ?? null,
 			input.idempotencyKey ?? null,
 			nowIso(),
 			input.jobId ?? null,
+			input.workflowId ?? null,
 		)
 		this.ctx.storage.sql.exec(
 			`INSERT INTO usage_daily (day, runs) VALUES (?, 1) ON CONFLICT(day) DO UPDATE SET runs = runs + 1`,
@@ -2147,6 +2149,7 @@ export class UserCell extends DurableObject<Env> {
 					logs_json: string
 					warnings_json: string
 					gateway_json: string
+					workflow_id: string | null
 			  }
 			| undefined
 		if (!row) return null
@@ -2172,42 +2175,10 @@ export class UserCell extends DurableObject<Env> {
 		filter: {
 			limit?: number | undefined
 			errorTriage?: ErrorTriageFilter | undefined
+			workflowId?: string | undefined
 		} = {},
 	): Promise<Array<Omit<RunRecord, 'resultJson' | 'logsJson' | 'gateway'>>> {
-		const limit = Math.min(Math.max(filter.limit ?? 20, 1), 200)
-		return (
-			this.ctx.storage.sql
-				.exec(
-					`SELECT id, kind, package_name, idempotency_key, status, created_at, finished_at, duration_ms, error_json, warnings_json,
-						error_triage, triage_note, triaged_at, triaged_by, job_id
-					FROM runs WHERE ${errorTriageWhere(filter.errorTriage ?? 'all')} ORDER BY created_at DESC, id DESC LIMIT ?`,
-					limit,
-				)
-				.toArray() as Array<{
-				id: string
-				kind: RunRecord['kind']
-				package_name: string | null
-				idempotency_key: string | null
-				status: RunRecord['status']
-				created_at: string
-				finished_at: string | null
-				duration_ms: number | null
-				error_json: string | null
-				warnings_json: string
-			}>
-		).map((row) => ({
-			id: row.id,
-			kind: row.kind,
-			packageName: row.package_name,
-			idempotencyKey: row.idempotency_key,
-			status: row.status,
-			createdAt: row.created_at,
-			finishedAt: row.finished_at,
-			durationMs: row.duration_ms,
-			error: row.error_json ? (JSON.parse(row.error_json) as RunRecord['error']) : null,
-			warnings: JSON.parse(row.warnings_json) as Array<string>,
-			...triageFieldsFromRow(row as unknown as Record<string, unknown>),
-		}))
+		return runListRows(this.ctx.storage.sql, filter)
 	}
 
 	async runSummary(input: { since?: string | null | undefined } = {}): Promise<RunSummary> {
