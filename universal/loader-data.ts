@@ -85,6 +85,20 @@ export type JobView = {
 	lastError: string | null
 }
 
+export type WorkflowView = {
+	id: string
+	sourceType: 'inline' | 'package'
+	packageId: string | null
+	workflowName: string
+	exportName: string | null
+	idempotencyKey: string | null
+	status: 'queued' | 'running' | 'complete' | 'errored' | 'cancelled'
+	attempts: number
+	runAt: string
+	updatedAt: string
+	lastError: string | null
+}
+
 export type MemoryStatusView = 'active' | 'archived' | 'deleted'
 
 export type MemoryListItemView = {
@@ -475,6 +489,7 @@ export type AppLoaderData =
 			files: PackageFilesLoaderData
 	  }
 	| { page: 'accountJobs'; csrf: string; jobs: Array<JobView> }
+	| { page: 'accountWorkflows'; csrf: string; workflows: Array<WorkflowView> }
 	| {
 			page: 'accountJobDetail'
 			csrf: string

@@ -389,6 +389,11 @@ export const accountNavItems: Array<AccountNavItem> = [
 		icon: 'trending-up',
 	},
 	{ href: routes.accountJobs.href(), label: 'Jobs', icon: 'briefcase' },
+	{
+		href: routes.accountWorkflows.href(),
+		label: 'Workflows',
+		icon: 'refresh',
+	},
 	{ href: routes.accountWebhooks.href(), label: 'Webhooks', icon: 'cloud' },
 	{ href: routes.accountSecrets.href(), label: 'Secrets', icon: 'key' },
 	{

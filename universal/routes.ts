@@ -31,6 +31,7 @@ export const routes = route({
 		'/account/package-preview/:source/files(/*relativePath)',
 	accountJobs: '/account/jobs',
 	accountJobDetail: '/account/jobs/:jobId',
+	accountWorkflows: '/account/workflows',
 	accountMemories: '/account/memories',
 	accountMemoryDetail: '/account/memories/:memoryId',
 	accountWebhooks: '/account/webhooks',
