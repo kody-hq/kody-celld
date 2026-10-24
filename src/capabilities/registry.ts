@@ -18,6 +18,7 @@ import { secretProviderCapabilities, secretProvidersDomain } from './secret-prov
 import { accountCapabilities, accountDomain } from './account.ts'
 import { communityCapabilities, communityDomain } from './community.ts'
 import { workflowCapabilities } from './workflows.ts'
+import { eventCapabilities, eventsDomain } from './events.ts'
 
 export const domains: Array<DomainDefinition> = [
 	systemDomain,
@@ -37,6 +38,7 @@ export const domains: Array<DomainDefinition> = [
 	secretProvidersDomain,
 	accountDomain,
 	communityDomain,
+	eventsDomain,
 ]
 
 export const capabilities: Array<CapabilityDefinition> = [
@@ -58,6 +60,7 @@ export const capabilities: Array<CapabilityDefinition> = [
 	...accountCapabilities,
 	...communityCapabilities,
 	...workflowCapabilities,
+	...eventCapabilities,
 ]
 
 const capabilityRegistry = createCapabilityRegistry(capabilities)

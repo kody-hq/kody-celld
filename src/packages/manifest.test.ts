@@ -232,9 +232,7 @@ describe('parsePackageManifest', () => {
 				filters: { status: 'ready' },
 			},
 		])
-		assert.deepEqual(parsed.parseWarnings, [
-			'kody.subscriptions["@scope/task.created"]: package-emitted topics are not delivered on celld yet. The handler is saved but will not run.',
-		])
+		assert.deepEqual(parsed.parseWarnings, [])
 	})
 
 	it('retains platform subscription filters while warning they are not applied', () => {
@@ -722,7 +720,7 @@ describe('kody.webhooks + kody.subscriptions', () => {
 		])
 	})
 
-	it('warns for hosted and package-emitted topics but saves their handlers', () => {
+	it('warns for hosted topics but saves package-emitted handlers', () => {
 		const parsed = parsePackageManifest(
 			manifest({
 				exports: exportsMap,
@@ -740,7 +738,6 @@ describe('kody.webhooks + kody.subscriptions', () => {
 		])
 		assert.deepEqual(parsed.parseWarnings, [
 			'kody.subscriptions["run.error.recorded"]: celld does not emit this topic yet. The handler is saved but will not run.',
-			'kody.subscriptions["@scope/topic"]: package-emitted topics are not delivered on celld yet. The handler is saved but will not run.',
 		])
 	})
 

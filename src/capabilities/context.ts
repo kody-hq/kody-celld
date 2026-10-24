@@ -10,6 +10,7 @@ export function capabilityContext(env: Env, ctx: ExecutionContext, auth: Princip
 		userCell: auth.userCell,
 		packageName: null,
 		runId: null,
+		eventDepth: 0,
 		baseUrl: env.KODY_PUBLIC_URL,
 		fromRuntime: false,
 	}

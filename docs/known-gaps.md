@@ -214,11 +214,12 @@ roadmap is now shipped; the roadmap below is kept as the change log.
   topics, including hosted-only topics, are saved with warnings but have no
   celld event to trigger them. Platform-topic subscription `filters` are
   ignored with a warning, so the handler runs for every event on the topic.
-- **Package-emitted topics.** Celld parses and validates `kody.emits`, but
-  `events.dispatch` and delivery to subscriber handlers are not available yet.
-  `@` subscriptions are saved with a warning and their filters are retained.
-  The `mcp: true` flag is ignored with a warning. Platform-topic filters
-  remain unapplied with a warning.
+- **Package-emitted topics.** Celld delivers `events.dispatch` inline, without
+  a queue or DLQ retry, and returns `delivered_inline` after waiting for
+  subscribers. Nested dispatches stop at depth 8. Long delivery idempotency
+  keys fall back to `pkgevent:` plus the full SHA-256 digest. The `events`
+  export exists in every runtime but throws outside package runs. The `mcp: true`
+  flag is ignored with a warning. Platform-topic filters remain unapplied with a warning.
 - **Unsupported manifest keys.** Hosted-only `kody.*` keys that celld does not
   support and unknown `kody.*` keys are ignored with warnings.
 - `/connect/secret-set` does not support `expiresAt` or `allowedPackages`.

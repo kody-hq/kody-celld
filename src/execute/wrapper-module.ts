@@ -87,6 +87,7 @@ export default {
 			runId: context.runId,
 			packageName: context.packageName ?? null,
 			trigger: context.trigger ?? null,
+			eventDepth: context.eventDepth ?? 0,
 			logs: [],
 		}
 		__setPackageContext(

@@ -19,6 +19,7 @@ export type ExecuteInput = {
 	responseLimit?: number | undefined
 	idempotencyKey?: string | undefined
 	trigger?: string | undefined
+	eventDepth?: number | undefined
 	/** Job id for `kind: 'job'` runs, so a later success can resolve earlier errors (kody). */
 	jobId?: string | undefined
 	workflowId?: string | undefined
@@ -172,7 +173,13 @@ export async function executeRun(
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({
 					params: input.params ?? {},
-					context: { runId: run.id, packageName, packageVersion, trigger: input.trigger ?? null },
+					context: {
+						runId: run.id,
+						packageName,
+						packageVersion,
+						trigger: input.trigger ?? null,
+						eventDepth: input.eventDepth ?? 0,
+					},
 				}),
 			}),
 			timeout,
