@@ -43,6 +43,13 @@ export async function smokeWeb({ user, mcp }) {
 		'account pages require sign-in',
 		gate,
 	)
+	const connectPath = '/connect/secret-set?name=smoke-link&description=setup&allowedHosts=api.example.com'
+	const connectGate = await anon.get(connectPath)
+	assert(
+		connectGate.status === 303 && connectGate.location?.includes(`next=${encodeURIComponent(connectPath)}`),
+		'secret setup keeps the full return path while requiring sign-in',
+		connectGate,
+	)
 	const signinPage = await anon.get('/signin')
 	assert(
 		signinPage.status === 200 && signinPage.text.includes('name="password"'),
@@ -95,6 +102,12 @@ export async function smokeWeb({ user, mcp }) {
 	assert(overview.text.includes('password set'), 'overview shows password badge')
 	const csrf = hiddenInputs(overview.text).csrf
 	assert(csrf && csrf.length >= 32, 'overview carries a CSRF token')
+	const missingSecretName = await browser.get('/connect/secret-set')
+	assert(
+		missingSecretName.status === 303 && missingSecretName.location === '/account/secrets',
+		'secret setup without a name returns to account secrets',
+		missingSecretName,
+	)
 
 	// CSRF: missing token and cross-origin submissions are refused.
 	const noCsrf = await browser.post('/account/tokens', { action: 'create', label: 'nope' })
@@ -153,7 +166,75 @@ export async function smokeWeb({ user, mcp }) {
 	assert(secretsPage.text.includes(secretName) && !secretsPage.text.includes(secretValue), 'secret listed by name only')
 	const deleted = await browser.post('/account/secrets', { action: 'delete', name: secretName, csrf })
 	assert(deleted.status === 303, 'secret deleted from the form', deleted)
-	log('secrets', 'save/list/delete through the form; value never echoed')
+
+	const connectName = `connect-secret-${randomBytes(3).toString('hex')}`
+	const connectValue = `cv-${randomBytes(16).toString('hex')}`
+	const connectHost = `connect-${randomBytes(3).toString('hex')}.example.com`
+	const connectUrl = `/connect/secret-set?name=${encodeURIComponent(connectName)}&description=${encodeURIComponent('Saved through the owner setup link')}&allowedHosts=${encodeURIComponent(connectHost)}`
+	const connectPage = await browser.get(connectUrl)
+	assert(
+		connectPage.status === 200 &&
+			connectPage.text.includes('id="connect-secret-set-value"') &&
+			connectPage.text.includes('type="password"') &&
+			connectPage.text.includes('autofocus'),
+		'secret setup page renders its focused password field',
+		connectPage.status,
+	)
+	const connectCsrf = hiddenInputs(connectPage.text).csrf
+	assert(connectCsrf, 'secret setup page carries a CSRF token')
+	const forgedSaved = await browser.get(`${connectUrl}&flash=saved`)
+	assert(
+		forgedSaved.status === 200 &&
+			forgedSaved.text.includes('id="connect-secret-set-value"') &&
+			!forgedSaved.text.includes('Saved. You can tell your agent it is done.'),
+		'secret setup ignores flash=saved without a saved-state cookie',
+	)
+	const connectSaved = await browser.post(connectUrl, { value: connectValue, csrf: connectCsrf })
+	assert(
+		connectSaved.status === 303 &&
+			connectSaved.location?.startsWith('/connect/secret-set?') &&
+			!connectSaved.location.includes('flash=') &&
+			connectSaved.setCookies.some(
+				(cookie) =>
+					/^kody_connect_saved=[a-f0-9]{64};/.test(cookie) &&
+					cookie.includes('HttpOnly') &&
+					cookie.includes('Max-Age=60') &&
+					cookie.includes('Path=/connect/secret-set') &&
+					cookie.includes('SameSite=Lax'),
+			),
+		'secret setup POST saves, redirects without flash, and sets a short-lived confirmation cookie',
+		connectSaved,
+	)
+	const confirmation = await browser.get(connectSaved.location)
+	assert(
+		confirmation.status === 200 &&
+			confirmation.text.includes('Saved. You can tell your agent it is done.') &&
+			!confirmation.text.includes(connectValue) &&
+			confirmation.setCookies.some(
+				(cookie) =>
+					cookie.startsWith('kody_connect_saved=;') &&
+					cookie.includes('Max-Age=0') &&
+					cookie.includes('Path=/connect/secret-set'),
+			),
+		'saved confirmation never echoes the value and clears its cookie',
+		confirmation.status,
+	)
+	const connectList = await mcp.call('secretList')
+	assert(
+		connectList.secrets.some((secret) => secret.name === connectName) &&
+			connectList.approvedHosts.some((approval) => approval.host === connectHost) &&
+			!JSON.stringify(connectList).includes(connectValue),
+		'secretList confirms the saved secret and approved host without returning the value',
+		connectList,
+	)
+	const connectDeleted = await browser.post('/account/secrets', {
+		action: 'delete',
+		name: connectName,
+		csrf,
+	})
+	assert(connectDeleted.status === 303, 'connect secret is removed after smoke', connectDeleted.status)
+	await admin.revokeHost(user.id, connectHost)
+	log('secrets', 'save/list/delete and owner setup flow; values never echoed')
 
 	// Memories list/search/detail/delete through the server-rendered account page.
 	const hex = randomBytes(4).toString('hex')
@@ -792,7 +873,7 @@ export async function smokeWeb({ user, mcp }) {
 	assert(consoleOut.status === 303 && !operator.cookie('kody_console'), 'console sign-out clears cookie')
 	log('console', 'admin sign-in, users, host approve/revoke, audit, config, invite')
 
-	// The user's own UI must not offer host approval (admin-only invariant).
+	// The account UI must not offer host approval; owners use /connect/secret-set for this flow.
 	const userSecrets = await new Browser()
 	await userSecrets.post('/signin', { intent: 'token', token: mcp.token })
 	const secretsHtml = (await userSecrets.get('/account/secrets')).text
@@ -804,7 +885,7 @@ export async function smokeWeb({ user, mcp }) {
 	})
 	assert(
 		forgedApprove.status !== 200 || !(await admin.listHosts(user.id)).json.hosts.some((h) => h.host === 'evil.example'),
-		'user cannot approve hosts',
+		'/account/secrets cannot approve hosts',
 	)
-	log('invariant', 'host approval stays admin-only')
+	log('invariant', 'account UI has no host-approval form')
 }

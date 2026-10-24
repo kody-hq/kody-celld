@@ -28,6 +28,7 @@ import { handleAccount, isAccountRoute } from './web/account.ts'
 import { handleBrandGuide, isBrandGuideRoute } from './web/brand-guide.ts'
 import { handleCommunity, isCommunityRoute } from './web/community.ts'
 import { handleConsole, isConsoleRoute } from './web/console.ts'
+import { handleConnectSecretSet, isConnectSecretSetRoute } from './web/connect-secret-set.ts'
 import { renderPage } from '#app/render.tsx'
 import { appSessionOf, redirect } from './web/http.ts'
 import { readWebSession } from './web/session.ts'
@@ -86,6 +87,7 @@ function isWebRoute(pathname: string) {
 		isSigninRoute(pathname) ||
 		isAccountRoute(pathname) ||
 		isConsoleRoute(pathname) ||
+		isConnectSecretSetRoute(pathname) ||
 		isCommunityRoute(pathname) ||
 		isBrandGuideRoute(pathname) ||
 		isAppsOpenRoute(pathname) ||
@@ -526,6 +528,7 @@ export default {
 			if (isOAuthRoute(url.pathname)) return await handleOAuth(request, env, url)
 			if (isSigninRoute(url.pathname)) return await handleSignin(request, env, url)
 			if (isAccountRoute(url.pathname)) return await handleAccount(request, env, url)
+			if (isConnectSecretSetRoute(url.pathname)) return await handleConnectSecretSet(request, env, url)
 			if (isConsoleRoute(url.pathname)) return await handleConsole(request, env, ctx, url)
 			if (isCommunityRoute(url.pathname)) return await handleCommunity(request, env, url)
 			if (isBrandGuideRoute(url.pathname)) return await handleBrandGuide(request, env)
