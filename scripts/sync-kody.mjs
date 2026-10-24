@@ -27,6 +27,7 @@ const commitFlag = args.indexOf('--commit')
 const commitOverride = commitFlag >= 0 ? args[commitFlag + 1] : null
 const onlyFlag = args.indexOf('--only')
 const onlyPath = onlyFlag >= 0 ? args[onlyFlag + 1] : null
+const fullCommitShaPattern = /^[0-9a-f]{40}$/
 
 function sha256(bytes) {
 	return createHash('sha256').update(bytes).digest('hex')
@@ -187,8 +188,11 @@ async function update(manifest) {
 
 /** Re-pin one verbatim file to `--commit`, leaving every other pin alone. */
 async function updateOne(manifest, filePath) {
-	if (!commitOverride) {
-		throw new Error('--only needs --commit <sha>')
+	if (!filePath || filePath.startsWith('--')) {
+		throw new Error('--only needs a verbatim file path')
+	}
+	if (!commitOverride || !fullCommitShaPattern.test(commitOverride)) {
+		throw new Error('--only needs --commit <full 40-character commit sha>')
 	}
 	const index = manifest.files.findIndex((entry) => entry.path === filePath)
 	if (index < 0) {
@@ -209,7 +213,7 @@ async function main() {
 		await check(manifest)
 		return
 	}
-	if (onlyPath) {
+	if (onlyFlag >= 0) {
 		await updateOne(manifest, onlyPath)
 		return
 	}
