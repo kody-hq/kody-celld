@@ -3,6 +3,8 @@ import { clearCookie, cookiesAreSecure, readCookie, serializeCookie } from '../a
 import { getUserCell } from '../execute/engine.ts'
 import type { Env } from '../env.ts'
 import { recordAudit } from '../lib/audit.ts'
+import { canonicalJsonStringify } from '../lib/canonical-json.ts'
+import { sha256Hex } from '../lib/crypto.ts'
 import { KodyError } from '../lib/errors.ts'
 import { normalizeSecretHost } from '../secrets/host-policy.ts'
 import { appSessionOf, readForm, redirect } from './http.ts'
@@ -106,14 +108,34 @@ async function renderConnectSecretSet(
 	})
 }
 
-export async function connectSecretSetSavedState(request: Request, name: string | null) {
-	const savedName = await readCookie(request, savedCookieName)
-	const saved = name !== null && savedName === name
+async function connectSecretSetSavedCookieValue(
+	setup: Pick<ConnectSecretSetPageData, 'name' | 'scope' | 'packageId' | 'description' | 'hosts'>,
+) {
+	return sha256Hex(
+		canonicalJsonStringify({
+			name: setup.name,
+			scope: setup.scope,
+			packageId: setup.packageId,
+			description: setup.description,
+			hosts: setup.hosts.map(normalizeSecretHost).sort(),
+		}),
+	)
+}
+
+export async function connectSecretSetSavedState(
+	request: Request,
+	setup: Pick<ConnectSecretSetPageData, 'name' | 'scope' | 'packageId' | 'description' | 'hosts'> | null,
+) {
+	const savedCookieValue = await readCookie(request, savedCookieName)
+	const expectedValue = setup ? await connectSecretSetSavedCookieValue(setup) : null
+	const saved = expectedValue !== null && savedCookieValue === expectedValue
 	return {
 		saved,
 		canSubmit: !saved,
 		clearCookie:
-			savedName !== null ? await clearCookie(savedCookieName, cookiesAreSecure(request.url), savedCookiePath) : null,
+			savedCookieValue !== null
+				? await clearCookie(savedCookieName, cookiesAreSecure(request.url), savedCookiePath)
+				: null,
 	}
 }
 
@@ -150,7 +172,10 @@ export async function handleConnectSecretSet(request: Request, env: Env, url: UR
 	const parsed = parseConnectSecretSetQuery(url)
 	const savedState =
 		request.method === 'GET'
-			? await connectSecretSetSavedState(request, parsed.kind === 'setup' ? parsed.setup.name : null)
+			? await connectSecretSetSavedState(
+					request,
+					parsed.kind === 'setup' && parsed.error === null ? parsed.setup : null,
+				)
 			: null
 	const clearSavedCookie = savedState?.clearCookie ?? null
 	if (parsed.kind === 'missing_name') {
@@ -214,7 +239,8 @@ export async function handleConnectSecretSet(request: Request, env: Env, url: UR
 		throw error
 	}
 
-	const savedCookie = await serializeCookie(savedCookieName, parsed.setup.name, {
+	const savedCookieValue = await connectSecretSetSavedCookieValue(parsed.setup)
+	const savedCookie = await serializeCookie(savedCookieName, savedCookieValue, {
 		maxAgeSeconds: 60,
 		secure: cookiesAreSecure(request.url),
 		path: savedCookiePath,

@@ -2,10 +2,33 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { Env } from '../env.ts'
 import { KodyError } from '../lib/errors.ts'
+import { canonicalJsonStringify } from '../lib/canonical-json.ts'
+import { sha256Hex } from '../lib/crypto.ts'
 import { cookiesAreSecure, csrfToken, serializeCookie, sessionCookieName } from '../auth/cookies.ts'
 import { connectSecretSetSavedState, handleConnectSecretSet, parseConnectSecretSetQuery } from './connect-secret-set.ts'
+import type { ConnectSecretSetPageData } from './connect-secret-set.ts'
 
 const sessionId = 'connect-secret-set-session'
+
+type SavedSetup = Pick<ConnectSecretSetPageData, 'name' | 'scope' | 'packageId' | 'description' | 'hosts'>
+
+function setupFromUrl(url: URL): SavedSetup {
+	const parsed = parseConnectSecretSetQuery(url)
+	if (parsed.kind !== 'setup') throw new Error('Expected a setup URL.')
+	return parsed.setup
+}
+
+async function savedCookieValue(setup: SavedSetup) {
+	return sha256Hex(
+		canonicalJsonStringify({
+			name: setup.name,
+			scope: setup.scope,
+			packageId: setup.packageId,
+			description: setup.description,
+			hosts: [...setup.hosts].sort(),
+		}),
+	)
+}
 
 function userCellStub(calls: {
 	saves: Array<Record<string, unknown>>
@@ -135,10 +158,11 @@ describe('handleConnectSecretSet', () => {
 
 	it('ignores flash=saved when no matching saved cookie is present', async () => {
 		const { cookie } = await fixture()
-		const request = new Request('http://localhost/connect/secret-set?name=github&flash=saved', {
+		const url = new URL('http://localhost/connect/secret-set?name=github&flash=saved')
+		const request = new Request(url, {
 			headers: { cookie },
 		})
-		assert.deepEqual(await connectSecretSetSavedState(request, 'github'), {
+		assert.deepEqual(await connectSecretSetSavedState(request, setupFromUrl(url)), {
 			saved: false,
 			canSubmit: true,
 			clearCookie: null,
@@ -147,11 +171,15 @@ describe('handleConnectSecretSet', () => {
 
 	it('shows the saved state for a matching cookie and clears it', async () => {
 		const { cookie } = await fixture()
-		const request = new Request('http://localhost/connect/secret-set?name=GitHub%20token', {
-			headers: { cookie: `${cookie}; kody_connect_saved=GitHub%20token` },
+		const url = new URL(
+			'http://localhost/connect/secret-set?name=GitHub%20token&allowedHosts=API.TWO.EXAMPLE%2CAPI.ONE.EXAMPLE',
+		)
+		const setup = setupFromUrl(url)
+		const request = new Request(url, {
+			headers: { cookie: `${cookie}; kody_connect_saved=${await savedCookieValue(setup)}` },
 		})
 
-		assert.deepEqual(await connectSecretSetSavedState(request, 'GitHub token'), {
+		assert.deepEqual(await connectSecretSetSavedState(request, setup), {
 			saved: true,
 			canSubmit: false,
 			clearCookie: 'kody_connect_saved=; HttpOnly; Max-Age=0; Path=/connect/secret-set; SameSite=Lax',
@@ -160,11 +188,32 @@ describe('handleConnectSecretSet', () => {
 
 	it('shows the form and clears a saved cookie for a different name', async () => {
 		const { cookie } = await fixture()
-		const request = new Request('http://localhost/connect/secret-set?name=github', {
-			headers: { cookie: `${cookie}; kody_connect_saved=other` },
+		const url = new URL('http://localhost/connect/secret-set?name=github')
+		const setup = setupFromUrl(url)
+		const mismatchedValue = await savedCookieValue({ ...setup, name: 'other' })
+		const request = new Request(url, {
+			headers: { cookie: `${cookie}; kody_connect_saved=${mismatchedValue}` },
 		})
 
-		assert.deepEqual(await connectSecretSetSavedState(request, 'github'), {
+		assert.deepEqual(await connectSecretSetSavedState(request, setup), {
+			saved: false,
+			canSubmit: true,
+			clearCookie: 'kody_connect_saved=; HttpOnly; Max-Age=0; Path=/connect/secret-set; SameSite=Lax',
+		})
+	})
+
+	it('does not confirm the same name when allowedHosts differ', async () => {
+		const { cookie } = await fixture()
+		const savedSetup = setupFromUrl(
+			new URL('http://localhost/connect/secret-set?name=github&allowedHosts=api.one.example'),
+		)
+		const currentUrl = new URL('http://localhost/connect/secret-set?name=github&allowedHosts=api.two.example')
+		const currentSetup = setupFromUrl(currentUrl)
+		const request = new Request(currentUrl, {
+			headers: { cookie: `${cookie}; kody_connect_saved=${await savedCookieValue(savedSetup)}` },
+		})
+
+		assert.deepEqual(await connectSecretSetSavedState(request, currentSetup), {
 			saved: false,
 			canSubmit: true,
 			clearCookie: 'kody_connect_saved=; HttpOnly; Max-Age=0; Path=/connect/secret-set; SameSite=Lax',
@@ -177,6 +226,7 @@ describe('handleConnectSecretSet', () => {
 			'/connect/secret-set?name=github&description=team%20token&scope=package&packageId=acme%2Fagent&allowedHosts=api.example.com&flash=saved'
 		const request = postRequest(path, cookie, { value: 'secret-value', csrf }, 'https://localhost')
 		const response = await handleConnectSecretSet(request, env, new URL(request.url))
+		const expectedCookieValue = await savedCookieValue(setupFromUrl(new URL(request.url)))
 
 		assert.equal(response.status, 303)
 		const location = response.headers.get('location') ?? ''
@@ -184,7 +234,7 @@ describe('handleConnectSecretSet', () => {
 		assert.equal(location.includes('secret-value'), false)
 		assert.equal(
 			response.headers.get('set-cookie'),
-			'kody_connect_saved=github; HttpOnly; Max-Age=60; Path=/connect/secret-set; SameSite=Lax; Secure',
+			`kody_connect_saved=${expectedCookieValue}; HttpOnly; Max-Age=60; Path=/connect/secret-set; SameSite=Lax; Secure`,
 		)
 		assert.deepEqual(calls.saves, [
 			{

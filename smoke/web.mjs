@@ -196,7 +196,7 @@ export async function smokeWeb({ user, mcp }) {
 			!connectSaved.location.includes('flash=') &&
 			connectSaved.setCookies.some(
 				(cookie) =>
-					cookie.startsWith(`kody_connect_saved=${encodeURIComponent(connectName)};`) &&
+					/^kody_connect_saved=[a-f0-9]{64};/.test(cookie) &&
 					cookie.includes('HttpOnly') &&
 					cookie.includes('Max-Age=60') &&
 					cookie.includes('Path=/connect/secret-set') &&
