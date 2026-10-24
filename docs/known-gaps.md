@@ -168,6 +168,10 @@ roadmap is now shipped; the roadmap below is kept as the change log.
 
 ## celld-specific caveats
 
+- **Hosted HTTP API.** celld serves `/v1` on the app origin, not a separate
+  `api.` host. Memories and secrets routes, token routes, `/v1/search/tool`,
+  capability proxy and local-execute, repos, webhooks, email, integrations,
+  MCP servers, community, and storage routes are deferred to follow-up PRs.
 - Import resolution in Worker Loader isolates follows the importing module's
   directory (celld 0.6). The module graph rewrites every static import to a
   relative path. Packages that build specifiers dynamically

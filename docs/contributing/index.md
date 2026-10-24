@@ -6,6 +6,7 @@ away; open only the page the task needs.
 ## Start here
 
 - [Getting started](../getting-started.md)
+- [HTTP API](../api.md)
 - [Architecture](../architecture.md)
 - [Architecture decision (faithful self-host)](../decision-standalone-vs-adapters.md)
 - [Engineering principles](../principles/index.md)

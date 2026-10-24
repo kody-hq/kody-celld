@@ -3,7 +3,7 @@
 //
 //   node smoke/run.mjs                 # all scenarios, skips the ~1-2 minute real-cron wait
 //   node smoke/run.mjs --wait-cron     # also waits for celld's cron trigger to fire a job
-//   node smoke/run.mjs --only secrets  # one scenario (mcp | packages | secrets | jobs | runs | limits | memory | blobs | browser | webhooks | email | mail-bridge | integrations | mcp-servers | mcp-oauth | secret-providers | oauth-server | web | npm | install | community | apps)
+//   node smoke/run.mjs --only secrets  # one scenario (mcp | api | packages | secrets | jobs | runs | limits | memory | blobs | browser | webhooks | email | mail-bridge | integrations | mcp-servers | mcp-oauth | secret-providers | oauth-server | web | npm | install | community | apps)
 //   SMOKE_OFFLINE=1 node smoke/run.mjs      # skip the parts that need esm.sh / GitHub
 //   SMOKE_AI_MOCK=1 node smoke/run.mjs --only memory  # with smoke/ai-mock-server.mjs + KODY_AI_* set
 //   SMOKE_MAIL_BRIDGE=1 node smoke/run.mjs --only mail-bridge  # real SMTP sidecar (needs `npm ci` in mail-bridge/)
@@ -12,6 +12,7 @@
 //      SMOKE_BROWSER_TARGET_HOST (browser scenario skips itself when no provider is configured)
 import { baseUrl, bootstrapUser, log, SmokeError } from './lib.mjs'
 import { smokeApps } from './apps.mjs'
+import { smokeApi } from './api.mjs'
 import { smokeBlobs } from './blobs.mjs'
 import { smokeEmail } from './email.mjs'
 import { smokeIntegrations } from './integrations.mjs'
@@ -42,6 +43,7 @@ const waitForCron = args.has('--wait-cron')
 
 const scenarios = [
 	['mcp', smokeMcp],
+	['api', smokeApi],
 	['packages', smokePackages],
 	['secrets', smokeSecrets],
 	['jobs', smokeJobs],
@@ -67,7 +69,7 @@ const scenarios = [
 
 if (scenarios.length === 0) {
 	console.error(
-		`Unknown scenario "${only}". Choose one of: mcp, packages, secrets, jobs, runs, limits, memory, blobs, browser, webhooks, email, mail-bridge, integrations, mcp-servers, mcp-oauth, secret-providers, oauth-server, web, npm, install, community, apps`,
+		`Unknown scenario "${only}". Choose one of: mcp, api, packages, secrets, jobs, runs, limits, memory, blobs, browser, webhooks, email, mail-bridge, integrations, mcp-servers, mcp-oauth, secret-providers, oauth-server, web, npm, install, community, apps`,
 	)
 	process.exit(2)
 }
