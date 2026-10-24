@@ -102,8 +102,11 @@ Payloads are checked against `payloadSchema` and capped at 64 KiB of canonical
 JSON. Subscribers receive `{ event, source: { type: 'package', package_id, kody_id }, idempotency_key, payload }`.
 Matching subscribers run sequentially with exactly-once idempotency per source,
 subscriber, topic, and key. Nested package events carry a depth limit of 8.
-Celld delivers inline and returns `status: "delivered_inline"`. The `mcp: true`
-flag is ignored with a warning. Unsupported entry fields are dropped with warnings.
+Cycles, including a package that subscribes to its own topic, stop at depth 8;
+the hop that goes over the limit records `event_depth_exceeded` in its run.
+Celld returns `status: "delivered_inline"` and schedules subscriber delivery in
+the background. The `mcp: true` flag is ignored with a warning. Unsupported
+entry fields are dropped with warnings.
 
 ## Credential slots
 

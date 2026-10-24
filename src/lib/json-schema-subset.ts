@@ -19,8 +19,8 @@ function canonicalizeJsonValue(value: unknown): unknown {
 	return value
 }
 
-export function canonicalJsonStringify(value: unknown): string {
-	return JSON.stringify(canonicalizeJsonValue(value)) ?? 'null'
+export function canonicalJsonStringify(value: unknown) {
+	return JSON.stringify(canonicalizeJsonValue(value))
 }
 
 /**

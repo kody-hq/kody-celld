@@ -23,6 +23,7 @@ export type CapabilityContext = {
 	packageName: string | null
 	runId: string | null
 	eventDepth: number
+	waitUntil?: (promise: Promise<unknown>) => void
 	baseUrl: string
 	/** Set when the caller is executing inside the Worker Loader sandbox. */
 	fromRuntime: boolean
