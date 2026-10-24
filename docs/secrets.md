@@ -22,7 +22,9 @@ await kody.secretDelete({ name: 'github' })
 ```
 
 `secretSet` matches the hosted capability name. `secretSave` remains as an alias
-for existing celld packages, but discovery lists only `secretSet`. The `scope`
+for existing celld packages. Discovery lists `secretSet` as the capability id,
+shows `secretSave` in its `aliases`, and an exact-name search for `secretSave`
+finds `secretSet`. The `scope`
 values are `user` (default) and `package`; `session` is rejected because celld
 does not support session-scoped secrets. `packageName` is a celld extension,
 normally inferred from the calling package.
