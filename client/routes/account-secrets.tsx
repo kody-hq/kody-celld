@@ -8,6 +8,7 @@ import {
 	TimestampValue,
 } from './account-management-components.tsx'
 import {
+	Actions,
 	Code,
 	CsrfInput,
 	DangerForm,
@@ -22,7 +23,7 @@ import { RecordTable } from './record-table.tsx'
 type Data = Extract<AppLoaderData, { page: 'accountSecrets' }>
 
 /**
- * `/account/secrets`. Lists names and metadata only — values are encrypted
+ * `/account/secrets`. Lists names and metadata only. Values are encrypted
  * in the user cell and never rendered. Host approval is deliberately absent
  * here: it lives in the operator console.
  */
@@ -36,7 +37,7 @@ export function AccountSecrets(
 			<AccountManagementShell>
 				<AccountPageHeader
 					title="Secrets"
-					description="Values are encrypted at rest and only ever injected into outbound requests to approved hosts by the fetch gateway. Reference them in code as {{secret:NAME}}."
+					description="Values are encrypted at rest and only injected into outbound requests to approved hosts by the fetch gateway. User secrets can be restricted to approved packages here. Reference them in code as {{secret:NAME}}."
 					currentHref={handle.props.pathname}
 				/>
 				<AccountManagementPanel ariaLabel="Saved secrets">
@@ -49,6 +50,7 @@ export function AccountSecrets(
 							{ key: 'name', label: 'Name', primary: true },
 							{ key: 'scope', label: 'Scope', drop: 3 },
 							{ key: 'description', label: 'Description', drop: 2 },
+							{ key: 'packages', label: 'Allowed packages' },
 							{ key: 'updated', label: 'Updated', drop: 1 },
 							{ key: 'actions', label: 'Actions' },
 						]}
@@ -64,7 +66,36 @@ export function AccountSecrets(
 										) : null}
 									</>
 								),
-								description: secret.description ?? <Muted>—</Muted>,
+								description: secret.description ?? <Muted>-</Muted>,
+								packages:
+									secret.scope !== 'user' ? (
+										<Muted small>Only {secret.packageName}</Muted>
+									) : secret.allowedPackages.length === 0 ? (
+										<Muted small>Any package</Muted>
+									) : (
+										<Actions>
+											{secret.allowedPackages.map((packageName) => (
+												<div key={packageName}>
+													<Code>{packageName}</Code>
+													<DangerForm
+														action={action}
+														csrf={d.csrf}
+														fields={{
+															action: 'remove_grant',
+															name: secret.name,
+															packageName,
+														}}
+														label="Remove grant"
+														confirmLabel={
+															secret.allowedPackages.length === 1
+																? 'Confirm unlock'
+																: 'Confirm removal'
+														}
+													/>
+												</div>
+											))}
+										</Actions>
+									),
 								updated: <TimestampValue value={secret.updatedAt} />,
 								actions: (
 									<DangerForm
@@ -106,7 +137,7 @@ export function AccountSecrets(
 				</AccountManagementPanel>
 				<AccountManagementPanel
 					title="Approved hosts"
-					description="Secrets are only injected into requests to these hosts. Approvals are made by the operator (admin console) — ask them to approve a new host."
+					description="Secrets are only injected into requests to these hosts. Approvals are made by the operator (admin console), so ask them to approve a new host."
 				>
 					<RecordTable
 						mode="none"

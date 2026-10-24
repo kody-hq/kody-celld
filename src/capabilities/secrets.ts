@@ -1,6 +1,7 @@
 import { recordAudit } from '../lib/audit.ts'
 import { KodyError } from '../lib/errors.ts'
 import { buildSecretPlaceholder, type SecretScope } from '../secrets/placeholders.ts'
+import { secretApprovalUrl } from '../secrets/usage.ts'
 import { defineCapability, defineDomain } from './define.ts'
 
 export const secretsDomain = defineDomain({
@@ -392,4 +393,57 @@ export const secretHostList = defineCapability<Record<string, never>>({
 	},
 })
 
-export const secretCapabilities = [secretSet, secretSetMany, secretList, secretDelete, secretHostList]
+export const secretLock = defineCapability<{ name: string; package_id: string }>({
+	domain: 'secrets',
+	name: 'secretLock',
+	description: 'Check whether a package needs owner approval to use a user secret. This never grants access.',
+	tags: ['secrets', 'read', 'packages'],
+	keywords: ['lock secret', 'approve package secret access', 'package grant'],
+	inputSchema: {
+		type: 'object',
+		properties: {
+			name: { type: 'string', description: 'Name of a user-scope secret.' },
+			package_id: { type: 'string', description: 'Installed package name requesting access.' },
+		},
+		required: ['name', 'package_id'],
+	},
+	readOnly: true,
+	async handler(args, ctx) {
+		if (typeof args.name !== 'string' || !args.name.trim()) {
+			throw new KodyError('invalid_args', 'name is required.')
+		}
+		if (typeof args.package_id !== 'string' || !args.package_id.trim()) {
+			throw new KodyError('invalid_args', 'package_id is required.')
+		}
+		const name = args.name.trim()
+		const packageName = args.package_id.trim()
+		const secrets = await ctx.userCell.secretList()
+		const namedSecrets = secrets.filter((item) => item.name === name)
+		const secret = namedSecrets.find((item) => item.scope === 'user')
+		if (!secret && namedSecrets.length === 0) {
+			throw new KodyError('secret_not_found', `Unknown secret "${name}".`, { status: 404 })
+		}
+		if (!secret) {
+			throw new KodyError('invalid_secret_scope', 'secretLock only applies to user-scope secrets.')
+		}
+		if (!(await ctx.userCell.packageGet(packageName))) {
+			throw new KodyError('package_not_found', `Package "${packageName}" is not installed.`, { status: 404 })
+		}
+		const alreadyGranted = secret.allowedPackages.includes(packageName)
+		const baseUrl = ctx.env.KODY_PUBLIC_URL.replace(/\/+$/, '')
+		const approvalUrl = secretApprovalUrl(ctx.env.KODY_PUBLIC_URL, name, packageName)
+		return {
+			name,
+			scope: 'user',
+			allowed_packages: secret.allowedPackages,
+			usage_url: `${baseUrl}/account/secrets`,
+			status: alreadyGranted ? 'already_granted' : 'approval_required',
+			approval_url: approvalUrl,
+			message: alreadyGranted
+				? `Package "${packageName}" is already allowed to use secret "${name}".`
+				: `Ask the account owner to approve this package at ${approvalUrl}. The secret is not granted until the owner allows it.`,
+		}
+	},
+})
+
+export const secretCapabilities = [secretSet, secretSetMany, secretList, secretDelete, secretHostList, secretLock]
