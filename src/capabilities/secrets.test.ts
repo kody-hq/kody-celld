@@ -43,7 +43,37 @@ test('secretSet rejects session scope before calling the cell', async () => {
 	assert.equal(writes, 0)
 })
 
-test('secretSet warns about unsupported fields without passing them to the cell', async () => {
+const unsupportedSecretFields: Array<{ field: string; value: unknown }> = [
+	{ field: 'expires_at', value: '2030-01-01' },
+	{ field: 'provider', value: 'github' },
+	{ field: 'hosts', value: [] },
+	{ field: 'login_exchange', value: { url: 'https://api.example.com/token' } },
+	{ field: 'kind', value: 'oauth' },
+	{ field: 'inject', value: { kind: 'header', name: 'X-Api-Key', format: '{value}' } },
+	{ field: 'placement', value: { headers: true, query: false, path: true, body: true } },
+]
+
+for (const { field, value } of unsupportedSecretFields) {
+	test(`secretSet rejects non-default ${field} before calling the cell`, async () => {
+		let writes = 0
+		const ctx = context({
+			secretSave: async () => {
+				writes++
+				return { name: 'token', scope: 'user', packageName: null }
+			},
+		})
+		await assert.rejects(
+			runSecretCapability('secretSet', { name: 'token', value: 'value', [field]: value }, ctx),
+			(error: unknown) =>
+				error instanceof KodyError &&
+				error.code === 'unsupported_secret_field' &&
+				error.message.includes(`secretSet.${field}`),
+		)
+		assert.equal(writes, 0)
+	})
+}
+
+test('secretSet accepts no-op hosted field values without passing them to the cell', async () => {
 	let received: Record<string, unknown> | undefined
 	const ctx = context({
 		secretSave: async (input: Record<string, unknown>) => {
@@ -63,40 +93,17 @@ test('secretSet warns about unsupported fields without passing them to the cell'
 		{
 			name: 'token',
 			value: 'value',
-			expires_at: '2030-01-01',
-			provider: 'github',
-			inject: { header: 'authorization' },
-			placement: { headers: true },
-			kind: 'url',
-			hosts: ['api.example.com'],
-			login_exchange: { url: 'https://api.example.com/token' },
+			expires_at: null,
+			provider: null,
+			hosts: null,
+			login_exchange: null,
+			kind: 'secret',
+			inject: { kind: 'header', name: 'aUtHoRiZaTiOn', format: 'Bearer {value}' },
+			placement: { headers: true, query: true, path: true, body: true },
 		},
 		ctx,
 	)
 	assert.deepEqual(Object.keys(received ?? {}).sort(), ['description', 'name', 'packageName', 'scope', 'value'])
-	assert.deepEqual((result as { warnings: Array<string> }).warnings, [
-		'secretSet: "expires_at" is not supported on celld yet and was ignored.',
-		'secretSet: "provider" is not supported on celld yet and was ignored.',
-		'secretSet: "inject" is not supported on celld yet and was ignored.',
-		'secretSet: "placement" is not supported on celld yet and was ignored.',
-		'secretSet: "kind" is not supported on celld yet and was ignored.',
-		'secretSet: "hosts" is not supported on celld yet and was ignored.',
-		'secretSet: "login_exchange" is not supported on celld yet and was ignored.',
-	])
-})
-
-test('secretSet omits warnings when no unsupported fields are supplied', async () => {
-	const ctx = context({
-		secretSave: async () => ({
-			name: 'token',
-			scope: 'user',
-			packageName: null,
-			description: null,
-			createdAt: '2026-01-01T00:00:00.000Z',
-			updatedAt: '2026-01-01T00:00:00.000Z',
-		}),
-	})
-	const result = await runSecretCapability('secretSet', { name: 'token', value: 'value' }, ctx)
 	assert.equal(Object.hasOwn(result as object, 'warnings'), false)
 })
 
@@ -148,6 +155,42 @@ test('secretSetMany validates every entry before saving and assertOnly never sav
 	)
 })
 
+test('secretSetMany rejects non-default expires_at on any entry before validation or writes', async () => {
+	for (const assertOnly of [false, true]) {
+		let validations = 0
+		let writes = 0
+		const ctx = context({
+			secretValidateMany: async () => {
+				validations++
+				return []
+			},
+			secretSaveMany: async () => {
+				writes++
+				return []
+			},
+		})
+		await assert.rejects(
+			runSecretCapability(
+				'secretSetMany',
+				{
+					secrets: [
+						{ name: 'valid', value: 'value' },
+						{ name: 'unsupported', value: 'value', expires_at: '2030-01-01' },
+					],
+					assertOnly,
+				},
+				ctx,
+			),
+			(error: unknown) =>
+				error instanceof KodyError &&
+				error.code === 'unsupported_secret_field' &&
+				error.message.includes('secretSetMany.secrets[1].expires_at'),
+		)
+		assert.equal(validations, 0)
+		assert.equal(writes, 0)
+	}
+})
+
 test('secretSetMany returns saved metadata in input order and audits every secret', async () => {
 	type AuditInput = { actor: string; action: string; target: string | null; details: Record<string, unknown> | null }
 	const audited: Array<AuditInput> = []
@@ -178,11 +221,12 @@ test('secretSetMany returns saved metadata in input order and audits every secre
 		{
 			secrets: [
 				{ name: 'second', value: 'value-2' },
-				{ name: 'first', value: 'value-1', expires_at: '2030-01-01' },
+				{ name: 'first', value: 'value-1' },
 			],
 		},
 		ctx,
-	)) as { secrets: Array<{ name: string; placeholder: string }>; warnings: Array<string> }
+	)) as { secrets: Array<{ name: string; placeholder: string }> }
+	assert.equal(Object.hasOwn(result, 'warnings'), false)
 	assert.deepEqual(
 		result.secrets.map((secret) => [secret.name, secret.placeholder]),
 		[
@@ -190,6 +234,5 @@ test('secretSetMany returns saved metadata in input order and audits every secre
 			['first', '{{secret:first}}'],
 		],
 	)
-	assert.equal(result.warnings.length, 1)
 	assert.equal(audited.length, 2)
 })

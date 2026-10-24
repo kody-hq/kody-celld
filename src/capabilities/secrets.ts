@@ -22,8 +22,48 @@ const secretSetScopeSchema = {
 	description: 'user (default), package, or session. Session-scoped secrets are unavailable on celld.',
 }
 
+const secretSetHostedFieldsSchema = {
+	expires_at: {
+		type: ['string', 'null'],
+		description: 'Only null (no expiry) is supported on celld.',
+	},
+	provider: {
+		type: ['string', 'null'],
+		description: 'Only null (no provider) is supported on celld.',
+	},
+	hosts: {
+		type: ['array', 'null'],
+		description: "Only null (the account's approved secret hosts) is supported on celld.",
+	},
+	login_exchange: {
+		type: ['object', 'null'],
+		description: 'Only null (no login exchange) is supported on celld.',
+	},
+	kind: {
+		type: 'string',
+		description: "Only 'secret' (celld's default) is supported on celld.",
+	},
+	inject: {
+		type: ['object', 'null'],
+		description: 'Only the default Authorization bearer header injection is supported on celld.',
+	},
+	placement: {
+		type: ['object', 'null'],
+		description: 'Only null or all-true placement (injection anywhere) is supported on celld.',
+	},
+}
+
 const secretNamePattern = /^[a-zA-Z0-9._-]+$/
-const ignoredSecretSetFields = ['expires_at', 'provider', 'inject', 'placement', 'kind', 'hosts', 'login_exchange']
+
+type SecretSetHostedFields = {
+	expires_at?: string | null
+	provider?: string | null
+	hosts?: Array<string> | null
+	login_exchange?: Record<string, unknown> | null
+	kind?: string
+	inject?: Record<string, unknown> | null
+	placement?: Record<string, unknown> | null
+}
 
 type SecretSetArgs = {
 	name: string
@@ -31,19 +71,76 @@ type SecretSetArgs = {
 	description?: string
 	scope?: SecretScope
 	packageName?: string
-	expires_at?: string | null
-	provider?: string | null
-	inject?: Record<string, unknown>
-	placement?: Record<string, unknown> | null
-	kind?: string
-	hosts?: Array<string>
-	login_exchange?: Record<string, unknown>
+} & SecretSetHostedFields
+
+type SecretSetManyEntry = {
+	name: string
+	value?: string
+	description?: string
+	scope?: SecretScope
+} & SecretSetHostedFields
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
-function ignoredFieldsWarnings(args: Record<string, unknown>) {
-	return ignoredSecretSetFields
-		.filter((field) => args[field] !== undefined)
-		.map((field) => `secretSet: "${field}" is not supported on celld yet and was ignored.`)
+function hasExactKeys(value: Record<string, unknown>, keys: Array<string>) {
+	const actualKeys = Object.keys(value)
+	return actualKeys.length === keys.length && keys.every((key) => Object.hasOwn(value, key))
+}
+
+function isDefaultInject(value: unknown) {
+	if (value === undefined || value === null) return true
+	if (!isRecord(value) || !hasExactKeys(value, ['kind', 'name', 'format'])) return false
+	return (
+		value.kind === 'header' &&
+		typeof value.name === 'string' &&
+		value.name.toLowerCase() === 'authorization' &&
+		value.format === 'Bearer {value}'
+	)
+}
+
+function isDefaultPlacement(value: unknown) {
+	if (value === undefined || value === null) return true
+	if (!isRecord(value) || !hasExactKeys(value, ['headers', 'query', 'path', 'body'])) return false
+	return value.headers === true && value.query === true && value.path === true && value.body === true
+}
+
+function assertSupportedSecretFields(fields: object, label: string) {
+	const values = fields as Record<string, unknown>
+	const supportedFields = [
+		{
+			name: 'expires_at',
+			defaultText: 'no expiry',
+			accepts: (value: unknown) => value === undefined || value === null,
+		},
+		{ name: 'provider', defaultText: 'none', accepts: (value: unknown) => value === undefined || value === null },
+		{
+			name: 'hosts',
+			defaultText: "the account's approved secret hosts",
+			accepts: (value: unknown) => value === undefined || value === null,
+		},
+		{
+			name: 'login_exchange',
+			defaultText: 'none',
+			accepts: (value: unknown) => value === undefined || value === null,
+		},
+		{ name: 'kind', defaultText: "'secret'", accepts: (value: unknown) => value === undefined || value === 'secret' },
+		{
+			name: 'inject',
+			defaultText: 'the default Authorization bearer header injection',
+			accepts: isDefaultInject,
+		},
+		{ name: 'placement', defaultText: 'injection anywhere', accepts: isDefaultPlacement },
+	]
+	for (const field of supportedFields) {
+		if (!field.accepts(values[field.name])) {
+			throw new KodyError(
+				'unsupported_secret_field',
+				`${label}.${field.name} is not supported on celld yet. Omit it or use celld's default (${field.defaultText}).`,
+			)
+		}
+	}
 }
 
 function assertSecretName(name: unknown, capabilityName: string) {
@@ -79,13 +176,7 @@ export const secretSet = defineCapability<SecretSetArgs>({
 			description: { type: 'string' },
 			scope: secretSetScopeSchema,
 			packageName: { type: 'string', description: 'Required when scope is "package".' },
-			expires_at: { type: ['string', 'null'] },
-			provider: { type: ['string', 'null'] },
-			inject: { type: 'object' },
-			placement: { type: ['object', 'null'] },
-			kind: { type: 'string' },
-			hosts: { type: 'array' },
-			login_exchange: { type: 'object' },
+			...secretSetHostedFieldsSchema,
 		},
 		required: ['name', 'value'],
 	},
@@ -96,6 +187,7 @@ export default async function main({ name, value }) {
 	async handler(args, ctx) {
 		assertSecretName(args.name, 'secretSet')
 		assertSecretScope(args.scope)
+		assertSupportedSecretFields(args, 'secretSet')
 		const saved = await ctx.userCell.secretSave({
 			name: args.name,
 			value: args.value,
@@ -109,23 +201,15 @@ export default async function main({ name, value }) {
 			target: saved.name,
 			details: { scope: saved.scope, packageName: saved.packageName, viaPackage: ctx.packageName },
 		})
-		const warnings = ignoredFieldsWarnings(args)
 		return {
 			...saved,
 			placeholder: buildSecretPlaceholder(saved.name, saved.scope === 'user' ? null : saved.scope),
-			...(warnings.length > 0 ? { warnings } : {}),
 		}
 	},
 })
 
 export const secretSetMany = defineCapability<{
-	secrets: Array<{
-		name: string
-		value?: string
-		description?: string
-		expires_at?: string | null
-		scope?: SecretScope
-	}>
+	secrets: Array<SecretSetManyEntry>
 	assertOnly?: boolean
 }>({
 	domain: 'secrets',
@@ -144,8 +228,8 @@ export const secretSetMany = defineCapability<{
 						name: { type: 'string' },
 						value: { type: 'string' },
 						description: { type: 'string' },
-						expires_at: { type: ['string', 'null'] },
 						scope: secretSetScopeSchema,
+						...secretSetHostedFieldsSchema,
 					},
 					required: ['name'],
 				},
@@ -167,7 +251,9 @@ export default async function main({ secrets }) {
 			if (!secret || typeof secret !== 'object' || Array.isArray(secret)) {
 				throw new KodyError('invalid_args', `secretSetMany.secrets[${index}] must be an object.`)
 			}
-			assertSecretName(secret.name, `secretSetMany.secrets[${index}]`)
+			const label = `secretSetMany.secrets[${index}]`
+			assertSupportedSecretFields(secret, label)
+			assertSecretName(secret.name, label)
 			if (secret.value !== undefined && (typeof secret.value !== 'string' || secret.value.length === 0)) {
 				throw new KodyError('invalid_secret_value', `secretSetMany.secrets[${index}].value must be a non-empty string.`)
 			}
@@ -180,9 +266,6 @@ export default async function main({ secrets }) {
 			if (secret.description !== undefined && typeof secret.description !== 'string') {
 				throw new KodyError('invalid_args', `secretSetMany.secrets[${index}].description must be a string.`)
 			}
-			if (secret.expires_at !== undefined && secret.expires_at !== null && typeof secret.expires_at !== 'string') {
-				throw new KodyError('invalid_args', `secretSetMany.secrets[${index}].expires_at must be a string or null.`)
-			}
 			assertSecretScope(secret.scope)
 			const scope = secret.scope ?? 'user'
 			const packageName = scope === 'package' ? (ctx.packageName ?? undefined) : undefined
@@ -191,11 +274,6 @@ export default async function main({ secrets }) {
 			}
 			return { ...secret, scope, packageName }
 		})
-		const warnings = entries.flatMap((secret, index) =>
-			secret.expires_at === undefined
-				? []
-				: [`secretSetMany: "secrets[${index}].expires_at" is not supported on celld yet and was ignored.`],
-		)
 		const secretRows = entries.map((secret) => ({
 			name: secret.name,
 			value: secret.value,
@@ -215,7 +293,6 @@ export default async function main({ secrets }) {
 					description: secret.description ?? null,
 					placeholder: buildSecretPlaceholder(secret.name, secret.scope === 'user' ? null : secret.scope),
 				})),
-				...(warnings.length > 0 ? { warnings } : {}),
 			}
 		}
 		const saved = await ctx.userCell.secretSaveMany(
@@ -242,7 +319,6 @@ export default async function main({ secrets }) {
 				...secret,
 				placeholder: buildSecretPlaceholder(secret.name, secret.scope === 'user' ? null : secret.scope),
 			})),
-			...(warnings.length > 0 ? { warnings } : {}),
 		}
 	},
 })

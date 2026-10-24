@@ -29,9 +29,16 @@ normally inferred from the calling package.
 `secretSetMany` validates every entry and quota before writing, then saves the
 batch atomically. Set `assertOnly: true` to validate a batch without storing
 values. The `expires_at` field is accepted by `secretSet` and `secretSetMany`,
-but is not stored on celld. `secretSet` also accepts hosted credential opt-in
-fields `provider`, `inject`, `placement`, `kind`, `hosts`, and `login_exchange`.
-These unsupported fields are ignored and returned as warnings.
+but celld supports only null or omission, meaning no expiry. The hosted fields
+`provider`, `inject`, `placement`, `kind`, `hosts`, and `login_exchange` are
+also supported only at their celld defaults. Omit or pass null for `provider`
+and `login_exchange`; omit or pass null for `hosts` to use the account's
+approved secret hosts; use `kind: 'secret'`; use the default Authorization
+bearer header injection `{ kind: 'header', name: 'Authorization', format:
+'Bearer {value}' }` (the name is case-insensitive); and use null or
+`{ headers: true, query: true, path: true, body: true }` placement for
+injection anywhere. Other values fail with `unsupported_secret_field` before
+any write, including in `secretSetMany` and `assertOnly` calls.
 
 Values are AES-256-GCM encrypted with a fresh 12-byte IV under a per-user key:
 `HKDF(master = KODY_MASTER_KEY, salt = "kody-celld:<userId>", info = "kody-celld-secret-values")`.

@@ -169,9 +169,13 @@ roadmap is now shipped; the roadmap below is kept as the change log.
 ## celld-specific caveats
 
 - Hosted capability names are available for secrets: `secretSave` aliases
-  `secretSet`, and `secretSetMany` is supported. The `expires_at` field and
-  `provider`, `inject`, `placement`, `kind`, `hosts`, and `login_exchange`
-  fields on `secretSet` are accepted but ignored with a warning.
+  `secretSet`, and `secretSetMany` is supported. Hosted fields are rejected
+  with `unsupported_secret_field` unless they match celld defaults:
+  `expires_at`, `provider`, `hosts`, and `login_exchange` omitted or null;
+  `kind` omitted or `secret`; `inject` omitted, null, or the default
+  Authorization bearer header (`kind: header`, `name: Authorization`,
+  `format: Bearer {value}`); `placement` omitted, null, or all-true. Null
+  hosts use the account's approved secret hosts.
 - Import resolution in Worker Loader isolates follows the importing module's
   directory (celld 0.6). The module graph rewrites every static import to a
   relative path. Packages that build specifiers dynamically
