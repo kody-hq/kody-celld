@@ -324,6 +324,22 @@ const secretNamePattern = /^[a-zA-Z0-9._-]+$/
 const webhookPreviousSecretGraceMs = 24 * 60 * 60 * 1000
 const emailDestinationCodeTtlMs = 30 * 60 * 1000
 
+type SecretSaveInput = {
+	name: string
+	value?: string | undefined
+	description?: string | undefined
+	scope?: SecretScope | undefined
+	packageName?: string | undefined
+}
+
+type PreparedSecretSave = {
+	name: string
+	value: string | undefined
+	description: string | undefined
+	scope: Exclude<SecretScope, 'session'>
+	packageName: string
+}
+
 function nowIso() {
 	return new Date().toISOString()
 }
@@ -736,56 +752,149 @@ export class UserCell extends DurableObject<Env> {
 
 	// ---------------------------------------------------------------- secrets
 
-	async secretSave(input: {
-		name: string
-		value: string
-		description?: string | undefined
-		scope?: SecretScope | undefined
-		packageName?: string | undefined
-	}): Promise<SecretMetadata> {
+	private prepareSecretSave(input: SecretSaveInput, requireValue: boolean): PreparedSecretSave {
 		const name = input.name?.trim()
 		if (!name || !secretNamePattern.test(name)) {
 			throw new KodyError('invalid_secret_name', 'Secret names may contain letters, digits, ".", "_", and "-".')
 		}
-		if (typeof input.value !== 'string' || input.value.length === 0) {
+		if (requireValue && (typeof input.value !== 'string' || input.value.length === 0)) {
 			throw new KodyError('invalid_secret_value', 'Secret value must be a non-empty string.')
 		}
-		if (input.value.length > 64 * 1024) {
+		if (input.value !== undefined && (typeof input.value !== 'string' || input.value.length === 0)) {
+			throw new KodyError('invalid_secret_value', 'Secret value must be a non-empty string.')
+		}
+		if (input.value !== undefined && input.value.length > 64 * 1024) {
 			throw new KodyError('invalid_secret_value', 'Secret value must be at most 64 KiB.')
 		}
 		const scope: SecretScope = input.scope ?? 'user'
+		if (scope === 'session') {
+			throw new KodyError(
+				'invalid_secret_scope',
+				'Session-scoped secrets are not available on celld. Use user or package scope.',
+			)
+		}
 		const packageName = scope === 'package' ? (input.packageName ?? '') : ''
 		if (scope === 'package' && !packageName) {
 			throw new KodyError('invalid_secret_scope', 'Package-scoped secrets need a package name.')
 		}
-		const exists =
-			this.ctx.storage.sql
-				.exec('SELECT 1 FROM secrets WHERE name = ? AND scope = ? AND package_name = ?', name, scope, packageName)
-				.toArray().length > 0
-		if (!exists) this.assertQuota('secrets', this.count('secrets'), 'Secret')
-		const { current } = await this.keyring()
-		const encrypted = await encryptSecretValue(current.key, this.userId, input.value)
-		const now = nowIso()
+		return { name, value: input.value, description: input.description, scope, packageName }
+	}
+
+	private assertSecretSaveQuota(inputs: Array<PreparedSecretSave>) {
+		const newRows = new Set<string>()
+		for (const input of inputs) {
+			const exists =
+				this.ctx.storage.sql
+					.exec(
+						'SELECT 1 FROM secrets WHERE name = ? AND scope = ? AND package_name = ?',
+						input.name,
+						input.scope,
+						input.packageName,
+					)
+					.toArray().length > 0
+			if (!exists) newRows.add(JSON.stringify([input.name, input.scope, input.packageName]))
+		}
+		if (newRows.size > 0) {
+			this.assertQuota('secrets', this.count('secrets') + newRows.size - 1, 'Secret')
+		}
+	}
+
+	private insertSecret(
+		input: PreparedSecretSave & { value: string },
+		encrypted: { iv: string; ciphertext: string },
+		keyId: string,
+		now: string,
+	): SecretMetadata {
 		this.ctx.storage.sql.exec(
 			`INSERT INTO secrets (name, scope, package_name, description, iv, ciphertext, key_id, created_at, updated_at)
 			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 			 ON CONFLICT(name, scope, package_name) DO UPDATE SET
 			   description = COALESCE(excluded.description, secrets.description),
 			   iv = excluded.iv, ciphertext = excluded.ciphertext, key_id = excluded.key_id, updated_at = excluded.updated_at`,
-			name,
-			scope,
-			packageName,
+			input.name,
+			input.scope,
+			input.packageName,
 			input.description ?? null,
 			encrypted.iv,
 			encrypted.ciphertext,
-			current.id,
+			keyId,
 			now,
 			now,
 		)
-		const saved = (await this.secretList()).find(
-			(s) => s.name === name && s.scope === scope && (s.packageName ?? '') === packageName,
-		)
+		const saved = this.ctx.storage.sql
+			.exec<{
+				name: string
+				scope: SecretScope
+				package_name: string
+				description: string | null
+				created_at: string
+				updated_at: string
+			}>(
+				`SELECT name, scope, package_name, description, created_at, updated_at
+				 FROM secrets WHERE name = ? AND scope = ? AND package_name = ?`,
+				input.name,
+				input.scope,
+				input.packageName,
+			)
+			.toArray()[0]
 		if (!saved) throw new KodyError('internal_error', 'Secret save failed.', { status: 500 })
+		return {
+			name: saved.name,
+			scope: saved.scope,
+			packageName: saved.package_name || null,
+			description: saved.description,
+			createdAt: saved.created_at,
+			updatedAt: saved.updated_at,
+		}
+	}
+
+	async secretSave(input: SecretSaveInput): Promise<SecretMetadata> {
+		const prepared = this.prepareSecretSave(input, true)
+		this.assertSecretSaveQuota([prepared])
+		const { current } = await this.keyring()
+		const encrypted = await encryptSecretValue(current.key, this.userId, prepared.value as string)
+		let saved: SecretMetadata | undefined
+		this.ctx.storage.transactionSync(() => {
+			this.assertSecretSaveQuota([prepared])
+			saved = this.insertSecret(prepared as PreparedSecretSave & { value: string }, encrypted, current.id, nowIso())
+		})
+		if (!saved) throw new KodyError('internal_error', 'Secret save failed.', { status: 500 })
+		return saved
+	}
+
+	async secretValidateMany(inputs: Array<SecretSaveInput>) {
+		if (inputs.length === 0) throw new KodyError('invalid_args', 'At least one secret is required.')
+		const prepared = inputs.map((input) => this.prepareSecretSave(input, false))
+		this.assertSecretSaveQuota(prepared)
+		return prepared.map((input) => ({
+			name: input.name,
+			scope: input.scope,
+			packageName: input.packageName || null,
+			description: input.description ?? null,
+		}))
+	}
+
+	async secretSaveMany(inputs: Array<SecretSaveInput>): Promise<Array<SecretMetadata>> {
+		if (inputs.length === 0) throw new KodyError('invalid_args', 'At least one secret is required.')
+		const prepared = inputs.map((input) => this.prepareSecretSave(input, true))
+		this.assertSecretSaveQuota(prepared)
+		const { current } = await this.keyring()
+		const encrypted = await Promise.all(
+			prepared.map(async (input) => {
+				if (input.value === undefined) {
+					throw new KodyError('invalid_secret_value', 'Secret value must be a non-empty string.')
+				}
+				return encryptSecretValue(current.key, this.userId, input.value)
+			}),
+		)
+		const now = nowIso()
+		let saved: Array<SecretMetadata> = []
+		this.ctx.storage.transactionSync(() => {
+			this.assertSecretSaveQuota(prepared)
+			saved = prepared.map((input, index) =>
+				this.insertSecret(input as PreparedSecretSave & { value: string }, encrypted[index]!, current.id, now),
+			)
+		})
 		return saved
 	}
 
@@ -1375,7 +1484,7 @@ export class UserCell extends DurableObject<Env> {
 		if (!door) {
 			throw new KodyError(
 				'secret_not_found',
-				`Door secret "${input.doorSecretName}" was not found; save it with secretSave first (scope user, or scope package for "${input.packageName}").`,
+				`Door secret "${input.doorSecretName}" was not found; save it with secretSet first (scope user, or scope package for "${input.packageName}").`,
 				{ status: 404 },
 			)
 		}

@@ -8,7 +8,7 @@ export const webhooksDomain = defineDomain({
 	name: 'webhooks',
 	description:
 		'Package-owned inbound webhooks. A package declares webhooks in package.json#kody.webhooks (name, export, responseMode ack|sync, inputMode params|request, optional HMAC-SHA256 verification + replay window). Mint an opaque URL per declaration, hand it to the provider, and each delivery runs the declared export with package provenance.',
-	guide: `Flow: save the package → secretSave the HMAC secret named in verification.secretName (if declared) → webhookUrlMint({ packageName, webhookName }) → webhookUrlApply({ handle, target }) to register the URL with a provider API without ever seeing it, or read it once via the authenticated route GET <baseUrl>/api/webhooks/<handle>/url (never via execute). Deliveries answer 202 (ack) or the export's return value (sync); metadata lands in webhookDeliveryList. Capabilities never return the credential URL.`,
+	guide: `Flow: save the package → secretSet the HMAC secret named in verification.secretName (if declared) → webhookUrlMint({ packageName, webhookName }) → webhookUrlApply({ handle, target }) to register the URL with a provider API without ever seeing it, or read it once via the authenticated route GET <baseUrl>/api/webhooks/<handle>/url (never via execute). Deliveries answer 202 (ack) or the export's return value (sync); metadata lands in webhookDeliveryList. Capabilities never return the credential URL.`,
 })
 
 function requireDirect(ctx: CapabilityContext, what: string) {

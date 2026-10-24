@@ -10,7 +10,7 @@ export const secretProvidersDomain = defineDomain({
 	description:
 		'Provider-backed secrets: reference items that live in an external vault (1Password Connect, Vault, Bitwarden, your own service) with {{secret/<provider>:<ref>}} placeholders. A saved package that declares kody.secretProvider fetches the value in a sealed run when the gateway needs it; the value is injected into the outbound request only, never stored, logged, or returned.',
 	guide: `1. Save a provider package (package.json "kody": { "secretProvider": { "id": "1password" } } plus an "./secretProvider" export).
-2. secretSave the vault credential (the "door" secret), then secretProviderBind({ providerId, packageName, doorSecretName, config }).
+2. secretSet the vault credential (the "door" secret), then secretProviderBind({ providerId, packageName, doorSecretName, config }).
 3. Use {{secret/1password:vaults/<vault>/items/<item>/fields/credential}} in a fetch to one of the item's hosts (or an admin-approved secret host).
 Lock a binding to require explicit per-package grants (secretProviderGrant).`,
 })
@@ -66,7 +66,7 @@ export const secretProviderBind = defineCapability<{
 	},
 	example: `import { kody } from 'kody:runtime'
 export default async function main() {
-  await kody.secretSave({ name: 'op-connect-token', value: '<token>' })
+  await kody.secretSet({ name: 'op-connect-token', value: '<token>' })
   return await kody.secretProviderBind({
     providerId: '1password', packageName: 'onepassword-connect',
     doorSecretName: 'op-connect-token', config: { baseUrl: 'https://connect.example.com' },

@@ -142,7 +142,7 @@ export default async function main(args) { return await kody.secretProviderBind(
 			'bind needs the door secret first',
 			missingDoor.error,
 		)
-		await mcp.call('secretSave', { name: 'smoke-vault-door', value: state.doorToken, description: 'smoke vault door' })
+		await mcp.call('secretSet', { name: 'smoke-vault-door', value: state.doorToken, description: 'smoke vault door' })
 		const approved = await admin.approveHost(user.id, vault.vaultHost)
 		assert(approved.status === 201 || approved.status === 409, 'admin approval of the vault host failed', approved)
 		if (vault.apiHost !== vault.vaultHost) await admin.revokeHost(user.id, vault.apiHost)

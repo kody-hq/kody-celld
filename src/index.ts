@@ -381,6 +381,7 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext, url:
 			domains,
 			capabilities: capabilities.map((c) => ({
 				name: c.name,
+				aliases: c.aliases ?? [],
 				domain: c.domain,
 				description: c.description,
 				inputSchema: c.inputSchema,

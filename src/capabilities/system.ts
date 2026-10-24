@@ -6,6 +6,28 @@ export const systemDomain = defineDomain({
 	description: 'Information about this self-hosted Kody runtime: identity, version, and what is supported or deferred.',
 })
 
+export const metaGetCurrentUser = defineCapability<Record<string, never>>({
+	domain: 'system',
+	name: 'metaGetCurrentUser',
+	description: 'Return the current user identity in hosted Kody capability shape.',
+	tags: ['system', 'read', 'identity'],
+	keywords: ['user', 'current user', 'profile', 'identity', 'account', 'email', 'name'],
+	inputSchema: { type: 'object', properties: {} },
+	readOnly: true,
+	async handler(_args, ctx) {
+		const email = ctx.user.email
+		const localPart = email.split('@')[0] || email
+		const username = localPart.toLowerCase().replace(/[^a-z0-9-]/g, '-')
+		return {
+			user_id: ctx.user.id,
+			username,
+			email,
+			display_name: localPart,
+			org: { slug: username },
+		}
+	},
+})
+
 export const whoami = defineCapability<Record<string, never>>({
 	domain: 'system',
 	name: 'whoami',
@@ -65,4 +87,4 @@ export default async function main() {
 	},
 })
 
-export const systemCapabilities = [whoami, ping, usageGet]
+export const systemCapabilities = [metaGetCurrentUser, whoami, ping, usageGet]

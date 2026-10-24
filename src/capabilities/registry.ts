@@ -1,5 +1,5 @@
-import { KodyError } from '../lib/errors.ts'
-import { validateArgs, type CapabilityContext, type CapabilityDefinition, type DomainDefinition } from './define.ts'
+import type { CapabilityDefinition, DomainDefinition } from './define.ts'
+import { createCapabilityRegistry } from './lookup.ts'
 import { aiCapabilities, aiDomain } from './ai.ts'
 import { blobCapabilities, blobsDomain } from './blobs.ts'
 import { browserCapabilities, browserDomain } from './browser.ts'
@@ -58,19 +58,6 @@ export const capabilities: Array<CapabilityDefinition> = [
 	...communityCapabilities,
 ]
 
-const byName = new Map(capabilities.map((c) => [c.name, c]))
-
-export function getCapability(name: string) {
-	return byName.get(name) ?? null
-}
-
-export async function runCapability(name: string, args: unknown, ctx: CapabilityContext) {
-	const capability = byName.get(name)
-	if (!capability) {
-		throw new KodyError('unknown_capability', `Unknown capability "${name}". Use search to discover capability ids.`, {
-			status: 404,
-		})
-	}
-	const validated = validateArgs(capability.inputSchema, args, name)
-	return capability.handler(validated, ctx)
-}
+const capabilityRegistry = createCapabilityRegistry(capabilities)
+export const getCapability = capabilityRegistry.getCapability
+export const runCapability = capabilityRegistry.runCapability

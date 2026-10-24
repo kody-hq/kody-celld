@@ -10,7 +10,7 @@ A `kody.secretProvider` package for a self-hosted
 Setup (from an MCP session):
 
 1. `packageSave` this directory.
-2. `secretSave({ name: 'op-connect-token', value: '<connect token>' })` — the
+2. `secretSet({ name: 'op-connect-token', value: '<connect token>' })`, the
    "door" secret. Have an admin approve your Connect host for secret injection
    so the provider itself can reach it.
 3. `secretProviderBind({ providerId: '1password', packageName: '@kody-examples/onepassword-connect', doorSecretName: 'op-connect-token', config: { baseUrl: 'https://connect.example.com' } })`.
