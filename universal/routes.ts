@@ -38,6 +38,7 @@ export const routes = route({
 	accountIntegrations: '/account/integrations',
 	accountMcpServers: '/account/mcp-servers',
 	accountEmail: '/account/inbox',
+	accountEmailMessage: '/account/inbox/:messageId',
 	accountSessions: '/account/sessions',
 	// Operator console (`/admin` upstream). The console has its own cookie
 	// (KODY_ADMIN_TOKEN), separate from user sessions.

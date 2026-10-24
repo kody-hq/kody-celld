@@ -29,6 +29,12 @@
       "kind": "ui"
     },
     {
+      "path": "client/email-html-preview.ts",
+      "source": "packages/worker/client/email-html-preview.ts",
+      "sha256": "9ad8eda5e637ac1b27a6e2549e7dda53287be07a534e026dae990fdde8276227",
+      "kind": "ui"
+    },
+    {
       "path": "client/event-mixin.ts",
       "source": "packages/worker/client/event-mixin.ts",
       "sha256": "95857dde6dd572397b16ae648593ece182249fc6f57b57a53efac3c630d06cfb",

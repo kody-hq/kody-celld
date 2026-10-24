@@ -13,7 +13,7 @@ import { createServer } from 'node:http'
 import { createHash, randomBytes } from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { assert, baseUrl, log, readPackageDir } from './lib.mjs'
+import { assert, baseUrl, log, readPackageDir, signedInBrowser } from './lib.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const packageName = '@kody-smoke/inbox-hooks'
@@ -203,6 +203,57 @@ export async function smokeEmail({ mcp, user }) {
 		search,
 	)
 	log('bridge inbound', { accepted: bridged.status, subject: rawStored.subject, searchHits: search.messages.length })
+
+	// 3b. web inbox: a row opens the message with its headers and full body;
+	// HTML renders only in a sandboxed srcdoc iframe with scripts stripped.
+	const browser = await signedInBrowser(user.id)
+	const list = await browser.get('/account/inbox')
+	const detailHref = `/account/inbox/${encodeURIComponent(first.messageId)}`
+	assert(
+		list.status === 200 && list.text.includes(`href="${detailHref}"`),
+		'inbox rows link to the message',
+		list.status,
+	)
+	const detail = await browser.get(detailHref)
+	assert(
+		detail.status === 200 &&
+			detail.text.includes(generic.subject) &&
+			detail.text.includes('alice@sender.example') &&
+			detail.text.includes(`${local}+receipts@${domain}`) &&
+			/<iframe[^>]*sandbox=""/.test(detail.text) &&
+			detail.text.includes('srcdoc='),
+		'message detail shows headers and the sandboxed HTML body',
+		detail.status,
+	)
+	const textTab = await browser.get(`${detailHref}?body=text`)
+	assert(
+		textTab.status === 200 && textTab.text.includes(generic.text) && !/<iframe/.test(textTab.text),
+		'text tab shows the full text body',
+		textTab.status,
+	)
+	const scripted = await postJson('/email/inbound/generic', {
+		from: 'mallory@sender.example',
+		to: [`${local}@${domain}`],
+		subject: 'Scripted html',
+		html: '<p>hello</p><script>window.smokeEmailXss = 1</script>',
+		messageId: `<xss-${randomBytes(6).toString('hex')}@sender.example>`,
+	})
+	assert(scripted.status === 200 && scripted.json.accepted.length === 1, 'scripted html accepted', scripted.json)
+	const scriptedPage = await browser.get(`/account/inbox/${encodeURIComponent(scripted.json.accepted[0].messageId)}`)
+	assert(
+		scriptedPage.status === 200 &&
+			!scriptedPage.text.includes('smokeEmailXss = 1</script>') &&
+			!/<script>window\.smokeEmailXss/.test(scriptedPage.text),
+		'inbound script never reaches the page or the preview',
+		scriptedPage.status,
+	)
+	const missing = await browser.get('/account/inbox/msg_does_not_exist')
+	assert(
+		missing.status === 404 && missing.text.includes('Message not found'),
+		'unknown message is a 404',
+		missing.status,
+	)
+	log('web inbox', { list: list.status, detail: detail.status, missing: missing.status })
 
 	// 4. subscription fan-out: the package filed both received messages
 	const filed = await waitFor(async () => {

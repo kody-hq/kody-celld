@@ -25,6 +25,14 @@ version tags only appear under `kody-hq`.
 Then `docker compose pull && docker compose up -d`. Pin a version tag the same
 way (`:0.2.0`, `:0.2`, …) once that tag exists under `kody-hq`.
 
+### Email: open a message and read it
+
+Rows on **Account → Email** now open the message under its row
+(`/account/inbox/:messageId`) with From, To, Date, Subject, CC, Reply-To,
+attachments, and the full body as HTML, Text, or HTML Source, matching hosted
+Kody. HTML renders the way hosted does: scripts stripped, then a sandboxed
+`srcdoc` iframe with no scripts, forms, popups, or same-origin access.
+
 ## Past releases
 
 - [v0.2.0](https://github.com/kody-hq/kody-celld/releases/tag/v0.2.0) — external MCP servers, package apps, one private-host allowlist

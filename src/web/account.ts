@@ -37,6 +37,7 @@ import { type AppLoaderData, type PageFlash, type RunDetailView } from '#univers
 import type { RunRecord } from '../cells/user-cell.ts'
 import { routes } from '#universal/routes.ts'
 import { accountAliasLocation } from './account-aliases.ts'
+import { emailMessageDetailView, readEmailBodyView, readEmailMessageId } from './account-email.ts'
 import { matchAccountDetailPath } from './account-detail-paths.ts'
 import { appSessionOf, readForm, redirect } from './http.ts'
 import { summarizeJobSchedule } from './job-schedule-summary.ts'
@@ -1098,22 +1099,36 @@ export async function handleAccount(request: Request, env: Env, url: URL): Promi
 		}
 
 		case 'inbox': {
-			if (post) break
+			if (post || segments.length > 2) break
+			const selectedId = readEmailMessageId(segments[1])
+			const current = selectedId ? routes.accountEmailMessage.href({ messageId: selectedId }) : '/account/inbox'
 			const config = loadEmailConfig(env)
 			if (!config) {
 				return view(session, {
 					title: 'Inbox',
-					current: '/account/inbox',
-					data: { page: 'accountEmail', domain: null, addresses: [], messages: [] },
+					current,
+					...(selectedId ? { status: 404 } : {}),
+					data: {
+						page: 'accountEmail',
+						domain: null,
+						addresses: [],
+						messages: [],
+						selectedId,
+						selected: null,
+						bodyView: 'text',
+					},
 				})
 			}
-			const [locals, messages] = await Promise.all([
+			const [locals, messages, selectedRecord] = await Promise.all([
 				registry(env).inboxListForUser(session.user.id),
 				userCell.emailMessageList({ limit: 50 }),
+				selectedId ? userCell.emailMessageGet(selectedId) : Promise.resolve(null),
 			])
+			const selected = selectedRecord ? emailMessageDetailView(selectedRecord) : null
 			return view(session, {
-				title: 'Inbox',
-				current: '/account/inbox',
+				title: selected ? selected.subject || 'Inbox' : 'Inbox',
+				current,
+				...(selectedId && !selected ? { status: 404 } : {}),
 				data: {
 					page: 'accountEmail',
 					domain: config.domain,
@@ -1129,6 +1144,9 @@ export async function handleAccount(request: Request, env: Env, url: URL): Promi
 						classification: message.classification,
 						sizeBytes: message.sizeBytes,
 					})),
+					selectedId,
+					selected,
+					bodyView: readEmailBodyView(url.searchParams.get('body'), selected),
 				},
 			})
 		}

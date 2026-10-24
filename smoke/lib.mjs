@@ -283,6 +283,17 @@ export async function bootstrapUser(label = 'smoke') {
 	return { user: json.user, token: json.token, mcp: new McpClient(json.token) }
 }
 
+/** Invite then set a password (the smoke/web.mjs flow), returning a signed-in Browser. */
+export async function signedInBrowser(userId) {
+	const invite = await admin.invite(userId)
+	assert(invite.status === 201 && invite.json.url, 'admin invite returns a link', invite)
+	const browser = new Browser()
+	const password = `smoke-${randomBytes(12).toString('hex')}`
+	const accepted = await browser.post(invite.json.url, { password, confirm: password })
+	assert(accepted.status === 303 && browser.cookie('kody_session'), 'browser signed in via invite', accepted)
+	return browser
+}
+
 export function sha256(text) {
 	return createHash('sha256').update(text).digest('hex')
 }

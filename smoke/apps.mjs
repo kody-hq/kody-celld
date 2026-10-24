@@ -3,20 +3,9 @@
 import { randomBytes } from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { admin, assert, baseUrl, Browser, log, readPackageDir } from './lib.mjs'
+import { assert, baseUrl, Browser, log, readPackageDir, signedInBrowser } from './lib.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
-
-/** Same invite → password flow as smoke/web.mjs, returning a signed-in Browser. */
-async function signedInBrowser(userId) {
-	const invite = await admin.invite(userId)
-	assert(invite.status === 201 && invite.json.url, 'admin invite returns a link', invite)
-	const browser = new Browser()
-	const password = `smoke-${randomBytes(12).toString('hex')}`
-	const accepted = await browser.post(invite.json.url, { password, confirm: password })
-	assert(accepted.status === 303 && browser.cookie('kody_session'), 'browser signed in via invite', accepted)
-	return browser
-}
 
 function viaAppHost(location) {
 	// Node cannot always resolve *.localhost; connect to the Kody listener and send the app Host header.

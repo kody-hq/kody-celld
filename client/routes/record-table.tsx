@@ -11,6 +11,7 @@ import {
 	getSurfaceCardCss,
 	hoverMq,
 } from '#universal/styles/style-primitives.ts'
+import { collapsedColumnMaxWidth } from '#universal/record-table-columns.ts'
 import { visuallyHiddenCss } from './record-table-controls.tsx'
 
 export {
@@ -193,6 +194,12 @@ const dropCss = {
 	3: css({ '@container (max-width: 900px)': { display: 'none' } }),
 } as const
 
+const collapsedColCss = {
+	900: css({ '@container (max-width: 900px)': { width: 0 } }),
+	780: css({ '@container (max-width: 780px)': { width: 0 } }),
+	680: css({ '@container (max-width: 680px)': { width: 0 } }),
+} as const
+
 const numericCss = css({
 	textAlign: 'right',
 	fontVariantNumeric: 'tabular-nums',
@@ -293,7 +300,7 @@ const cellCss = {
  */
 const cardFallbackCss = {
 	'@container (max-width: 620px)': {
-		'& thead': { display: 'none' },
+		'& thead, & colgroup': { display: 'none' },
 		'& table, & tbody, & tr, & td': { display: 'block', width: 'auto' },
 		'& tbody tr[data-record-row]': { padding: 0 },
 		'& tbody tr:not([data-record-row])': {
@@ -446,6 +453,20 @@ export function RecordTable(handle: Handle<RecordTableProps>) {
 
 		const table = (
 			<table aria-label={handle.props.ariaLabel} mix={css(tableCss)}>
+				<colgroup>
+					{columns.map((column, index) => {
+						const maxWidth = collapsedColumnMaxWidth(
+							columns,
+							columns.length - 1 - index,
+						)
+						return (
+							<col
+								key={column.key}
+								mix={maxWidth === null ? undefined : collapsedColCss[maxWidth]}
+							/>
+						)
+					})}
+				</colgroup>
 				<thead>
 					<tr>
 						{columns.map((column) => (

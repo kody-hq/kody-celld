@@ -81,7 +81,7 @@ Accounts are created by the operator — there is no open registration:
 | Activity         | recent run history (status, duration, error names — never secret values); summary of open / ignored / resolved / running, an Open errors / Recent runs toggle, and Ignore / Resolve / Reopen on error runs; click a run to expand its full error, logs and result, with a copyable fix prompt for your agent |
 | Webhooks         | every webhook your packages declare: handle, package, status, last delivery (never the URL)                                                                                                                                                                                                                  |
 | Integrations     | connected OAuth integrations and their status, disconnect                                                                                                                                                                                                                                                    |
-| Email            | email inboxes and recent messages                                                                                                                                                                                                                                                                            |
+| Email            | email inboxes and recent messages; click a message to open it (`/account/inbox/:messageId`) with its headers, attachments and full body as HTML, Text or HTML Source                                                                                                                                         |
 | Memories         | browse and search your memories, open one, soft-delete or delete permanently                                                                                                                                                                                                                                 |
 | Browser sessions | list and revoke (this one or all others)                                                                                                                                                                                                                                                                     |
 
@@ -254,7 +254,11 @@ no-store` (`src/app/security-headers.ts`). `remix/component` escapes all
   interpolated text and neutralises `javascript:` URLs in `href`, `src`,
   `action` and `formaction`.
   Raw HTML (`innerHTML`, `srcdoc`) only renders through an explicit
-  `unsafeHTML()`; the page components never call it.
+  `unsafeHTML()`. The one caller is the Email page's message body, which
+  uses hosted Kody's renderer (`client/email-html-preview.ts`, synced
+  verbatim): `<script>` blocks stripped, a `no-referrer` meta and
+  `<base target="_blank">` added, then shown in an `<iframe sandbox="">`
+  (no scripts, forms, popups or same-origin access) via `srcdoc`.
 - Secrets, token values, master keys and admin tokens never appear on a page
   except the one-time token reveal after creation.
 - Failed sign-ins (password, token, console) are audited with the method but

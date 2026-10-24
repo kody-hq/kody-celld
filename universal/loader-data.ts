@@ -243,6 +243,34 @@ export type EmailMessageView = {
 	sizeBytes: number
 }
 
+/** Which body the open message shows: hosted's HTML / Text / HTML Source tabs. */
+export type EmailBodyView = 'html' | 'text' | 'source'
+
+/** One stored message opened from `/account/inbox/:messageId`. */
+export type EmailMessageDetailView = {
+	id: string
+	direction: 'inbound' | 'outbound'
+	subject: string
+	from: string
+	to: Array<string>
+	cc: Array<string>
+	replyTo: Array<string>
+	receivedAt: string
+	inboxAddress: string | null
+	classification: string | null
+	classificationReason: string | null
+	deliveryStatus: string | null
+	sizeBytes: number
+	text: string | null
+	html: string | null
+	attachments: Array<{
+		id: string
+		filename: string
+		contentType: string
+		size: number
+	}>
+}
+
 export type BrowserSessionView = {
 	id: string
 	userAgent: string | null
@@ -501,6 +529,10 @@ export type AppLoaderData =
 			domain: string | null
 			addresses: Array<string>
 			messages: Array<EmailMessageView>
+			/** Message id from the URL, even when it did not resolve. */
+			selectedId: string | null
+			selected: EmailMessageDetailView | null
+			bodyView: EmailBodyView
 	  }
 	| {
 			page: 'accountSessions'

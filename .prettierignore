@@ -20,6 +20,7 @@ client/clipboard.ts
 client/copy-code-block.tsx
 client/doc-youtube-embed.tsx
 client/double-check.ts
+client/email-html-preview.ts
 client/event-mixin.ts
 client/format-timestamp.ts
 client/markdown-first-party.ts
