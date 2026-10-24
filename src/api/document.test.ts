@@ -17,6 +17,10 @@ test('documents unique operations registered in the capability registry', () => 
 	assert(!('/v1/me' in document.paths))
 	assert(!('/v1/memories' in document.paths))
 	assert(!('/v1/secrets' in document.paths))
+	const execute = document.paths['/v1/execute']?.post as {
+		requestBody: { content: { 'application/json': { schema: { properties: Record<string, unknown> } } } }
+	}
+	assert(!('credentials' in execute.requestBody.content['application/json'].schema.properties))
 
 	const operationIds = Object.values(document.paths).flatMap((path) =>
 		Object.values(path)

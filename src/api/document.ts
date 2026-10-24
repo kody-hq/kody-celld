@@ -14,7 +14,6 @@ const executeSchema: JsonSchema = {
 		idempotencyKey: { type: 'string', minLength: 1, maxLength: 200 },
 		conversationId: { type: 'string' },
 		memoryContext: { type: 'string' },
-		credentials: { type: 'object' },
 	},
 }
 

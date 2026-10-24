@@ -63,9 +63,31 @@ export function readQueryParams(searchParams: URLSearchParams, inputSchema: Json
 export async function readJsonBody(request: Request) {
 	const declaredLength = Number(request.headers.get('Content-Length') ?? '0')
 	if (declaredLength > maxApiRequestBodyBytes) return { kind: 'too_large' as const, byteLength: declaredLength }
-	const text = await request.text()
-	const byteLength = new TextEncoder().encode(text).byteLength
-	if (byteLength > maxApiRequestBodyBytes) return { kind: 'too_large' as const, byteLength }
+	const reader = request.body?.getReader()
+	if (!reader) return { kind: 'ok' as const, body: {} }
+	const chunks: Uint8Array[] = []
+	let byteLength = 0
+	try {
+		while (true) {
+			const { done, value } = await reader.read()
+			if (done) break
+			byteLength += value.byteLength
+			if (byteLength > maxApiRequestBodyBytes) {
+				void reader.cancel().catch(() => undefined)
+				return { kind: 'too_large' as const, byteLength }
+			}
+			chunks.push(value)
+		}
+	} finally {
+		reader.releaseLock()
+	}
+	const bytes = new Uint8Array(byteLength)
+	let offset = 0
+	for (const chunk of chunks) {
+		bytes.set(chunk, offset)
+		offset += chunk.byteLength
+	}
+	const text = new TextDecoder().decode(bytes)
 	if (!text.trim()) return { kind: 'ok' as const, body: {} }
 	const contentType = request.headers.get('Content-Type') ?? ''
 	if (!/^application\/(?:[\w.+-]+\+)?json\b/i.test(contentType.trim())) {

@@ -50,17 +50,40 @@ test('serializes Kody errors without changing their status', async () => {
 })
 
 test('does not expose details from unexpected errors', async () => {
+	const failure = new Error('private stack detail')
 	const response = await handleApiRequest(new Request('https://celld.example/v1/packages'), env, execution, {
 		capabilities,
 		authenticate: async () => principal,
 		runCapability: async () => {
-			throw new Error('private stack detail')
+			throw failure
 		},
 	})
 	assert.equal(response.status, 500)
 	assert.deepEqual(await response.json(), {
 		error: { code: 'internal_error', message: 'Internal server error.' },
 	})
+})
+
+test('logs unexpected errors before returning the generic response', async () => {
+	const failure = new Error('private stack detail')
+	const originalError = console.error
+	const logged: unknown[][] = []
+	console.error = (...args: unknown[]) => {
+		logged.push(args)
+	}
+	try {
+		const response = await handleApiRequest(new Request('https://celld.example/v1/packages'), env, execution, {
+			capabilities,
+			authenticate: async () => principal,
+			runCapability: async () => {
+				throw failure
+			},
+		})
+		assert.equal(response.status, 500)
+		assert.deepEqual(logged, [['open-api-request-failed', '/v1/packages', failure]])
+	} finally {
+		console.error = originalError
+	}
 })
 
 test('serves the OpenAPI document with an ETag and returns 304 for a match', async () => {

@@ -17,7 +17,7 @@ type ApiHandlerDependencies = {
 	runExecuteTool?: (args: Record<string, unknown>, ctx: CapabilityContext) => Promise<unknown>
 }
 
-function errorResponse(cause: unknown) {
+function errorResponse(cause: unknown, pathname: string) {
 	const kodyError = KodyError.fromUnknown(cause)
 	if (kodyError) {
 		return Response.json(
@@ -31,6 +31,7 @@ function errorResponse(cause: unknown) {
 			{ status: kodyError.status },
 		)
 	}
+	console.error('open-api-request-failed', pathname, cause)
 	return Response.json({ error: { code: 'internal_error', message: 'Internal server error.' } }, { status: 500 })
 }
 
@@ -167,18 +168,24 @@ export async function handleApiRequest(
 		try {
 			return await handleOpenApi(request, env, dependencies)
 		} catch (caught) {
-			return errorResponse(caught)
+			return errorResponse(caught, url.pathname)
 		}
 	}
 	if (url.pathname !== '/v1' && !url.pathname.startsWith('/v1/')) {
-		return errorResponse(error('not_found', `No route for ${request.method} ${url.pathname}. See /openapi.json.`, 404))
+		return errorResponse(
+			error('not_found', `No route for ${request.method} ${url.pathname}. See /openapi.json.`, 404),
+			url.pathname,
+		)
 	}
 
 	const registeredCapabilities = dependencies.capabilities ?? (await import('../capabilities/registry.ts')).capabilities
 	const operations = getAvailableApiOperations(registeredCapabilities.map((capability) => capability.name))
 	const match = matchApiRoute(request.method, url.pathname, operations)
 	if (match.kind === 'not_found') {
-		return errorResponse(error('not_found', `No route for ${request.method} ${url.pathname}. See /openapi.json.`, 404))
+		return errorResponse(
+			error('not_found', `No route for ${request.method} ${url.pathname}. See /openapi.json.`, 404),
+			url.pathname,
+		)
 	}
 	if (match.kind === 'method_not_allowed') {
 		return new Response(
@@ -233,6 +240,6 @@ export async function handleApiRequest(
 		const runCapability = dependencies.runCapability ?? (await import('../capabilities/registry.ts')).runCapability
 		return Response.json(await runCapability(operationId, params, capContext))
 	} catch (caught) {
-		return errorResponse(caught)
+		return errorResponse(caught, url.pathname)
 	}
 }

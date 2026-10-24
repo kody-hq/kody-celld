@@ -28,13 +28,19 @@ test('rejects conflicting path and query values with the hosted message', () => 
 })
 
 test('enforces the request body byte limit', async () => {
-	const response = await readJsonBody(
-		new Request('https://example.test/v1/packages', {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: 'x'.repeat(maxApiRequestBodyBytes + 1),
+	const request = new Request('https://example.test/v1/packages', {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: new ReadableStream({
+			start(controller) {
+				controller.enqueue(new Uint8Array(maxApiRequestBodyBytes + 1))
+				controller.close()
+			},
 		}),
-	)
+		duplex: 'half',
+	} as RequestInit)
+	assert.equal(request.headers.has('content-length'), false)
+	const response = await readJsonBody(request)
 	assert.equal(response.kind, 'too_large')
 	if (response.kind === 'too_large') assert.equal(response.byteLength, maxApiRequestBodyBytes + 1)
 })

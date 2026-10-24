@@ -1,8 +1,9 @@
 # HTTP API
 
-celld serves its hosted-compatible HTTP API on the same origin as the app. It
-does not use a separate `api.` host. Send a Bearer token with each `/v1`
-request: `kc_` API tokens and `mcpat_` OAuth access tokens are accepted.
+celld serves its hosted-compatible HTTP API at the origin of `KODY_PUBLIC_URL`,
+not on a separate `api.` host. `GET /openapi.json` lists that origin in its
+`servers` array. Send a Bearer token with each `/v1` request: `kc_` API tokens
+and `mcpat_` OAuth access tokens are accepted.
 
 `GET /openapi.json` is public and describes the operations enabled by the
 capabilities registered in this celld build. `GET /v1/search` searches the
