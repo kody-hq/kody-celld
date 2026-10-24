@@ -2,8 +2,8 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { Env } from '../env.ts'
 import { KodyError } from '../lib/errors.ts'
-import { csrfToken, serializeCookie, sessionCookieName } from '../auth/cookies.ts'
-import { handleConnectSecretSet, parseConnectSecretSetQuery } from './connect-secret-set.ts'
+import { cookiesAreSecure, csrfToken, serializeCookie, sessionCookieName } from '../auth/cookies.ts'
+import { connectSecretSetSavedState, handleConnectSecretSet, parseConnectSecretSetQuery } from './connect-secret-set.ts'
 
 const sessionId = 'connect-secret-set-session'
 
@@ -24,7 +24,7 @@ function userCellStub(calls: {
 	}
 }
 
-async function fixture() {
+async function fixture(publicUrl = 'http://localhost') {
 	const calls = {
 		saves: [] as Array<Record<string, unknown>>,
 		approvals: [] as Array<{ host: string; approvedBy: string }>,
@@ -46,24 +46,25 @@ async function fixture() {
 	}
 	const env = {
 		KODY_MASTER_KEY: 'test-master-key',
-		KODY_PUBLIC_URL: 'http://localhost',
+		KODY_PUBLIC_URL: publicUrl,
 		REGISTRY: { getByName: () => registry },
 		USER: { getByName: () => userCell },
 	} as unknown as Env
-	const cookie = await serializeCookie(sessionCookieName(false), sessionId, {
+	const secure = cookiesAreSecure(publicUrl)
+	const cookie = await serializeCookie(sessionCookieName(secure), sessionId, {
 		maxAgeSeconds: 3600,
-		secure: false,
+		secure,
 	})
 	const csrf = await csrfToken(env.KODY_MASTER_KEY, sessionId)
 	return { env, cookie: cookie.split(';')[0] ?? '', csrf, calls }
 }
 
-function postRequest(path: string, cookie: string, fields: Record<string, string>) {
-	return new Request(`http://localhost${path}`, {
+function postRequest(path: string, cookie: string, fields: Record<string, string>, origin = 'http://localhost') {
+	return new Request(`${origin}${path}`, {
 		method: 'POST',
 		headers: {
 			cookie,
-			origin: 'http://localhost',
+			origin,
 			'content-type': 'application/x-www-form-urlencoded',
 		},
 		body: new URLSearchParams(fields),
@@ -132,17 +133,59 @@ describe('handleConnectSecretSet', () => {
 		assert.equal(response.headers.get('location'), '/account/secrets')
 	})
 
+	it('ignores flash=saved when no matching saved cookie is present', async () => {
+		const { cookie } = await fixture()
+		const request = new Request('http://localhost/connect/secret-set?name=github&flash=saved', {
+			headers: { cookie },
+		})
+		assert.deepEqual(await connectSecretSetSavedState(request, 'github'), {
+			saved: false,
+			canSubmit: true,
+			clearCookie: null,
+		})
+	})
+
+	it('shows the saved state for a matching cookie and clears it', async () => {
+		const { cookie } = await fixture()
+		const request = new Request('http://localhost/connect/secret-set?name=GitHub%20token', {
+			headers: { cookie: `${cookie}; kody_connect_saved=GitHub%20token` },
+		})
+
+		assert.deepEqual(await connectSecretSetSavedState(request, 'GitHub token'), {
+			saved: true,
+			canSubmit: false,
+			clearCookie: 'kody_connect_saved=; HttpOnly; Max-Age=0; Path=/connect/secret-set; SameSite=Lax',
+		})
+	})
+
+	it('shows the form and clears a saved cookie for a different name', async () => {
+		const { cookie } = await fixture()
+		const request = new Request('http://localhost/connect/secret-set?name=github', {
+			headers: { cookie: `${cookie}; kody_connect_saved=other` },
+		})
+
+		assert.deepEqual(await connectSecretSetSavedState(request, 'github'), {
+			saved: false,
+			canSubmit: true,
+			clearCookie: 'kody_connect_saved=; HttpOnly; Max-Age=0; Path=/connect/secret-set; SameSite=Lax',
+		})
+	})
+
 	it('saves, approves hosts, and audits without exposing the value', async () => {
-		const { env, cookie, csrf, calls } = await fixture()
+		const { env, cookie, csrf, calls } = await fixture('https://localhost')
 		const path =
-			'/connect/secret-set?name=github&description=team%20token&scope=package&packageId=acme%2Fagent&allowedHosts=api.example.com'
-		const request = postRequest(path, cookie, { value: 'secret-value', csrf })
+			'/connect/secret-set?name=github&description=team%20token&scope=package&packageId=acme%2Fagent&allowedHosts=api.example.com&flash=saved'
+		const request = postRequest(path, cookie, { value: 'secret-value', csrf }, 'https://localhost')
 		const response = await handleConnectSecretSet(request, env, new URL(request.url))
 
 		assert.equal(response.status, 303)
 		const location = response.headers.get('location') ?? ''
-		assert.equal(new URL(location, 'http://localhost').searchParams.get('flash'), 'saved')
+		assert.equal(new URL(location, 'https://localhost').searchParams.has('flash'), false)
 		assert.equal(location.includes('secret-value'), false)
+		assert.equal(
+			response.headers.get('set-cookie'),
+			'kody_connect_saved=github; HttpOnly; Max-Age=60; Path=/connect/secret-set; SameSite=Lax; Secure',
+		)
 		assert.deepEqual(calls.saves, [
 			{
 				name: 'github',

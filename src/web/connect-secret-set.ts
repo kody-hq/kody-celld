@@ -1,4 +1,5 @@
 import { routes } from '#universal/routes.ts'
+import { clearCookie, cookiesAreSecure, readCookie, serializeCookie } from '../auth/cookies.ts'
 import { getUserCell } from '../execute/engine.ts'
 import type { Env } from '../env.ts'
 import { recordAudit } from '../lib/audit.ts'
@@ -22,6 +23,9 @@ export type ConnectSecretSetPageData = {
 }
 
 type ConnectSecretSetSetup = Omit<ConnectSecretSetPageData, 'page' | 'csrf' | 'error' | 'saved' | 'canSubmit'>
+
+const savedCookieName = 'kody_connect_saved'
+const savedCookiePath = routes.connectSecretSet.href()
 
 export type ConnectSecretSetQuery =
 	{ kind: 'missing_name' } | { kind: 'setup'; setup: ConnectSecretSetSetup; error: string | null }
@@ -102,9 +106,31 @@ async function renderConnectSecretSet(
 	})
 }
 
+export async function connectSecretSetSavedState(request: Request, name: string | null) {
+	const savedName = await readCookie(request, savedCookieName)
+	const saved = name !== null && savedName === name
+	return {
+		saved,
+		canSubmit: !saved,
+		clearCookie:
+			savedName !== null ? await clearCookie(savedCookieName, cookiesAreSecure(request.url), savedCookiePath) : null,
+	}
+}
+
+function withSetCookie(response: Response, cookie: string | null) {
+	if (!cookie) return response
+	const headers = new Headers(response.headers)
+	headers.append('set-cookie', cookie)
+	return new Response(response.body, {
+		status: response.status,
+		statusText: response.statusText,
+		headers,
+	})
+}
+
 function savedLocation(url: URL) {
 	const target = new URL(url)
-	target.searchParams.set('flash', 'saved')
+	target.searchParams.delete('flash')
 	return `${target.pathname}${target.search}`
 }
 
@@ -122,23 +148,31 @@ export async function handleConnectSecretSet(request: Request, env: Env, url: UR
 	if (request.method === 'POST') assertCsrf(request, env, session, form)
 
 	const parsed = parseConnectSecretSetQuery(url)
-	if (parsed.kind === 'missing_name') return redirect(routes.accountSecrets.href())
+	const savedState =
+		request.method === 'GET'
+			? await connectSecretSetSavedState(request, parsed.kind === 'setup' ? parsed.setup.name : null)
+			: null
+	const clearSavedCookie = savedState?.clearCookie ?? null
+	if (parsed.kind === 'missing_name') {
+		return redirect(routes.accountSecrets.href(), clearSavedCookie ? { 'set-cookie': clearSavedCookie } : {})
+	}
+	const renderPage = async (setup: ConnectSecretSetSetup, input: Parameters<typeof renderConnectSecretSet>[3] = {}) =>
+		withSetCookie(await renderConnectSecretSet(url, session, setup, input), clearSavedCookie)
 	if (parsed.error) {
-		return renderConnectSecretSet(url, session, parsed.setup, {
+		return renderPage(parsed.setup, {
 			error: parsed.error,
 			canSubmit: false,
 			status: 400,
 		})
 	}
 
-	const saved = url.searchParams.get('flash') === 'saved'
-	if (request.method === 'GET' || saved) {
-		return renderConnectSecretSet(url, session, parsed.setup, { saved, canSubmit: !saved })
+	if (request.method === 'GET') {
+		return renderPage(parsed.setup, { saved: savedState?.saved, canSubmit: savedState?.canSubmit })
 	}
 
 	const value = form.value ?? ''
 	if (!value) {
-		return renderConnectSecretSet(url, session, parsed.setup, {
+		return renderPage(parsed.setup, {
 			error: 'Enter a secret value.',
 			status: 400,
 		})
@@ -172,7 +206,7 @@ export async function handleConnectSecretSet(request: Request, env: Env, url: UR
 	} catch (error) {
 		const kodyError = KodyError.fromUnknown(error)
 		if (kodyError && kodyError.status < 500) {
-			return renderConnectSecretSet(url, session, parsed.setup, {
+			return renderPage(parsed.setup, {
 				error: kodyError.message,
 				status: kodyError.status,
 			})
@@ -180,5 +214,10 @@ export async function handleConnectSecretSet(request: Request, env: Env, url: UR
 		throw error
 	}
 
-	return redirect(savedLocation(url))
+	const savedCookie = await serializeCookie(savedCookieName, parsed.setup.name, {
+		maxAgeSeconds: 60,
+		secure: cookiesAreSecure(request.url),
+		path: savedCookiePath,
+	})
+	return redirect(savedLocation(url), { 'set-cookie': savedCookie })
 }

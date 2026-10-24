@@ -2,7 +2,8 @@
 
 Design goal, inherited from production Kody: **sandbox code never sees a
 secret value**. It sees placeholders; the host swaps them in at the network
-boundary, and only for destinations an admin approved.
+boundary, and only for destinations approved by an account admin through the
+admin API or a signed-in owner through a `/connect/secret-set` link.
 
 ## Storing
 

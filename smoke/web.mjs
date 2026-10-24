@@ -182,18 +182,41 @@ export async function smokeWeb({ user, mcp }) {
 	)
 	const connectCsrf = hiddenInputs(connectPage.text).csrf
 	assert(connectCsrf, 'secret setup page carries a CSRF token')
+	const forgedSaved = await browser.get(`${connectUrl}&flash=saved`)
+	assert(
+		forgedSaved.status === 200 &&
+			forgedSaved.text.includes('id="connect-secret-set-value"') &&
+			!forgedSaved.text.includes('Saved. You can tell your agent it is done.'),
+		'secret setup ignores flash=saved without a saved-state cookie',
+	)
 	const connectSaved = await browser.post(connectUrl, { value: connectValue, csrf: connectCsrf })
 	assert(
-		connectSaved.status === 303 && connectSaved.location?.includes('flash=saved'),
-		'secret setup POST saves and redirects to confirmation',
+		connectSaved.status === 303 &&
+			connectSaved.location?.startsWith('/connect/secret-set?') &&
+			!connectSaved.location.includes('flash=') &&
+			connectSaved.setCookies.some(
+				(cookie) =>
+					cookie.startsWith(`kody_connect_saved=${encodeURIComponent(connectName)};`) &&
+					cookie.includes('HttpOnly') &&
+					cookie.includes('Max-Age=60') &&
+					cookie.includes('Path=/connect/secret-set') &&
+					cookie.includes('SameSite=Lax'),
+			),
+		'secret setup POST saves, redirects without flash, and sets a short-lived confirmation cookie',
 		connectSaved,
 	)
 	const confirmation = await browser.get(connectSaved.location)
 	assert(
 		confirmation.status === 200 &&
 			confirmation.text.includes('Saved. You can tell your agent it is done.') &&
-			!confirmation.text.includes(connectValue),
-		'saved confirmation never echoes the value',
+			!confirmation.text.includes(connectValue) &&
+			confirmation.setCookies.some(
+				(cookie) =>
+					cookie.startsWith('kody_connect_saved=;') &&
+					cookie.includes('Max-Age=0') &&
+					cookie.includes('Path=/connect/secret-set'),
+			),
+		'saved confirmation never echoes the value and clears its cookie',
 		confirmation.status,
 	)
 	const connectList = await mcp.call('secretList')
@@ -850,7 +873,7 @@ export async function smokeWeb({ user, mcp }) {
 	assert(consoleOut.status === 303 && !operator.cookie('kody_console'), 'console sign-out clears cookie')
 	log('console', 'admin sign-in, users, host approve/revoke, audit, config, invite')
 
-	// The user's own UI must not offer host approval (admin-only invariant).
+	// The account UI must not offer host approval; owners use /connect/secret-set for this flow.
 	const userSecrets = await new Browser()
 	await userSecrets.post('/signin', { intent: 'token', token: mcp.token })
 	const secretsHtml = (await userSecrets.get('/account/secrets')).text
@@ -862,7 +885,7 @@ export async function smokeWeb({ user, mcp }) {
 	})
 	assert(
 		forgedApprove.status !== 200 || !(await admin.listHosts(user.id)).json.hosts.some((h) => h.host === 'evil.example'),
-		'user cannot approve hosts',
+		'/account/secrets cannot approve hosts',
 	)
-	log('invariant', 'host approval stays admin-only')
+	log('invariant', 'account UI has no host-approval form')
 }
