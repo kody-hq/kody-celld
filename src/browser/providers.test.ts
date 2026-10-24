@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
+import { dohStub, type DohStub } from '../lib/test-dns.ts'
 import { browserConfigFromEnv, describeBrowserConfig } from './config.ts'
 import { assertRenderableUrl, htmlTitle, htmlToText } from './providers.ts'
 
@@ -64,18 +65,20 @@ describe('browser config', () => {
 
 describe('assertRenderableUrl', () => {
 	const config = browserless!
+	const check = (url: string, cfg = config, dns: DohStub = dohStub()) =>
+		assertRenderableUrl(url, cfg, { dnsFetch: dns })
 
-	it('accepts public http(s) URLs only', () => {
-		assert.equal(assertRenderableUrl('https://example.com/page?q=1', config), 'https://example.com/page?q=1')
-		assert.equal(assertRenderableUrl('http://[2001:db8::1]/', config), 'http://[2001:db8::1]/')
-		assert.throws(() => assertRenderableUrl('ftp://example.com', config), /Only http\(s\)/)
-		assert.throws(() => assertRenderableUrl('file:///etc/hosts', config), /Only http\(s\)/)
-		assert.throws(() => assertRenderableUrl('https://user:pw@example.com', config), /embedded credentials/)
-		assert.throws(() => assertRenderableUrl('nope', config), /not a valid URL/)
-		assert.throws(() => assertRenderableUrl('', config), /non-empty/)
+	it('accepts public http(s) URLs only', async () => {
+		assert.equal(await check('https://example.com/page?q=1'), 'https://example.com/page?q=1')
+		assert.equal(await check('http://[2001:db8::1]/'), 'http://[2001:db8::1]/')
+		await assert.rejects(check('ftp://example.com'), /Only http\(s\)/)
+		await assert.rejects(check('file:///etc/hosts'), /Only http\(s\)/)
+		await assert.rejects(check('https://user:pw@example.com'), /embedded credentials/)
+		await assert.rejects(check('nope'), /not a valid URL/)
+		await assert.rejects(check(''), /non-empty/)
 	})
 
-	it('refuses loopback, private and single-label hosts unless allowlisted', () => {
+	it('refuses loopback, private and single-label hosts unless allowlisted', async () => {
 		for (const url of [
 			'http://localhost:8787/',
 			'http://kody.localhost/',
@@ -94,16 +97,59 @@ describe('assertRenderableUrl', () => {
 			'http://qdrant.internal/',
 			'http://nas.local/',
 		]) {
-			assert.throws(() => assertRenderableUrl(url, config), /browser_private_host/, url)
+			await assert.rejects(check(url), /browser_private_host/, url)
 		}
 		const allowing = { ...config, allowPrivateHosts: ['localhost', '*.home.lan', '192.168.1.10'] }
-		assert.equal(assertRenderableUrl('http://localhost:8787/x', allowing), 'http://localhost:8787/x')
-		assert.equal(assertRenderableUrl('http://dash.home.lan/', allowing), 'http://dash.home.lan/')
-		assert.equal(assertRenderableUrl('http://192.168.1.10/', allowing), 'http://192.168.1.10/')
-		assert.throws(() => assertRenderableUrl('http://192.168.1.11/', allowing), /browser_private_host/)
+		assert.equal(await check('http://localhost:8787/x', allowing), 'http://localhost:8787/x')
+		assert.equal(await check('http://dash.home.lan/', allowing), 'http://dash.home.lan/')
+		assert.equal(await check('http://192.168.1.10/', allowing), 'http://192.168.1.10/')
+		await assert.rejects(check('http://192.168.1.11/', allowing), /browser_private_host/)
 		const cidr = { ...config, allowPrivateHosts: ['172.30.0.0/16'] }
-		assert.equal(assertRenderableUrl('http://172.30.1.108:8123/', cidr), 'http://172.30.1.108:8123/')
-		assert.throws(() => assertRenderableUrl('http://172.31.0.1/', cidr), /browser_private_host/)
+		assert.equal(await check('http://172.30.1.108:8123/', cidr), 'http://172.30.1.108:8123/')
+		await assert.rejects(check('http://172.31.0.1/', cidr), /browser_private_host/)
+	})
+
+	it('resolves the hostname and refuses private answers', async () => {
+		for (const address of [
+			'192.168.1.1',
+			'127.0.0.1',
+			'169.254.169.254',
+			'100.100.100.100',
+			'::1',
+			'fe80::1',
+			'::ffff:7f00:1',
+		]) {
+			await assert.rejects(
+				check('https://public.example/', config, dohStub({ 'public.example': [address] })),
+				(error: Error) => {
+					assert.equal(error.name, 'KodyError:browser_private_host:403')
+					assert.ok(error.message.includes(address), address)
+					return true
+				},
+			)
+		}
+		await assert.rejects(check('https://public.example/', config, dohStub({}, [])), /Could not resolve/)
+	})
+
+	it('allows a private answer inside a KODY_PRIVATE_HOSTS range and skips the lookup for listed names', async () => {
+		const dns = dohStub({ 'ha.example': ['172.30.1.108'] })
+		const cfg = { ...config, allowPrivateHosts: ['172.30.0.0/16', 'dash.example'] }
+		assert.equal(await check('http://ha.example:8123/', cfg, dns), 'http://ha.example:8123/')
+		assert.equal(await check('http://dash.example/', cfg, dns), 'http://dash.example/')
+		assert.deepEqual(dns.queries.sort(), ['ha.example/A', 'ha.example/AAAA'])
+	})
+
+	it('reads KODY_DNS_RESOLVER_URL', () => {
+		assert.equal(config.dnsResolverUrl, 'https://cloudflare-dns.com/dns-query')
+		const env = { KODY_BROWSER_PROVIDER: 'browserless', KODY_BROWSER_URL: 'http://browserless:3000' }
+		assert.equal(
+			browserConfigFromEnv({ ...env, KODY_DNS_RESOLVER_URL: 'https://dns.lan/q' })?.dnsResolverUrl,
+			'https://dns.lan/q',
+		)
+		assert.throws(
+			() => browserConfigFromEnv({ ...env, KODY_DNS_RESOLVER_URL: 'http://dns.lan/q' }),
+			/KODY_DNS_RESOLVER_URL/,
+		)
 	})
 })
 

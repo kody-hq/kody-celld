@@ -1,6 +1,12 @@
 import { KodyError } from '../lib/errors.ts'
 import { hostMatchesAllowlist, isPrivateHostname } from '../lib/host-allowlist.ts'
 import { privateHostsEnvKey, privateHostsFromEnv, type PrivateHostsEnv } from '../lib/private-hosts-env.ts'
+import {
+	assertResolvedHostAllowed,
+	dnsResolverUrlFromEnv,
+	type DnsMemo,
+	type DnsResolverEnv,
+} from '../lib/resolved-host-guard.ts'
 import { hostMatchesApproval } from '../secrets/host-policy.ts'
 import { cloneGitSmartHttp, normalizeGitUrl } from './git-smart-http.ts'
 import { parsePackageManifest, type PackageFiles, type PackageManifest } from './manifest.ts'
@@ -11,13 +17,15 @@ import { gunzip, isGzip, readTar, type TarEntry } from './tar.ts'
  * codeload), a public kody.codes package (read-only smart-HTTP `.git` clone), a
  * `.tar.gz` / `.tgz` URL, or a JSON file map. The server fetches the source
  * itself, so every hop is checked against the built-in public defaults and
- * `KODY_PRIVATE_HOSTS` for private/LAN (SSRF guard). The result is a plain file
+ * `KODY_PRIVATE_HOSTS` for private/LAN (SSRF guard), and the hop's hostname is
+ * resolved through `KODY_DNS_RESOLVER_URL` so a name that points at a private
+ * address is refused too. The result is a plain file
  * map handed to `UserCell.packageSave`, so provenance, quotas and manifest
  * validation are exactly the same as for a hand-written package. Secrets are
  * never transferred.
  */
 
-export type PackageSourceEnv = PrivateHostsEnv
+export type PackageSourceEnv = PrivateHostsEnv & DnsResolverEnv
 
 export const defaultPackageSourceHosts = [
 	'github.com',
@@ -48,10 +56,51 @@ export function packageSourceHostsFromEnv(env: PackageSourceEnv): Array<string> 
 export type PackageSourceHostPolicy = {
 	allowedHosts: Array<string>
 	privateHosts: Array<string>
+	/** DoH JSON endpoint every hop's hostname is resolved through. */
+	dnsResolverUrl: string
 }
 
 export function packageSourceHostPolicyFromEnv(env: PackageSourceEnv): PackageSourceHostPolicy {
-	return { allowedHosts: defaultPackageSourceHosts, privateHosts: privateHostsFromEnv(env) }
+	let dnsResolverUrl: string
+	try {
+		dnsResolverUrl = dnsResolverUrlFromEnv(env)
+	} catch (error) {
+		throw new KodyError('config_error', error instanceof Error ? error.message : String(error), { status: 500 })
+	}
+	return { allowedHosts: defaultPackageSourceHosts, privateHosts: privateHostsFromEnv(env), dnsResolverUrl }
+}
+
+/** What a fetch of a package source needs: the host policy plus injectable fetches (tests). */
+export type PackageSourceFetchOptions = {
+	allowedHosts: Array<string>
+	privateHosts?: Array<string> | undefined
+	dnsResolverUrl: string
+	fetch?: FetchLike | undefined
+	/** Fetch used for DNS-over-HTTPS lookups; defaults to `fetch`. */
+	dnsFetch?: FetchLike | undefined
+}
+
+/** Checks one hop (the first URL or a redirect target) and returns it normalized. */
+export type SourceHopGuard = (raw: string) => Promise<string>
+
+/**
+ * The hop guard for one install: literal host checks, then the resolved-address check. DNS
+ * answers are reused for the rest of this install only.
+ */
+export function createSourceHopGuard(options: PackageSourceFetchOptions): SourceHopGuard {
+	const privateHosts = options.privateHosts ?? []
+	const memo: DnsMemo = new Map()
+	const policy = { allowPrivateHosts: privateHosts, dnsResolverUrl: options.dnsResolverUrl }
+	const dnsFetch = options.dnsFetch ?? options.fetch
+	return async (raw) => {
+		const url = assertAllowedSourceUrl(raw, options.allowedHosts, privateHosts)
+		await assertResolvedHostAllowed(url, policy, {
+			fetch: dnsFetch,
+			memo,
+			refuse: (message) => new KodyError('package_source_refused', message, { status: 403 }),
+		})
+		return url.toString()
+	}
 }
 
 export type GithubSource = {
@@ -251,24 +300,19 @@ export function commitShaFromCodeloadUrl(url: string): string | undefined {
  */
 export async function resolveGithubCommitSha(
 	source: GithubSource,
-	options: { allowedHosts: Array<string>; privateHosts?: Array<string>; fetch?: FetchLike | undefined },
+	options: PackageSourceFetchOptions,
+	guard: SourceHopGuard = createSourceHopGuard(options),
 ): Promise<string | undefined> {
 	const ref = source.ref ?? 'HEAD'
 	if (fullCommitSha.test(ref)) return ref.toLowerCase()
 	const apiUrl = `https://api.github.com/repos/${source.owner}/${source.repo}/commits/${encodeURIComponent(ref)}`
 	try {
-		assertAllowedSourceUrl(apiUrl, options.allowedHosts, options.privateHosts)
-	} catch {
-		return undefined
-	}
-	try {
 		const fetchImpl = options.fetch ?? ((input, init) => fetch(input, init))
-		const response = await fetchImpl(apiUrl, {
+		const { response } = await fetchGuarded(apiUrl, guard, fetchImpl, {
 			headers: {
 				accept: 'application/vnd.github.sha',
 				'user-agent': 'kody-celld/0.1 (package-install)',
 			},
-			signal: AbortSignal.timeout(packageSourceLimits.timeoutMs),
 		})
 		if (!response.ok) return undefined
 		const sha = (await response.text()).trim()
@@ -361,46 +405,57 @@ async function readBody(response: Response, maxBytes: number) {
 	return out
 }
 
-/** Fetches with redirects followed by hand so every hop passes the host checks. */
-export async function fetchAllowed(
-	raw: string,
-	allowedHosts: Array<string>,
-	fetchImpl: FetchLike = (input, init) => fetch(input, init),
-	privateHosts: Array<string> = [],
-) {
-	let current = assertAllowedSourceUrl(raw, allowedHosts, privateHosts).toString()
+/**
+ * Fetches with redirects followed by hand so every hop passes `guard` before it is requested.
+ * Returns the final non-redirect response (any status) and its URL.
+ */
+async function fetchGuarded(raw: string, guard: SourceHopGuard, fetchImpl: FetchLike, init: RequestInit) {
+	let current = await guard(raw)
 	for (let hop = 0; hop <= packageSourceLimits.maxRedirects; hop += 1) {
 		const response = await fetchImpl(current, {
+			...init,
 			redirect: 'manual',
-			headers: {
-				'user-agent': 'kody-celld/0.1 (package-install)',
-				accept: 'application/octet-stream, application/json, */*',
-			},
 			signal: AbortSignal.timeout(packageSourceLimits.timeoutMs),
 		})
 		if (response.status >= 300 && response.status < 400) {
 			const location = response.headers.get('location')
+			await response.body?.cancel().catch(() => {})
 			if (!location)
 				throw new KodyError('package_source_failed', `${current} redirected without a location.`, { status: 502 })
-			current = assertAllowedSourceUrl(new URL(location, current).toString(), allowedHosts, privateHosts).toString()
+			current = await guard(new URL(location, current).toString())
 			continue
 		}
-		if (!response.ok) {
-			throw new KodyError(
-				'package_source_failed',
-				`${new URL(current).host} returned ${response.status} for ${current}.`,
-				{
-					status: response.status === 404 ? 404 : 502,
-				},
-			)
-		}
-		return {
-			url: current,
-			contentType: response.headers.get('content-type') ?? '',
-			bytes: await readBody(response, packageSourceLimits.maxDownloadBytes),
-		}
+		return { url: current, response }
 	}
 	throw new KodyError('package_source_failed', 'Too many redirects.', { status: 502 })
+}
+
+/** Downloads a source body; every hop (first URL and each redirect) passes `guard`. */
+export async function fetchAllowed(
+	raw: string,
+	guard: SourceHopGuard,
+	fetchImpl: FetchLike = (input, init) => fetch(input, init),
+) {
+	const { url: current, response } = await fetchGuarded(raw, guard, fetchImpl, {
+		headers: {
+			'user-agent': 'kody-celld/0.1 (package-install)',
+			accept: 'application/octet-stream, application/json, */*',
+		},
+	})
+	if (!response.ok) {
+		throw new KodyError(
+			'package_source_failed',
+			`${new URL(current).host} returned ${response.status} for ${current}.`,
+			{
+				status: response.status === 404 ? 404 : 502,
+			},
+		)
+	}
+	return {
+		url: current,
+		contentType: response.headers.get('content-type') ?? '',
+		bytes: await readBody(response, packageSourceLimits.maxDownloadBytes),
+	}
 }
 
 const skippedDirs = new Set(['.git', 'node_modules'])
@@ -548,9 +603,9 @@ export function packagePreviewFromFetched(fetched: FetchedPackage): PackagePrevi
 
 export async function fetchPackageSource(
 	source: PackageSource,
-	options: { allowedHosts: Array<string>; privateHosts?: Array<string>; fetch?: FetchLike | undefined },
+	options: PackageSourceFetchOptions,
 ): Promise<FetchedPackage> {
-	const privateHosts = options.privateHosts ?? []
+	const guard = createSourceHopGuard(options)
 	if (source.kind === 'kody') {
 		const cloned = await cloneGitSmartHttp(source.gitUrl, {
 			ref: source.ref,
@@ -563,7 +618,7 @@ export async function fetchPackageSource(
 				timeoutMs: packageSourceLimits.timeoutMs,
 				maxRedirects: packageSourceLimits.maxRedirects,
 			},
-			assertAllowed: (raw) => assertAllowedSourceUrl(raw, options.allowedHosts, privateHosts).toString(),
+			assertAllowed: guard,
 		})
 		return {
 			files: cloned.files,
@@ -580,12 +635,12 @@ export async function fetchPackageSource(
 	let downloadSource = source
 	if (source.kind === 'github') {
 		githubCommit = source.ref && fullCommitSha.test(source.ref) ? source.ref.toLowerCase() : undefined
-		if (!githubCommit) githubCommit = await resolveGithubCommitSha(source, options)
+		if (!githubCommit) githubCommit = await resolveGithubCommitSha(source, options, guard)
 		if (githubCommit) downloadSource = { ...source, ref: githubCommit }
 	}
 
 	const url = downloadSource.kind === 'github' ? githubTarballUrl(downloadSource) : downloadSource.url
-	const downloaded = await fetchAllowed(url, options.allowedHosts, options.fetch, privateHosts)
+	const downloaded = await fetchAllowed(url, guard, options.fetch)
 	let result: { files: PackageFiles; warnings: Array<string> }
 	if (isGzip(downloaded.bytes)) {
 		const archive = await gunzip(downloaded.bytes, packageSourceLimits.maxArchiveBytes)
@@ -623,7 +678,7 @@ export async function fetchPackageSource(
 
 export async function previewPackageSource(
 	source: PackageSource,
-	options: { allowedHosts: Array<string>; privateHosts?: Array<string>; fetch?: FetchLike | undefined },
+	options: PackageSourceFetchOptions,
 ): Promise<PackagePreview> {
 	const fetched = await fetchPackageSource(source, options)
 	return packagePreviewFromFetched(fetched)

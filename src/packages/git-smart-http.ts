@@ -106,7 +106,8 @@ async function readBody(response: Response, maxBytes: number) {
 	return concatBytes(chunks)
 }
 
-export type AssertAllowed = (raw: string) => string
+/** Checks one hop (first URL or redirect target) and returns it; may be async (DNS check). */
+export type AssertAllowed = (raw: string) => string | Promise<string>
 
 async function fetchGit(
 	raw: string,
@@ -115,7 +116,7 @@ async function fetchGit(
 	fetchImpl: FetchLike,
 	limits: GitCloneLimits,
 ) {
-	let current = assertAllowed(raw)
+	let current = await assertAllowed(raw)
 	for (let hop = 0; hop <= limits.maxRedirects; hop += 1) {
 		const response = await fetchImpl(current, {
 			...init,
@@ -127,7 +128,8 @@ async function fetchGit(
 			if (!location) {
 				throw new KodyError('package_source_failed', `${current} redirected without a location.`, { status: 502 })
 			}
-			current = assertAllowed(new URL(location, current).toString())
+			await response.body?.cancel().catch(() => {})
+			current = await assertAllowed(new URL(location, current).toString())
 			continue
 		}
 		if (!response.ok) {

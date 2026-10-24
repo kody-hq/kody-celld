@@ -23,7 +23,7 @@ export const browserDomain = defineDomain({
 	description:
 		'Headless-browser rendering through a self-hosted browserless / CDP HTTP service (compose.browser.yaml). Extract rendered HTML/text, take screenshots, or print PDFs of a URL or of HTML you supply.',
 	guide:
-		'browserContent returns rendered HTML plus extracted text. browserScreenshot / browserPdf return the bytes base64-encoded and can also store them as a blob (`saveAs`) so you get a signed download `url` instead of a large payload. When called from execute, return `{ __mcpContent: [...] }` from browserScreenshot to show the image inline. Private/loopback hosts are refused unless the operator lists them in KODY_PRIVATE_HOSTS.',
+		'browserContent returns rendered HTML plus extracted text. browserScreenshot / browserPdf return the bytes base64-encoded and can also store them as a blob (`saveAs`) so you get a signed download `url` instead of a large payload. When called from execute, return `{ __mcpContent: [...] }` from browserScreenshot to show the image inline. Private/loopback hosts, and names that resolve to them, are refused unless the operator lists them in KODY_PRIVATE_HOSTS.',
 })
 
 const maxHtmlLength = 2_000_000
@@ -43,7 +43,7 @@ function configured(ctx: CapabilityContext): NonNullable<BrowserConfig> {
 
 type CommonArgs = { url?: string; html?: string; waitUntil?: WaitUntil; timeoutMs?: number }
 
-function renderOptions(args: CommonArgs, config: NonNullable<BrowserConfig>): RenderOptions {
+async function renderOptions(args: CommonArgs, config: NonNullable<BrowserConfig>): Promise<RenderOptions> {
 	let target: PageTarget
 	if (typeof args.html === 'string') {
 		if (args.url !== undefined) throw new KodyError('invalid_args', 'Pass either url or html, not both.')
@@ -53,7 +53,7 @@ function renderOptions(args: CommonArgs, config: NonNullable<BrowserConfig>): Re
 		target = { html: args.html }
 	} else {
 		if (args.url === undefined) throw new KodyError('invalid_args', 'Either url or html is required.')
-		target = { url: assertRenderableUrl(args.url, config) }
+		target = { url: await assertRenderableUrl(args.url, config) }
 	}
 	const waitUntil = args.waitUntil ?? 'networkidle2'
 	if (!waitUntilValues.includes(waitUntil)) {
@@ -111,7 +111,7 @@ export default async function main({ url }) {
 	async handler(args, ctx) {
 		const config = configured(ctx)
 		const renderer = createRenderer(config)!
-		const options = renderOptions(args, config)
+		const options = await renderOptions(args, config)
 		const html = await renderer.content(options)
 		const text = htmlToText(html)
 		const cap = Math.min(Math.max(args.maxTextLength ?? 50_000, 100), maxTextReturn)
@@ -185,7 +185,7 @@ export default async function main({ url }) {
 		const height = Math.min(Math.max(args.height ?? 800, 200), 4096)
 		const quality = args.quality === undefined ? undefined : Math.min(Math.max(Math.floor(args.quality), 0), 100)
 		const rendered = await renderer.screenshot({
-			...renderOptions(args, config),
+			...(await renderOptions(args, config)),
 			fullPage: args.fullPage ?? false,
 			format,
 			quality,
@@ -250,7 +250,7 @@ export const browserPdf = defineCapability<
 			throw new KodyError('invalid_args', `format must be one of ${pdfFormats.join(', ')}.`)
 		}
 		const rendered = await renderer.pdf({
-			...renderOptions(args, config),
+			...(await renderOptions(args, config)),
 			format,
 			landscape: args.landscape ?? false,
 			printBackground: args.printBackground ?? true,

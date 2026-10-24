@@ -1,6 +1,7 @@
 import { hostMatchesAllowlist, isPrivateHostname } from '../lib/host-allowlist.ts'
 import { KodyError } from '../lib/errors.ts'
 import { privateHostsEnvKey, privateHostsFromEnv, type PrivateHostsEnv } from '../lib/private-hosts-env.ts'
+import { dnsResolverUrlFromEnv } from '../lib/resolved-host-guard.ts'
 
 export type McpEnv = PrivateHostsEnv & {
 	KODY_MCP_CALL_TIMEOUT_MS?: string
@@ -10,7 +11,6 @@ export type McpEnv = PrivateHostsEnv & {
 export type McpConfig = { allowPrivateHosts: Array<string>; callTimeoutMs: number; dnsResolverUrl: string }
 
 export const defaultMcpCallTimeoutMs = 30_000
-export const defaultDnsResolverUrl = 'https://cloudflare-dns.com/dns-query'
 export const mcpServerNamePattern = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/
 
 export function mcpConfigFromEnv(env: McpEnv): McpConfig {
@@ -24,15 +24,7 @@ export function mcpConfigFromEnv(env: McpEnv): McpConfig {
 				throw new Error(`KODY_MCP_CALL_TIMEOUT_MS: expected an integer between 1000 and 600000, got "${raw}".`)
 			}
 		}
-		const resolverRaw = env.KODY_DNS_RESOLVER_URL?.trim() || defaultDnsResolverUrl
-		let dnsResolverUrl: string
-		try {
-			const parsed = new URL(resolverRaw)
-			if (parsed.protocol !== 'https:') throw new Error('not https')
-			dnsResolverUrl = parsed.href
-		} catch {
-			throw new Error(`KODY_DNS_RESOLVER_URL: expected an https URL, got "${resolverRaw}".`)
-		}
+		const dnsResolverUrl = dnsResolverUrlFromEnv(env)
 		return { allowPrivateHosts, callTimeoutMs, dnsResolverUrl }
 	} catch (error) {
 		throw new KodyError('config_error', error instanceof Error ? error.message : String(error), { status: 500 })

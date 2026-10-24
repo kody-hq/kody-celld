@@ -64,9 +64,11 @@ roadmap is now shipped; the roadmap below is kept as the change log.
   once; an unpinned specifier is re-resolved when its cache entry expires.
 - **Installing from GitHub / URLs / kody.codes** downloads on the server: the
   host must be a built-in public source (GitHub hosts and `kody.codes`) or a
-  private/LAN host listed in `KODY_PRIVATE_HOSTS`, and the guard
-  checks hostnames, not resolved IPs — a public name pointing at a private
-  address is only stopped by your network. There is no signature/checksum
+  private/LAN host listed in `KODY_PRIVATE_HOSTS`. Every hop's hostname is
+  also resolved through `KODY_DNS_RESOLVER_URL` and private answers are
+  refused, but `fetch` resolves the name again when it connects, so a name
+  that changes its answer between the check and the connect is not excluded
+  ([kody-celld#45](https://github.com/kody-hq/kody-celld/issues/45)). There is no signature/checksum
   verification of what is downloaded. Public kody.codes packages are imported
   via read-only Git smart-HTTP on `…/@owner/leaf.git` (listing URLs rewrite to
   that); the HTML listing page is not an install API. Hosted upload-pack must

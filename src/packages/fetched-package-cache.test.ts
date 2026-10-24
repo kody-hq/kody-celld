@@ -7,6 +7,7 @@ import {
 	urlFetchedPackageCacheTtlMs,
 } from './fetched-package-cache.ts'
 import { parsePackageSource, type FetchLike } from './install.ts'
+import { publicTestDns } from '../lib/test-dns.ts'
 
 const sha = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 const manifest = JSON.stringify({
@@ -36,10 +37,12 @@ describe('fetchPackageSourceCached', () => {
 		const source = parsePackageSource('https://example.com/pkg.json')
 		const first = await fetchPackageSourceCached(source, {
 			allowedHosts: ['example.com'],
+			...publicTestDns(),
 			fetch: fetchImpl,
 		})
 		const second = await fetchPackageSourceCached(source, {
 			allowedHosts: ['example.com'],
+			...publicTestDns(),
 			fetch: fetchImpl,
 		})
 		assert.equal(calls, 1)
@@ -60,8 +63,8 @@ describe('fetchPackageSourceCached', () => {
 			return jsonPackageResponse()
 		}
 		const source = parsePackageSource('https://example.com/pkg.json')
-		const a = fetchPackageSourceCached(source, { allowedHosts: ['example.com'], fetch: fetchImpl })
-		const b = fetchPackageSourceCached(source, { allowedHosts: ['example.com'], fetch: fetchImpl })
+		const a = fetchPackageSourceCached(source, { allowedHosts: ['example.com'], fetch: fetchImpl, ...publicTestDns() })
+		const b = fetchPackageSourceCached(source, { allowedHosts: ['example.com'], fetch: fetchImpl, ...publicTestDns() })
 		release()
 		assert.equal((await a).files['main.js'], (await b).files['main.js'])
 		assert.equal(calls, 1)
@@ -85,16 +88,24 @@ describe('fetchPackageSourceCached', () => {
 		}
 		const hosts = ['codeload.github.com', 'api.github.com']
 		const unpinned = parsePackageSource('github:o/hello')
-		const first = await fetchPackageSourceCached(unpinned, { allowedHosts: hosts, fetch: fetchImpl })
+		const first = await fetchPackageSourceCached(unpinned, {
+			allowedHosts: hosts,
+			fetch: fetchImpl,
+			...publicTestDns(),
+		})
 		assert.equal(first.commit, sha)
 		assert.equal(tarballCalls, 1)
 		// A later unpinned visit must not reuse the old tree (mutable key is not cached).
-		const second = await fetchPackageSourceCached(unpinned, { allowedHosts: hosts, fetch: fetchImpl })
+		const second = await fetchPackageSourceCached(unpinned, {
+			allowedHosts: hosts,
+			fetch: fetchImpl,
+			...publicTestDns(),
+		})
 		assert.equal(tarballCalls, 2)
 		assert.equal(second.files['main.js'], 'export const n = 2\n')
 		// Commit-pinned browsing reuses the entry written by the last fetch.
 		const pinned = parsePackageSource(`github:o/hello#${sha}`)
-		const third = await fetchPackageSourceCached(pinned, { allowedHosts: hosts, fetch: fetchImpl })
+		const third = await fetchPackageSourceCached(pinned, { allowedHosts: hosts, fetch: fetchImpl, ...publicTestDns() })
 		assert.equal(tarballCalls, 2)
 		assert.equal(third.files['main.js'], second.files['main.js'])
 	})
@@ -119,6 +130,7 @@ describe('fetchPackageSourceCached', () => {
 		for (const host of ['a.example', 'b.example', 'c.example', 'd.example']) {
 			await fetchPackageSourceCached(parsePackageSource(`https://${host}/pkg.json`), {
 				allowedHosts: ['*.example'],
+				...publicTestDns(),
 				fetch: fetchImpl,
 			})
 		}
@@ -126,6 +138,7 @@ describe('fetchPackageSourceCached', () => {
 		assert.equal(n, 4)
 		await fetchPackageSourceCached(parsePackageSource('https://a.example/pkg.json'), {
 			allowedHosts: ['*.example'],
+			...publicTestDns(),
 			fetch: fetchImpl,
 		})
 		assert.equal(n, 5)
@@ -149,6 +162,7 @@ describe('fetchPackageSourceCached', () => {
 			const source = parsePackageSource('https://example.com/pkg.json')
 			const first = await fetchPackageSourceCached(source, {
 				allowedHosts: ['example.com'],
+				...publicTestDns(),
 				fetch: fetchImpl,
 			})
 			assert.equal(calls, 1)
@@ -156,6 +170,7 @@ describe('fetchPackageSourceCached', () => {
 			mock.timers.tick(urlFetchedPackageCacheTtlMs - 1)
 			const warm = await fetchPackageSourceCached(source, {
 				allowedHosts: ['example.com'],
+				...publicTestDns(),
 				fetch: fetchImpl,
 			})
 			assert.equal(calls, 1)
@@ -163,6 +178,7 @@ describe('fetchPackageSourceCached', () => {
 			mock.timers.tick(2)
 			const refreshed = await fetchPackageSourceCached(source, {
 				allowedHosts: ['example.com'],
+				...publicTestDns(),
 				fetch: fetchImpl,
 			})
 			assert.equal(calls, 2)

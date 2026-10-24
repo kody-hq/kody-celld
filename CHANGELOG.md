@@ -6,6 +6,16 @@ ones.
 
 ## [Unreleased]
 
+### Package sources and browser rendering resolve hostnames
+
+Package installs and previews (every hop, including redirects) and browser
+rendering `url`s now resolve the hostname through `KODY_DNS_RESOLVER_URL`,
+like MCP servers already did, and refuse private answers that
+`KODY_PRIVATE_HOSTS` does not allow. If you install packages from, or render
+pages on, a LAN host by a public DNS name, list its address range in
+`KODY_PRIVATE_HOSTS` (or the name itself). See [docs/browser.md](./docs/browser.md)
+for what the browser check cannot cover.
+
 ### Image registry path (self-hosters)
 
 Images now publish to `ghcr.io/kody-hq/kody-celld` (Publish workflow uses

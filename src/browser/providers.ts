@@ -1,5 +1,6 @@
 import { KodyError } from '../lib/errors.ts'
 import { hostMatchesAllowlist, isPrivateHostname } from '../lib/host-allowlist.ts'
+import { assertResolvedHostAllowed } from '../lib/resolved-host-guard.ts'
 import type { BrowserConfig } from './config.ts'
 
 export type WaitUntil = 'load' | 'domcontentloaded' | 'networkidle0' | 'networkidle2'
@@ -41,15 +42,24 @@ export const waitUntilValues: ReadonlyArray<WaitUntil> = ['load', 'domcontentloa
 export const screenshotFormats: ReadonlyArray<ScreenshotFormat> = ['png', 'jpeg', 'webp']
 export const pdfFormats = ['A4', 'Letter', 'Legal'] as const
 
+function refusePrivate(message: string) {
+	return new KodyError('browser_private_host', message, { status: 403 })
+}
+
 /**
  * The rendering browser fetches the target from *its* network position, which
  * for a self-hosted sidecar is inside the compose network next to Kody, MinIO
  * and Qdrant. Refuse loopback / link-local / RFC1918 literals and `localhost`
- * names unless the operator listed the host in KODY_PRIVATE_HOSTS.
- * Names that merely *resolve* to private space cannot be checked here — see
- * docs/browser.md for the network-isolation recommendation.
+ * names unless the operator listed the host in KODY_PRIVATE_HOSTS, then resolve
+ * the hostname through KODY_DNS_RESOLVER_URL and refuse private answers.
+ * Only the URL Kody is given is checked: redirects, subresources and the
+ * browser's own DNS lookup happen inside the browser (see docs/browser.md).
  */
-export function assertRenderableUrl(raw: unknown, config: NonNullable<BrowserConfig>) {
+export async function assertRenderableUrl(
+	raw: unknown,
+	config: NonNullable<BrowserConfig>,
+	options: { dnsFetch?: ((input: string, init: RequestInit) => Promise<Response>) | undefined } = {},
+): Promise<string> {
 	if (typeof raw !== 'string' || !raw.trim()) throw new KodyError('invalid_args', 'url must be a non-empty string.')
 	let url: URL
 	try {
@@ -64,15 +74,16 @@ export function assertRenderableUrl(raw: unknown, config: NonNullable<BrowserCon
 		throw new KodyError('invalid_args', 'URLs with embedded credentials cannot be rendered.')
 	}
 	const host = url.hostname.toLowerCase()
-	const allowed = hostMatchesAllowlist(host, config.allowPrivateHosts)
-	if (allowed) return url.toString()
-	if (isPrivateHostname(host)) {
-		throw new KodyError(
-			'browser_private_host',
+	if (!hostMatchesAllowlist(host, config.allowPrivateHosts) && isPrivateHostname(host)) {
+		throw refusePrivate(
 			`"${host}" is a loopback/private host. Add it to KODY_PRIVATE_HOSTS on the server to render it.`,
-			{ status: 403 },
 		)
 	}
+	await assertResolvedHostAllowed(
+		url,
+		{ allowPrivateHosts: config.allowPrivateHosts, dnsResolverUrl: config.dnsResolverUrl },
+		{ fetch: options.dnsFetch, refuse: refusePrivate },
+	)
 	return url.toString()
 }
 

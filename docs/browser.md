@@ -96,16 +96,24 @@ compose `deploy` service). Every node uses the same service.
   `169.254.169.254` cloud metadata and IPv4-mapped IPv6 like `::ffff:10.0.0.1`),
   `.local`/`.internal`/single-label names, or `file:`/`data:` schemes — unless
   the host is in `KODY_PRIVATE_HOSTS` (an exact host, or an IP
-  literal inside a listed CIDR range such as `172.30.0.0/16`). The check is on the
-  literal URL; DNS names that resolve to private addresses are not detected, so
-  keep the browser on an isolated network (the compose overlay does this: the
-  browser shares only the compose network with Kody) if untrusted users can
-  render arbitrary URLs.
-
-  MCP server URLs (`mcpServerAdd`) get a stronger check: the hostname is
-  resolved through DNS-over-HTTPS before every hop and private answers are
-  refused ([mcp-servers.md](./mcp-servers.md)). It has the same fast-rebinding
-  gap, because `fetch` resolves the name again when it connects; tracked in
+  literal inside a listed CIDR range such as `172.30.0.0/16`).
+- **Resolved addresses are checked.** Before Kody asks the browser to load a
+  `url`, it resolves the hostname through DNS-over-HTTPS
+  (`KODY_DNS_RESOLVER_URL`, the same check MCP servers get, see
+  [mcp-servers.md](./mcp-servers.md)) and refuses the URL with
+  `browser_private_host` if any A/AAAA answer is a private, loopback,
+  link-local, CGNAT or metadata address (IPv4 or IPv6, including IPv4-mapped
+  forms) that no IP/CIDR entry of `KODY_PRIVATE_HOSTS` allows, or if the lookup
+  fails. IP literals and names that match a name or `*.suffix` entry skip the
+  lookup.
+- **Limits of that check.** Only the URL Kody is given is checked. The browser
+  follows redirects, loads subresources and runs page scripts itself, and it
+  resolves the name again with its own resolver, so a redirect, a subresource,
+  an `html` input, or a name whose answer changes after the check can still
+  reach whatever the browser's network can reach. Keep the browser on an
+  isolated network (the compose overlay does this: the browser shares only the
+  compose network with Kody) if untrusted users can render arbitrary URLs.
+  Connect-time pinning is tracked in
   [kody-celld#45](https://github.com/kody-hq/kody-celld/issues/45).
 
 - **The browser is not the gateway.** Pages are fetched by Chromium, so

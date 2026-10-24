@@ -9,19 +9,21 @@
  */
 
 import { privateHostsFromEnv, type PrivateHostsEnv } from '../lib/private-hosts-env.ts'
+import { dnsResolverUrlFromEnv, type DnsResolverEnv } from '../lib/resolved-host-guard.ts'
 
 export type BrowserProviderKind = 'browserless'
 
 const noticeUrl = 'https://github.com/kody-hq/kody-celld/issues/63'
 
-export type BrowserEnv = PrivateHostsEnv & {
-	KODY_BROWSER_PROVIDER?: string
-	KODY_BROWSER_URL?: string
-	KODY_BROWSER_TOKEN?: string
-	/** @deprecated Removed — see #63. Presence fails loudly. */
-	KODY_BROWSER_CF_ACCOUNT_ID?: string
-	KODY_BROWSER_TIMEOUT_MS?: string
-}
+export type BrowserEnv = PrivateHostsEnv &
+	DnsResolverEnv & {
+		KODY_BROWSER_PROVIDER?: string
+		KODY_BROWSER_URL?: string
+		KODY_BROWSER_TOKEN?: string
+		/** @deprecated Removed — see #63. Presence fails loudly. */
+		KODY_BROWSER_CF_ACCOUNT_ID?: string
+		KODY_BROWSER_TIMEOUT_MS?: string
+	}
 
 export type BrowserConfig = {
 	provider: BrowserProviderKind
@@ -31,6 +33,8 @@ export type BrowserConfig = {
 	timeoutMs: number
 	/** Exact hosts, `*.suffix`, IPs or CIDR ranges that may be rendered although they are private/loopback. */
 	allowPrivateHosts: Array<string>
+	/** DoH JSON endpoint the target URL's hostname is resolved through before rendering. */
+	dnsResolverUrl: string
 } | null
 
 export const defaultBrowserTimeoutMs = 30_000
@@ -77,9 +81,10 @@ export function browserConfigFromEnv(env: BrowserEnv): BrowserConfig {
 	}
 	const token = trimmed(env.KODY_BROWSER_TOKEN) ?? null
 	const allowPrivateHosts = privateHostsFromEnv(env)
+	const dnsResolverUrl = dnsResolverUrlFromEnv(env)
 	const url = trimmed(env.KODY_BROWSER_URL)
 	if (!url) throw new Error('KODY_BROWSER_URL is required when KODY_BROWSER_PROVIDER=browserless.')
-	return { provider, baseUrl: httpUrl('KODY_BROWSER_URL', url), token, timeoutMs, allowPrivateHosts }
+	return { provider, baseUrl: httpUrl('KODY_BROWSER_URL', url), token, timeoutMs, allowPrivateHosts, dnsResolverUrl }
 }
 
 /** Safe-to-print summary (no token). */

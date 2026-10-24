@@ -2,9 +2,9 @@ import {
 	describePackageSource,
 	fetchPackageSource,
 	pinPackageSourceToCommit,
-	type FetchLike,
 	type FetchedPackage,
 	type PackageSource,
+	type PackageSourceFetchOptions,
 } from './install.ts'
 
 /**
@@ -72,7 +72,7 @@ function settledHit(key: string): Promise<FetchedPackage> | null {
 
 export async function fetchPackageSourceCached(
 	source: PackageSource,
-	options: { allowedHosts: Array<string>; privateHosts?: Array<string>; fetch?: FetchLike | undefined },
+	options: PackageSourceFetchOptions,
 ): Promise<FetchedPackage> {
 	const key = fetchedPackageCacheKey(source)
 	const cached = settledHit(key)

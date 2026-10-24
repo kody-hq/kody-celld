@@ -320,9 +320,9 @@ KODY_PRIVATE_HOSTS=homeassistant.lan,*.home.arpa,172.30.0.0/16,10.0.0.5
   the same policy. The `Authorization` header is dropped as soon as the origin
   changes.
 
-The same `KODY_PRIVATE_HOSTS` list also governs the browser
-([browser.md](./browser.md)), package sources ([packages.md](./packages.md))
-and plain-`http:` secret fetches ([secrets.md](./secrets.md)). Restart the
+The same `KODY_PRIVATE_HOSTS` list and resolved-address check also govern the
+browser ([browser.md](./browser.md)) and package sources
+([packages.md](./packages.md)); the list also governs plain-`http:` secret fetches ([secrets.md](./secrets.md)). Restart the
 node after changing it.
 
 ## Limits
