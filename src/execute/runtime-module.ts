@@ -305,7 +305,108 @@ export const packageSecrets = {
 	},
 }
 
-export const email = null
+const emailTriggerNames = [
+	'subscription:email.message.received',
+	'subscription:email.message.quarantined',
+]
+const emailRuntimeUnboundMessage =
+	'email is only available in email.message.received and email.message.quarantined subscription handlers.'
+
+function assertEmailRuntimeBound() {
+	const trigger = __current()?.trigger
+	if (emailTriggerNames.includes(trigger)) return
+	const error = new Error(emailRuntimeUnboundMessage)
+	error.name = 'RuntimeHelperUnbound'
+	error.code = 'runtime_helper_unbound'
+	throw error
+}
+
+function emailMessageId(value, method, resource) {
+	const id = typeof value === 'string' ? value.trim() : ''
+	if (!id) throw new Error(method + ' requires a non-empty ' + resource + ' id.')
+	return id
+}
+
+export const email = {
+	async getMessage(messageId) {
+		assertEmailRuntimeBound()
+		const id = emailMessageId(messageId, 'email.getMessage', 'message')
+		const message = await host().capability('emailMessageGet', { id }, __callContext())
+		return {
+			id: message.id,
+			direction: message.direction,
+			inbox_id: message.inboxAddress,
+			thread_id: null,
+			from_address: message.from.address,
+			envelope_from: null,
+			to_addresses: message.to.map((address) => address.address),
+			cc_addresses: message.cc.map((address) => address.address),
+			bcc_addresses: [],
+			reply_to_addresses: message.replyTo.map((address) => address.address),
+			subject: message.subject,
+			message_id_header: message.messageId,
+			in_reply_to_header: message.inReplyTo,
+			references: message.references,
+			headers: message.headers,
+			auth_results: null,
+			text_body: message.text,
+			html_body: message.html,
+			raw_size: message.sizeBytes,
+			processing_status: null,
+			provider_message_id: message.providerMessageId,
+			delivery_status: message.deliveryStatus,
+			delivery_status_at: null,
+			error: null,
+			received_at: message.receivedAt,
+			sent_at: null,
+			created_at: message.createdAt,
+			updated_at: null,
+			attachments: message.attachments.map((attachment) => ({
+				id: attachment.id,
+				filename: attachment.filename,
+				content_type: attachment.contentType,
+				content_id: attachment.contentId,
+				disposition: attachment.disposition,
+				size: attachment.size,
+				storage_kind: null,
+				storage_key: null,
+				created_at: null,
+			})),
+		}
+	},
+	async getAttachment(attachmentId) {
+		assertEmailRuntimeBound()
+		const id = emailMessageId(attachmentId, 'email.getAttachment', 'attachment')
+		const attachment = await host().capability('emailAttachmentGet', { attachmentId: id }, __callContext())
+		return {
+			id: attachment.id,
+			message_id: attachment.messageId,
+			filename: attachment.filename,
+			content_type: attachment.contentType,
+			content_id: attachment.contentId,
+			disposition: attachment.disposition,
+			size: attachment.size,
+			content_base64: attachment.contentBase64,
+		}
+	},
+	async reply(input) {
+		assertEmailRuntimeBound()
+		const request = input && typeof input === 'object' ? input : {}
+		return host().capability(
+			'emailReply',
+			{
+				id: request.message_id ?? request.id,
+				...(request.text === undefined ? {} : { text: request.text }),
+				...(request.html === undefined ? {} : { html: request.html }),
+				...(request.subject === undefined ? {} : { subject: request.subject }),
+				...(request.attachments === undefined ? {} : { attachments: request.attachments }),
+				...(request.headers === undefined ? {} : { headers: request.headers }),
+			},
+			__callContext(),
+		)
+	},
+}
+
 export const workflows = {
 	create: async (input) => await host().capability('packageWorkflowCreate', input ?? {}, __callContext()),
 }

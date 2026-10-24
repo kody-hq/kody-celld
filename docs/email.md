@@ -63,6 +63,36 @@ Handlers run through the normal `executeRun` with `kind: 'subscription'` and
 the package's provenance, so `packageStorage()` and `{{secret:…}}` work and
 failures show up in run history (`trigger: subscription:<topic>`).
 
+### Email runtime helper
+
+Received and quarantined handlers can import the hosted-compatible `email`
+helper from `kody:runtime`:
+
+```js
+import { email } from 'kody:runtime'
+
+export default async function onEmail({ message }) {
+  const fullMessage = await email.getMessage(message.id)
+  const attachment = fullMessage.attachments[0]
+  if (attachment) {
+    const content = await email.getAttachment(attachment.id)
+    await email.reply({ message_id: fullMessage.id, text: 'Thanks for your message.' })
+    return { filename: content.filename, size: content.size }
+  }
+  return { subject: fullMessage.subject }
+}
+```
+
+`email.getMessage(messageId)` returns the stored message with hosted snake_case
+fields. Recipient address lists contain address strings. `email.getAttachment(id)`
+returns metadata and `content_base64`; attachment ids are unique within the
+user's cell, so the message id is not required. `email.reply(input)` accepts
+hosted `message_id` or celld `id`, plus `text`, `html`, `subject`,
+`attachments`, and `headers`.
+
+The helper is available only for `email.message.received` and
+`email.message.quarantined` subscription runs.
+
 ## Inbound adapters
 
 All inbound routes are `POST /email/inbound/<provider>` and authenticate with

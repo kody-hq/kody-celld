@@ -135,6 +135,13 @@ roadmap is now shipped; the roadmap below is kept as the change log.
   `emailMessageGet`, so other clients rendering it should treat it as
   untrusted. The web Email page renders it the way hosted Kody does: scripts
   stripped, then a sandboxed `srcdoc` iframe ([web-ui.md](./web-ui.md#security-notes)).
+  The package runtime always exports `email`, unlike hosted Kody which exports
+  null outside email runs; calling a method outside received or quarantined
+  handlers throws `RuntimeHelperUnbound` (`runtime_helper_unbound`). Fields
+  without celld equivalents are returned as null, including `thread_id`,
+  `envelope_from`, `auth_results`, `processing_status`, `delivery_status_at`,
+  `error`, `sent_at`, and `updated_at`; attachment `storage_kind`,
+  `storage_key`, and `created_at` are also null.
 - **Webhooks** verify HMAC-SHA256 only (the scheme GitHub, Stripe, Slack,
   Shopify and most providers use); providers with asymmetric signatures (e.g.
   Svix/Standard Webhooks Ed25519) can still be received unsigned behind the

@@ -83,7 +83,12 @@ export default {
 		__init(env)
 		__patchGlobals()
 		const { params, context } = await request.json()
-		const store = { runId: context.runId, packageName: context.packageName ?? null, logs: [] }
+		const store = {
+			runId: context.runId,
+			packageName: context.packageName ?? null,
+			trigger: context.trigger ?? null,
+			logs: [],
+		}
 		__setPackageContext(
 			context.packageName ? { packageName: context.packageName, version: context.packageVersion ?? null, runId: context.runId } : null,
 		)
