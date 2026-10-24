@@ -74,6 +74,20 @@ hyphens. Each slot requires a description from 1 to 500 characters.
 the slot name. `multiple` is an optional boolean. Celld warns and drops unknown
 slot fields, `placement`, and `ownerCredentialForVisitors`.
 
+## Credential runtime
+
+Package code can open one declared credential with `credential('github')`.
+`credential.named('token-name', { scope: 'user' })` selects a named credential,
+and `credentials('github')` returns all matches for a slot declared with
+`multiple: true`.
+
+The runtime supports `secret`, `oauth`, and `mcp` credentials. Secret and OAuth
+clients expose `fetch`; MCP clients expose `callTool(tool, args)`. Secret
+values remain at the gateway, which enforces approved hosts when requests are
+sent. The client-side host check is defense in depth only. The runtime does
+not expose `sign()`. Manifest-only `url`, `login`, and `signing` slots fail with
+`credential_unsupported` when opened.
+
 ### TypeScript and JSX
 
 `.ts`, `.mts`, `.tsx` and `.jsx` package files are compiled when they run, as hosted kody does with esbuild; here it's sucrase. Ad hoc `execute` code is read as TypeScript. Package files are stored exactly as written. Types are removed, not checked.

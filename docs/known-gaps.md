@@ -168,8 +168,11 @@ roadmap is now shipped; the roadmap below is kept as the change log.
 
 ## celld-specific caveats
 
-- **Package credential slots.** Celld parses and stores `kody.credentials`,
-  but `credential()` is not available yet.
+- **Package credentials.** Runtime supports `secret`, `oauth`, and `mcp` kinds.
+  Secret hosts come from account-level approved hosts, not per-secret host
+  lists. Celld does not support credential `inject` or `sign()`. Declared
+  `url`, `login`, and `signing` slots fail with `credential_unsupported`.
+  Imported package code resolves credentials as the package being run.
 - Import resolution in Worker Loader isolates follows the importing module's
   directory (celld 0.6). The module graph rewrites every static import to a
   relative path. Packages that build specifiers dynamically
