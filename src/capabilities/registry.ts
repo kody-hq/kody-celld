@@ -18,6 +18,7 @@ import { secretProviderCapabilities, secretProvidersDomain } from './secret-prov
 import { accountCapabilities, accountDomain } from './account.ts'
 import { communityCapabilities, communityDomain } from './community.ts'
 import { eventCapabilities, eventsDomain } from './events.ts'
+import { computedImportCapabilities } from './computed-import.ts'
 
 export const domains: Array<DomainDefinition> = [
 	systemDomain,
@@ -59,6 +60,7 @@ export const capabilities: Array<CapabilityDefinition> = [
 	...accountCapabilities,
 	...communityCapabilities,
 	...eventCapabilities,
+	...computedImportCapabilities,
 ]
 
 const byName = new Map(capabilities.map((c) => [c.name, c]))

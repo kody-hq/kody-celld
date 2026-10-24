@@ -6,7 +6,12 @@ import {
 	resolvePackageExport,
 	type PackageFiles,
 } from '../packages/manifest.ts'
-import { lexImportSpecifiers, relativeImportCandidates, replaceImportSpecifiers } from './import-specifiers.ts'
+import {
+	lexComputedDynamicImports,
+	lexImportSpecifiers,
+	relativeImportCandidates,
+	replaceImportSpecifiers,
+} from './import-specifiers.ts'
 import { resolveNpmModules, type NpmResolverOptions } from './npm-resolver.ts'
 import { RUNTIME_MODULE_SOURCE } from './runtime-module.ts'
 import {
@@ -103,19 +108,78 @@ export function packageModulePath(packageName: string, filePath: string) {
 
 type Rewriter = (specifier: string, fromPath: string) => Promise<string>
 
+function createUniqueHelperName(source: string, baseName: string) {
+	let candidate = baseName
+	let suffix = 0
+	while (source.includes(candidate)) {
+		suffix += 1
+		candidate = `${baseName}${suffix}`
+	}
+	return candidate
+}
+
+function computedDynamicImportGuardSource(helperName: string) {
+	return `
+const ${helperName} = async (specifier) => {
+	const resolvedSpecifier = \`\${specifier}\`
+	let decodedSpecifier = resolvedSpecifier
+	try {
+		decodedSpecifier = decodeURIComponent(resolvedSpecifier)
+	} catch {}
+	if (
+		/__kody_virtual__/i.test(resolvedSpecifier) ||
+		/__kody_virtual__/i.test(decodedSpecifier)
+	) {
+		throw new Error(
+			'Dynamic import references an internal Kody runtime module (.__kody_virtual__/). Import public helpers from "kody:runtime" instead.',
+		)
+	}
+	if (resolvedSpecifier.startsWith('kody:@')) {
+		const computedPackageImport = globalThis[Symbol.for('kody.computedPackageImport')]
+		if (typeof computedPackageImport !== 'function') {
+			throw new Error(
+				'Dynamic kody:@ package import requires an authenticated runtime. Use a static import (import fn from "kody:@scope/package/export") when the package name is known at write time.',
+			)
+		}
+		return {
+			default: async (params) =>
+				params === undefined
+					? await computedPackageImport({ specifier: resolvedSpecifier })
+					: await computedPackageImport({ specifier: resolvedSpecifier, params }),
+		}
+	}
+	return await import(resolvedSpecifier)
+};
+`.trim()
+}
+
 /** `packageStorage()` in a saved package module always refers to that package. */
 export function stampPackageStorage(source: string, packageName: string) {
 	return source.replaceAll(/\bpackageStorage\(\s*\)/g, `packageStorage(${JSON.stringify(packageName)})`)
 }
 
 /**
- * Rewrites the specifiers of real imports only (static, `export … from`,
- * side-effect and literal `import()`), found by the lexer. Text that merely
- * looks like an import inside a string, template literal or comment is left
- * as written, so package files built inside `execute` survive packageSave.
+ * Rewrites static and literal dynamic import specifiers and wraps computed
+ * dynamic imports. Text that merely looks like an import inside a string,
+ * template literal or comment is left as written.
  */
 async function rewriteImports(source: string, fromPath: string, rewrite: Rewriter) {
-	const ranges = lexImportSpecifiers(source, fromPath)
+	let rewritten = source
+	let helperSource = ''
+	const computedImports = lexComputedDynamicImports(source, fromPath)
+	if (computedImports.length > 0) {
+		const helperName = createUniqueHelperName(source, '__kodyDynamicImportGuard')
+		let cursor = 0
+		let transformed = ''
+		for (const range of computedImports) {
+			transformed +=
+				source.slice(cursor, range.start) + `${helperName}(${source.slice(range.expressionStart, range.expressionEnd)})`
+			cursor = range.end
+		}
+		rewritten = transformed + source.slice(cursor)
+		helperSource = computedDynamicImportGuardSource(helperName)
+	}
+	const ranges = lexImportSpecifiers(rewritten, fromPath)
 	const replacements = new Map<string, string>()
 	// Skip type-only ranges for resolution (they are erased); a value import of
 	// the same specifier still populates replacements and rewrites both sites.
@@ -123,7 +187,13 @@ async function rewriteImports(source: string, fromPath: string, rewrite: Rewrite
 		if (typeOnly || replacements.has(specifier)) continue
 		replacements.set(specifier, await rewrite(specifier, fromPath))
 	}
-	return replaceImportSpecifiers(source, fromPath, (specifier) => replacements.get(specifier) ?? null, ranges)
+	const rewrittenImports = replaceImportSpecifiers(
+		rewritten,
+		fromPath,
+		(specifier) => replacements.get(specifier) ?? null,
+		ranges,
+	)
+	return helperSource ? `${helperSource}\n${rewrittenImports}` : rewrittenImports
 }
 
 /**

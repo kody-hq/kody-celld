@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { lexImportSpecifiers, relativeImportCandidates, replaceImportSpecifiers } from './import-specifiers.ts'
+import {
+	lexComputedDynamicImports,
+	lexImportSpecifiers,
+	relativeImportCandidates,
+	replaceImportSpecifiers,
+} from './import-specifiers.ts'
 
 const source = [
 	"import a from 'kody:runtime'",
@@ -20,6 +25,19 @@ describe('lexImportSpecifiers', () => {
 			lexImportSpecifiers(source, 'main.js').map((i) => i.specifier),
 			['kody:runtime', './x.js', './side.js', './dyn.js'],
 		)
+	})
+
+	it('reports computed dynamic import calls without literal specifiers or attributes', () => {
+		const computedSource = [
+			"import value from './static.js'",
+			"const literal = import('./literal.js')",
+			'const computed = import(name)',
+			"const attributed = import(name, { with: { type: 'json' } })",
+		].join('\n')
+		const ranges = lexComputedDynamicImports(computedSource, 'main.js')
+		assert.equal(ranges.length, 1)
+		assert.equal(computedSource.slice(ranges[0]?.start, ranges[0]?.end), 'import(name)')
+		assert.equal(computedSource.slice(ranges[0]?.expressionStart, ranges[0]?.expressionEnd), 'name')
 	})
 
 	it('marks TypeScript import type as typeOnly; export type … from is absent or typeOnly (kody skips both)', () => {
