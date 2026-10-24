@@ -196,10 +196,11 @@ roadmap is now shipped; the roadmap below is kept as the change log.
   Imported package code resolves credentials as the package being run.
 - **Hosted HTTP API.** celld serves `/v1` at the origin of `KODY_PUBLIC_URL`,
   not on a separate `api.` host. `/openapi.json` lists that origin in its
-  `servers` array. Memories and secrets routes, token routes,
-  `/v1/search/tool`, capability proxy and local-execute, repos, webhooks,
-  email, integrations, MCP servers, community, and storage routes are deferred
-  to follow-up PRs.
+  `servers` array. Routes for memories, MCP server instructions, secrets,
+  webhooks, email, integrations, MCP servers, community, and storage are
+  present and appear when their capabilities are registered. Token routes,
+  `/v1/search/tool`, capability proxy and local-execute, and repos are not
+  ported yet.
 - **Package subscriptions and manifest keys.** Celld emits only
   `email.message.received`, `email.message.quarantined`,
   `email.message.delivery.updated`, `integration.auth.succeeded`, and
