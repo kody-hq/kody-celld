@@ -69,11 +69,11 @@ import {
 import type { ErrorTriageFilter, RunKind, RunTriageBulkInput, RunTriageUpdate } from '../runs/triage-args.ts'
 import {
 	ensureRunTriageColumns,
-	errorTriageWhere,
 	type RunSummary,
 	type RunTriageBulkResult,
 	type RunTriageFields,
 	RunTriageStore,
+	runListRows,
 	triageFieldsFromRow,
 } from '../runs/triage-store.ts'
 import { signatureMatches } from '../webhooks/verify.ts'
@@ -2149,6 +2149,7 @@ export class UserCell extends DurableObject<Env> {
 					logs_json: string
 					warnings_json: string
 					gateway_json: string
+					workflow_id: string | null
 			  }
 			| undefined
 		if (!row) return null
@@ -2177,42 +2178,7 @@ export class UserCell extends DurableObject<Env> {
 			workflowId?: string | undefined
 		} = {},
 	): Promise<Array<Omit<RunRecord, 'resultJson' | 'logsJson' | 'gateway'>>> {
-		const limit = Math.min(Math.max(filter.limit ?? 20, 1), 200)
-		const workflowFilter = filter.workflowId === undefined ? '' : ' AND workflow_id = ?'
-		const bindings = filter.workflowId === undefined ? [limit] : [filter.workflowId, limit]
-		return (
-			this.ctx.storage.sql
-				.exec(
-					`SELECT id, kind, package_name, idempotency_key, status, created_at, finished_at, duration_ms, error_json, warnings_json,
-						error_triage, triage_note, triaged_at, triaged_by, job_id
-					FROM runs WHERE ${errorTriageWhere(filter.errorTriage ?? 'all')}${workflowFilter} ORDER BY created_at DESC, id DESC LIMIT ?`,
-					...bindings,
-				)
-				.toArray() as Array<{
-				id: string
-				kind: RunRecord['kind']
-				package_name: string | null
-				idempotency_key: string | null
-				status: RunRecord['status']
-				created_at: string
-				finished_at: string | null
-				duration_ms: number | null
-				error_json: string | null
-				warnings_json: string
-			}>
-		).map((row) => ({
-			id: row.id,
-			kind: row.kind,
-			packageName: row.package_name,
-			idempotencyKey: row.idempotency_key,
-			status: row.status,
-			createdAt: row.created_at,
-			finishedAt: row.finished_at,
-			durationMs: row.duration_ms,
-			error: row.error_json ? (JSON.parse(row.error_json) as RunRecord['error']) : null,
-			warnings: JSON.parse(row.warnings_json) as Array<string>,
-			...triageFieldsFromRow(row as unknown as Record<string, unknown>),
-		}))
+		return runListRows(this.ctx.storage.sql, filter)
 	}
 
 	async runSummary(input: { since?: string | null | undefined } = {}): Promise<RunSummary> {

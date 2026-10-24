@@ -1,5 +1,6 @@
 import type { ErrorTriageFilter, RunErrorTriage, RunTriageBulkInput, RunTriageUpdate } from './triage-args.ts'
 import { runErrorTriageValues } from './triage-args.ts'
+import type { RunRecord } from '../cells/user-cell.ts'
 
 // kody: packages/worker/src/run-records/run-log-do.ts (maybeAutoResolvePriorJobErrors).
 export const autoResolveNote = 'auto-resolved: later success of the same job'
@@ -11,6 +12,7 @@ export type RunTriageFields = {
 	triagedAt: string | null
 	triagedBy: string | null
 	jobId: string | null
+	workflowId: string | null
 }
 
 export type RunSummary = {
@@ -68,6 +70,7 @@ export function triageFieldsFromRow(row: Record<string, unknown>): RunTriageFiel
 		triagedAt: text(row.triaged_at),
 		triagedBy: text(row.triaged_by),
 		jobId: text(row.job_id),
+		workflowId: text(row.workflow_id),
 	}
 }
 
@@ -93,6 +96,57 @@ export function errorTriageWhere(filter: ErrorTriageFilter): string {
 			throw new Error(`Unknown errorTriage filter: ${String(unhandled)}`)
 		}
 	}
+}
+
+type RunListSqlRow = {
+	id: string
+	kind: RunRecord['kind']
+	package_name: string | null
+	idempotency_key: string | null
+	status: RunRecord['status']
+	created_at: string
+	finished_at: string | null
+	duration_ms: number | null
+	error_json: string | null
+	warnings_json: string
+	error_triage: string | null
+	triage_note: string | null
+	triaged_at: string | null
+	triaged_by: string | null
+	job_id: string | null
+	workflow_id: string | null
+}
+
+export type RunListRecord = Omit<RunRecord, 'resultJson' | 'logsJson' | 'gateway'>
+
+export function runListRows(
+	sql: SqlStorage,
+	filter: { limit?: number | undefined; errorTriage?: ErrorTriageFilter | undefined; workflowId?: string | undefined },
+): Array<RunListRecord> {
+	const limit = Math.min(Math.max(filter.limit ?? 20, 1), 200)
+	const workflowFilter = filter.workflowId === undefined ? '' : ' AND workflow_id = ?'
+	const bindings = filter.workflowId === undefined ? [limit] : [filter.workflowId, limit]
+	return sql
+		.exec<RunListSqlRow>(
+			`SELECT id, kind, package_name, idempotency_key, status, created_at, finished_at, duration_ms, error_json, warnings_json,
+				error_triage, triage_note, triaged_at, triaged_by, job_id, workflow_id
+			FROM runs WHERE ${errorTriageWhere(filter.errorTriage ?? 'all')}${workflowFilter} ORDER BY created_at DESC, id DESC LIMIT ?`,
+			...bindings,
+		)
+		.toArray()
+		.map((row) => ({
+			id: row.id,
+			kind: row.kind,
+			packageName: row.package_name,
+			idempotencyKey: row.idempotency_key,
+			status: row.status,
+			createdAt: row.created_at,
+			finishedAt: row.finished_at,
+			durationMs: row.duration_ms,
+			error: row.error_json ? (JSON.parse(row.error_json) as RunRecord['error']) : null,
+			warnings: JSON.parse(row.warnings_json) as Array<string>,
+			...triageFieldsFromRow(row),
+		}))
 }
 
 export class RunTriageStore {
