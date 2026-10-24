@@ -403,4 +403,82 @@ export default async () => broken()`)
 		typedBroken.error,
 	)
 	log('typescript', { adhoc: adhocTs, packageRun: typedRun.result, kodyImport: typedImport })
+
+	const eventTopic = '@kody-smoke/event.created'
+	await mcp.call('packageSave', {
+		files: {
+			'package.json': JSON.stringify({
+				name: '@kody-smoke/event-source',
+				version: '1.0.0',
+				exports: './emit.js',
+				kody: {
+					emits: { [eventTopic]: { description: 'A smoke event.' } },
+				},
+			}),
+			'README.md': '# event-source',
+			'AGENTS.md': 'Smoke.',
+			'emit.js': `import { events } from 'kody:runtime'
+export default async ({ kind = 'match', idempotencyKey = 'smoke:1' } = {}) =>
+	events.dispatch({ topic: '${eventTopic}', idempotencyKey, payload: { kind } })`,
+		},
+	})
+	await mcp.call('packageSave', {
+		files: {
+			'package.json': JSON.stringify({
+				name: '@kody-smoke/event-subscriber',
+				version: '1.0.0',
+				exports: './handle.js',
+				kody: {
+					subscriptions: {
+						[eventTopic]: { handler: './handle.js', filters: { kind: 'match' } },
+					},
+				},
+			}),
+			'README.md': '# event-subscriber',
+			'AGENTS.md': 'Smoke.',
+			'handle.js': `import { packageStorage } from 'kody:runtime'
+export default async (envelope) => {
+	const storage = packageStorage()
+	const count = (await storage.get('count')) ?? 0
+	await storage.set('count', count + 1)
+	await storage.set('envelope', envelope)
+	return count + 1
+}`,
+		},
+	})
+	const eventRun = await mcp.callDirect('packageRun', {
+		name: '@kody-smoke/event-source',
+		params: { kind: 'match', idempotencyKey: 'smoke:events:1' },
+	})
+	assert(
+		eventRun.ok && eventRun.result.status === 'delivered_inline',
+		'events.dispatch should deliver inline',
+		eventRun,
+	)
+	const eventInspect = await mcp.call('packageStorageInspect', { packageName: '@kody-smoke/event-subscriber' })
+	const eventCount = eventInspect.items.find((item) => item.key === 'count')
+	const eventEnvelope = eventInspect.items.find((item) => item.key === 'envelope')
+	assert(eventCount?.value === 1, 'matching event subscription should run once', eventInspect)
+	assert(
+		eventEnvelope?.value?.source?.package_id === '@kody-smoke/event-source',
+		'event envelope source mismatch',
+		eventEnvelope,
+	)
+	const missed = await mcp.callDirect('packageRun', {
+		name: '@kody-smoke/event-source',
+		params: { kind: 'miss', idempotencyKey: 'smoke:events:2' },
+	})
+	assert(missed.ok && missed.result.status === 'delivered_inline', 'nonmatching event should still dispatch', missed)
+	const replay = await mcp.callDirect('packageRun', {
+		name: '@kody-smoke/event-source',
+		params: { kind: 'match', idempotencyKey: 'smoke:events:1' },
+	})
+	assert(replay.ok, 'replaying an event should succeed', replay)
+	const afterReplay = await mcp.call('packageStorageInspect', { packageName: '@kody-smoke/event-subscriber' })
+	assert(
+		afterReplay.items.find((item) => item.key === 'count')?.value === 1,
+		'event replay must not duplicate delivery',
+		afterReplay,
+	)
+	log('package events', { status: eventRun.result.status, count: eventCount.value })
 }
