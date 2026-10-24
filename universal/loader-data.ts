@@ -606,6 +606,19 @@ export type AppLoaderData =
 	  }
 	| { page: 'connectOauthDone'; name: string; provider: string; email: string }
 	| { page: 'connectOauthError'; error: string; message: string }
+	| {
+			page: 'connectSecretSet'
+			csrf: string
+			name: string
+			description: string | null
+			scope: 'user' | 'package'
+			packageId: string | null
+			hosts: Array<string>
+			unsupportedNote: string | null
+			error: string | null
+			saved: boolean
+			canSubmit: boolean
+	  }
 
 export type AppPage = AppLoaderData['page']
 
@@ -621,6 +634,7 @@ export function isAuthShellPage(page: AppPage) {
 		page === 'oauthAuthorizeError' ||
 		page === 'connectOauth' ||
 		page === 'connectOauthDone' ||
-		page === 'connectOauthError'
+		page === 'connectOauthError' ||
+		page === 'connectSecretSet'
 	)
 }

@@ -27,6 +27,7 @@ import {
 	ConnectOauthDone,
 	ConnectOauthError,
 } from './connect-oauth.tsx'
+import { ConnectSecretSet } from './connect-secret-set.tsx'
 import { ErrorPage } from './error-page.tsx'
 import { PackageFiles } from './package-files.tsx'
 import { PackagePreviewFiles } from './package-preview-files.tsx'
@@ -125,6 +126,8 @@ export function RouteView(
 				return <ConnectOauthDone data={data} />
 			case 'connectOauthError':
 				return <ConnectOauthError data={data} />
+			case 'connectSecretSet':
+				return <ConnectSecretSet data={data} />
 			default: {
 				const _exhaustive: never = data
 				void _exhaustive
