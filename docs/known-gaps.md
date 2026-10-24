@@ -175,6 +175,12 @@ roadmap is now shipped; the roadmap below is kept as the change log.
   present and appear when their capabilities are registered. Token routes,
   `/v1/search/tool`, capability proxy and local-execute, and repos are not
   ported yet.
+- `/connect/secret-set` does not support `expiresAt` or `allowedPackages`.
+  `allowedPackages` waits on the secretLock grants PR. Hosts in a setup link
+  are approved in the account-wide host list, so they apply to every secret.
+  Hosted scopes `allowedHosts` to the secret being set; celld should move to
+  per-secret hosts alongside the secretLock grant work (#111) instead of
+  keeping both models.
 - Import resolution in Worker Loader isolates follows the importing module's
   directory (celld 0.6). The module graph rewrites every static import to a
   relative path. Packages that build specifiers dynamically
