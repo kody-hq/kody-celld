@@ -90,6 +90,195 @@ describe('parsePackageManifest', () => {
 		assert.deepEqual(parsed.parseWarnings, [])
 	})
 
+	it('parses emitted topics with object payload schemas', () => {
+		const parsed = parsePackageManifest(
+			manifest({
+				kody: {
+					emits: {
+						'@scope/task.created': {
+							description: 'A task was created.',
+							payloadSchema: {
+								type: 'object',
+								properties: { taskId: { type: 'string' } },
+								required: ['taskId'],
+							},
+						},
+					},
+				},
+			}),
+		)
+		assert.deepEqual(parsed.emits, [
+			{
+				topic: '@scope/task.created',
+				description: 'A task was created.',
+				payloadSchema: {
+					type: 'object',
+					properties: { taskId: { type: 'string' } },
+					required: ['taskId'],
+				},
+			},
+		])
+		assert.deepEqual(parsed.parseWarnings, [])
+	})
+
+	it('rejects invalid emitted topic names, scopes, and payload schemas', () => {
+		for (const topic of ['@scope/Topic', '@scope/task']) {
+			assert.throws(
+				() =>
+					parsePackageManifest(
+						manifest({
+							kody: {
+								emits: { [topic]: { description: 'A task event.' } },
+							},
+						}),
+					),
+				(error: unknown) => (error as { code?: string }).code === 'invalid_manifest',
+			)
+		}
+		assert.throws(
+			() =>
+				parsePackageManifest(
+					manifest({
+						kody: {
+							emits: {
+								'@other/task.created': { description: 'A task event.' },
+							},
+						},
+					}),
+				),
+			(error: unknown) => (error as { code?: string }).code === 'invalid_manifest',
+		)
+		assert.throws(
+			() =>
+				parsePackageManifest({
+					...manifest({
+						name: 'unscoped-package',
+						kody: {
+							emits: {
+								'@scope/task.created': { description: 'A task event.' },
+							},
+						},
+					}),
+				}),
+			(error: unknown) => (error as { code?: string }).code === 'invalid_manifest',
+		)
+		for (const emits of [[], { '@scope/task.created': null }, { '@scope/task.created': {} }]) {
+			assert.throws(
+				() => parsePackageManifest(manifest({ kody: { emits } })),
+				(error: unknown) => (error as { code?: string }).code === 'invalid_manifest',
+			)
+		}
+		for (const payloadSchema of [
+			{ type: 'string' },
+			{ type: 'object', properties: { taskId: { type: 'string', pattern: '.*' } } },
+		]) {
+			assert.throws(
+				() =>
+					parsePackageManifest(
+						manifest({
+							kody: {
+								emits: {
+									'@scope/task.created': {
+										description: 'A task event.',
+										payloadSchema,
+									},
+								},
+							},
+						}),
+					),
+				(error: unknown) => (error as { code?: string }).code === 'invalid_manifest',
+			)
+		}
+	})
+
+	it('warns for ignored MCP and unknown emitted-topic fields', () => {
+		const parsed = parsePackageManifest(
+			manifest({
+				kody: {
+					emits: {
+						'@scope/task.created': {
+							description: 'A task was created.',
+							mcp: true,
+							unknown: 'ignored',
+						},
+					},
+				},
+			}),
+		)
+		assert.deepEqual(parsed.emits, [{ topic: '@scope/task.created', description: 'A task was created.' }])
+		assert.deepEqual(manifestWarnings(parsed), [
+			'kody.emits["@scope/task.created"].mcp: MCP Events are not supported on celld; the flag was ignored.',
+			'kody.emits["@scope/task.created"].unknown is not supported on celld and was dropped.',
+		])
+	})
+
+	it('retains filters for package-emitted subscriptions without a filter warning', () => {
+		const parsed = parsePackageManifest(
+			manifest({
+				kody: {
+					subscriptions: {
+						'@scope/task.created': {
+							handler: './index.js',
+							filters: { status: 'ready' },
+						},
+					},
+				},
+			}),
+		)
+		assert.deepEqual(parsed.subscriptions, [
+			{
+				topic: '@scope/task.created',
+				handler: 'index.js',
+				filters: { status: 'ready' },
+			},
+		])
+		assert.deepEqual(parsed.parseWarnings, [
+			'kody.subscriptions["@scope/task.created"]: package-emitted topics are not delivered on celld yet. The handler is saved but will not run.',
+		])
+	})
+
+	it('retains platform subscription filters while warning they are not applied', () => {
+		const parsed = parsePackageManifest(
+			manifest({
+				kody: {
+					subscriptions: {
+						'email.message.received': {
+							handler: './index.js',
+							filters: { from: 'person@example.test' },
+						},
+					},
+				},
+			}),
+		)
+		assert.deepEqual(parsed.subscriptions[0]?.filters, {
+			from: 'person@example.test',
+		})
+		assert.deepEqual(parsed.parseWarnings, [
+			'kody.subscriptions["email.message.received"].filters is not applied on celld; the handler runs for every event on this topic.',
+		])
+	})
+
+	it('rejects non-object subscription filters', () => {
+		for (const filters of [null, [], 'invalid', false]) {
+			assert.throws(
+				() =>
+					parsePackageManifest(
+						manifest({
+							kody: {
+								subscriptions: {
+									'email.message.received': {
+										handler: './index.js',
+										filters,
+									},
+								},
+							},
+						}),
+					),
+				(error: unknown) => (error as { code?: string }).code === 'invalid_manifest',
+			)
+		}
+	})
+
 	it('parses credential slots, rejects invalid slot definitions, and defaults stored credentials', () => {
 		const parsed = parsePackageManifest(
 			manifest({
@@ -103,7 +292,10 @@ describe('parsePackageManifest', () => {
 		assert.deepEqual(parsed.credentials, {
 			github: { provider: 'github', kind: 'oauth', multiple: true, description: 'Read issues' },
 		})
-		assert.deepEqual(normalizeStoredManifest({ name: '@scope/pkg', version: '1.0.0' }).credentials, {})
+		const stored = normalizeStoredManifest({ name: '@scope/pkg', version: '1.0.0' })
+		assert.deepEqual(stored.credentials, {})
+		assert.deepEqual(stored.emits, [])
+		assert.deepEqual(stored.subscriptions, [])
 		for (const credentials of [
 			{ '1bad': { description: 'Slot' } },
 			{ github: {} },
@@ -548,11 +740,11 @@ describe('kody.webhooks + kody.subscriptions', () => {
 		])
 		assert.deepEqual(parsed.parseWarnings, [
 			'kody.subscriptions["run.error.recorded"]: celld does not emit this topic yet. The handler is saved but will not run.',
-			'kody.subscriptions["@scope/topic"]: package-emitted topics are not supported on celld yet. The handler is saved but will not run.',
+			'kody.subscriptions["@scope/topic"]: package-emitted topics are not delivered on celld yet. The handler is saved but will not run.',
 		])
 	})
 
-	it('warns for unapplied filters and drops filters and extra subscription keys', () => {
+	it('warns for unapplied filters and drops extra subscription keys', () => {
 		const parsed = parsePackageManifest(
 			manifest({
 				exports: exportsMap,
@@ -567,7 +759,13 @@ describe('kody.webhooks + kody.subscriptions', () => {
 				},
 			}),
 		)
-		assert.deepEqual(parsed.subscriptions, [{ topic: 'email.message.received', handler: 'index.js' }])
+		assert.deepEqual(parsed.subscriptions, [
+			{
+				topic: 'email.message.received',
+				handler: 'index.js',
+				filters: { source: 'test' },
+			},
+		])
 		assert.deepEqual(parsed.parseWarnings, [
 			'kody.subscriptions["email.message.received"].filters is not applied on celld; the handler runs for every event on this topic.',
 			'kody.subscriptions["email.message.received"].retry is not supported on celld and was dropped.',

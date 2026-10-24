@@ -170,14 +170,13 @@ roadmap is now shipped; the roadmap below is kept as the change log.
 
 - **Package credential slots.** Celld parses and stores `kody.credentials`,
   but `credential()` is not available yet.
-- **Package subscriptions and manifest keys.** Celld emits only
-  `email.message.received`, `email.message.quarantined`,
-  `email.message.delivery.updated`, `integration.auth.succeeded`, and
-  `integration.auth.failed`. Other topics, including hosted-only and
-  `@` package-emitted topics, are saved with warnings but have no celld event
-  to trigger them. Subscription `filters` are ignored with a warning, so the
-  handler runs for every event on the topic. Hosted-only `kody.*` keys that
-  celld does not support and unknown `kody.*` keys are ignored with warnings.
+- **Package-emitted topics.** Celld parses and validates `kody.emits`, but
+  `events.dispatch` and delivery to subscriber handlers are not available yet.
+  `@` subscriptions are saved with a warning and their filters are retained.
+  The `mcp: true` flag is ignored. Platform-topic filters remain unapplied
+  with a warning.
+- **Unsupported manifest keys.** Hosted-only `kody.*` keys that celld does not
+  support and unknown `kody.*` keys are ignored with warnings.
 - Import resolution in Worker Loader isolates follows the importing module's
   directory (celld 0.6). The module graph rewrites every static import to a
   relative path. Packages that build specifiers dynamically
