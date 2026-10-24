@@ -36,9 +36,10 @@ const triageColumns: Array<[string, string]> = [
 	['triaged_at', 'TEXT'],
 	['triaged_by', 'TEXT'],
 	['job_id', 'TEXT'],
+	['workflow_id', 'TEXT'],
 ]
 
-/** Adds the triage columns to `runs` on cells created before them; safe to call on every start. */
+/** Adds run metadata columns to `runs` on cells created before them; safe to call on every start. */
 export function ensureRunTriageColumns(sql: SqlStorage) {
 	const existing = (sql.exec(`SELECT name FROM pragma_table_info('runs')`).toArray() as Array<{ name: string }>).map(
 		(row) => row.name,
@@ -47,6 +48,9 @@ export function ensureRunTriageColumns(sql: SqlStorage) {
 		if (!existing.includes(name)) sql.exec(`ALTER TABLE runs ADD COLUMN ${name} ${type}`)
 	}
 	sql.exec(`CREATE INDEX IF NOT EXISTS runs_job_error ON runs(job_id, status) WHERE job_id IS NOT NULL`)
+	sql.exec(
+		`CREATE INDEX IF NOT EXISTS runs_workflow_created ON runs(workflow_id, created_at DESC) WHERE workflow_id IS NOT NULL`,
+	)
 }
 
 function text(value: unknown): string | null {

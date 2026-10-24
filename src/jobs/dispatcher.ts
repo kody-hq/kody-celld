@@ -78,6 +78,7 @@ async function runWorkflowAttempt(
 					: { kind: 'adhoc', code: workflow.code! },
 			params: JSON.parse(workflow.paramsJson) as unknown,
 			trigger: 'workflow',
+			workflowId: workflow.id,
 			timeoutMs: backgroundExecutorTimeoutMs,
 		})
 		runId = result.runId

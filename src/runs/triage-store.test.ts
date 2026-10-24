@@ -75,7 +75,7 @@ describe('ensureRunTriageColumns', () => {
 		const columns = (sql.exec(`SELECT name FROM pragma_table_info('runs')`).toArray() as Array<{ name: string }>).map(
 			(c) => c.name,
 		)
-		for (const column of ['error_triage', 'triage_note', 'triaged_at', 'triaged_by', 'job_id']) {
+		for (const column of ['error_triage', 'triage_note', 'triaged_at', 'triaged_by', 'job_id', 'workflow_id']) {
 			assert.equal(columns.filter((c) => c === column).length, 1, column)
 		}
 		const old = sql.exec(`SELECT * FROM runs WHERE id = 'run_old'`).toArray()[0] as Record<string, unknown>
