@@ -35,9 +35,9 @@ export async function smokeLimits({ mcp, user }) {
 	const first = await quotaUser.mcp.execute(
 		`import { kody } from 'kody:runtime'
 export default async function main({ value }) {
-  await kody.secretSave({ name: 'quota-one', value })
+  await kody.secretSet({ name: 'quota-one', value })
   try {
-    await kody.secretSave({ name: 'quota-two', value })
+    await kody.secretSet({ name: 'quota-two', value })
     return { secondSaved: true }
   } catch (error) {
     return { secondSaved: false, error: String(error.message) }

@@ -8,18 +8,37 @@ boundary, and only for destinations an admin approved.
 
 ```ts
 import { kody } from 'kody:runtime'
-await kody.secretSave({ name: 'github', value: 'ghp_...' }) // user scope (default)
-await kody.secretSave({ name: 'api-key', value: '...', scope: 'package' }) // only the saving package may use it
+await kody.secretSet({ name: 'github', value: 'ghp_...' }) // user scope (default)
+await kody.secretSet({ name: 'api-key', value: '...', scope: 'package' }) // only the saving package may use it
+await kody.secretSetMany({
+  secrets: [
+    { name: 'api-user', value: 'alice' },
+    { name: 'api-password', value: '...' },
+  ],
+})
 await kody.secretList() // names, scopes, timestamps — never values
 await kody.secretDelete({ name: 'github' })
 ```
+
+`secretSet` matches the hosted capability name. `secretSave` remains as an alias
+for existing celld packages, but discovery lists only `secretSet`. The `scope`
+values are `user` (default) and `package`; `session` is rejected because celld
+does not support session-scoped secrets. `packageName` is a celld extension,
+normally inferred from the calling package.
+
+`secretSetMany` validates every entry and quota before writing, then saves the
+batch atomically. Set `assertOnly: true` to validate a batch without storing
+values. The `expires_at` field is accepted by `secretSet` and `secretSetMany`,
+but is not stored on celld. `secretSet` also accepts hosted credential opt-in
+fields `provider`, `inject`, `placement`, `kind`, `hosts`, and `login_exchange`.
+These unsupported fields are ignored and returned as warnings.
 
 Values are AES-256-GCM encrypted with a fresh 12-byte IV under a per-user key:
 `HKDF(master = KODY_MASTER_KEY, salt = "kody-celld:<userId>", info = "kody-celld-secret-values")`.
 Ciphertext lives in the user's `UserCell` together with a 16-hex-char
 `key_id` (a hash of the sealing master key, so rows can be matched to a key
 without revealing it); the master key lives only in the Worker var.
-`secretSave` responses and run results are checked by the smoke suite to never
+`secretSet` responses and run results are checked by the smoke suite to never
 contain the plaintext.
 
 ## Master key rotation

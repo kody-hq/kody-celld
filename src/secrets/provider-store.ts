@@ -82,7 +82,7 @@ export function parseProviderConfig(raw: unknown): Record<string, string> {
 		if (/(secret|token|password|passwd|api[-_]?key)/i.test(key)) {
 			throw new KodyError(
 				'invalid_args',
-				`config["${key}"] looks like a credential. Store it with secretSave and pass its name as doorSecretName instead.`,
+				`config["${key}"] looks like a credential. Store it with secretSet and pass its name as doorSecretName instead.`,
 			)
 		}
 		config[key] = value

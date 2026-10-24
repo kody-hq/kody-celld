@@ -10,10 +10,10 @@ export async function smokeSecrets({ mcp, user }) {
 	const secretValue = `smoke-${randomBytes(16).toString('hex')}`
 	const expectedHeaderHash = sha256(`Bearer ${secretValue}`)
 	try {
-		const saved = await mcp.call('secretSave', { name: 'smoke-token', value: secretValue, description: 'smoke only' })
-		assert(saved.placeholder === '{{secret:smoke-token}}', 'secretSave should return the placeholder', saved)
-		assert(JSON.stringify(saved).includes(secretValue) === false, 'secretSave must not echo the value')
-		log('secretSave', saved.placeholder)
+		const saved = await mcp.call('secretSet', { name: 'smoke-token', value: secretValue, description: 'smoke only' })
+		assert(saved.placeholder === '{{secret:smoke-token}}', 'secretSet should return the placeholder', saved)
+		assert(JSON.stringify(saved).includes(secretValue) === false, 'secretSet must not echo the value')
+		log('secretSet', saved.placeholder)
 
 		const listed = await mcp.call('secretList')
 		assert(
@@ -161,8 +161,8 @@ export async function smokeSecrets({ mcp, user }) {
 		log('URL placeholder replaced')
 
 		// Basic-auth placeholder.
-		await mcp.call('secretSave', { name: 'smoke-user', value: 'alice' })
-		await mcp.call('secretSave', { name: 'smoke-pass', value: secretValue })
+		await mcp.call('secretSet', { name: 'smoke-user', value: 'alice' })
+		await mcp.call('secretSet', { name: 'smoke-pass', value: secretValue })
 		const basic = await mcp.run(
 			`export default async function main({ url }) {
   const res = await fetch(url + '/basic', { headers: { authorization: 'Basic {{secret-basic:username=smoke-user,password=smoke-pass}}' } })
