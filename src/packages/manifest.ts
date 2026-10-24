@@ -7,10 +7,11 @@ import {
 	type JsxOptions,
 } from '../execute/strip-types.ts'
 import { KodyError } from '../lib/errors.ts'
+import { listJsonSchemaSubsetProblems, type JsonObject } from '../lib/json-schema-subset.ts'
 
 // Mirrors kody-hq/kody `package.json#kody` shapes for the surfaces this
-// runtime supports: exports, jobs, webhooks, subscriptions, dependencies,
-// description, and hidden.
+// runtime supports: exports, jobs, webhooks, subscriptions, emitted events,
+// dependencies, description, and hidden.
 
 export type JobSchedule =
 	{ type: 'cron'; expression: string } | { type: 'interval'; every: string } | { type: 'once'; runAt: string }
@@ -56,6 +57,13 @@ export type SubscriptionDefinition = {
 	topic: string
 	handler: string
 	description?: string
+	filters?: JsonObject
+}
+
+export type EmittedEventDefinition = {
+	topic: string
+	description: string
+	payloadSchema?: JsonObject
 }
 
 export const credentialKinds = ['secret', 'oauth', 'mcp', 'url', 'login', 'signing'] as const
@@ -140,6 +148,7 @@ export type PackageManifest = {
 	jobs: Record<string, JobDefinition>
 	webhooks: Array<WebhookDefinition>
 	subscriptions: Array<SubscriptionDefinition>
+	emits: Array<EmittedEventDefinition>
 	secretProvider: SecretProviderDefinition | null
 	app: AppDefinition | null
 	credentials: Record<string, CredentialSlot>
@@ -152,6 +161,8 @@ export type PackageManifest = {
 export type PackageFiles = Record<string, string>
 
 export const packageNamePattern = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/
+const customPackageEventTopicPattern =
+	/^@[a-z0-9][a-z0-9._-]*\/[a-z0-9]+(?:-[a-z0-9]+)*(?:\.[a-z0-9]+(?:-[a-z0-9]+)*)+$/
 const credentialSlotNamePattern = /^[A-Za-z][A-Za-z0-9._-]{0,63}$/
 
 export function normalizeModulePath(path: string) {
@@ -342,7 +353,7 @@ function parseSubscriptions(raw: unknown, files: PackageFiles, warnings: Array<s
 				warnings.push(`${where}: celld does not emit this topic yet. The handler is saved but will not run.`)
 			} else if (topic.startsWith('@')) {
 				warnings.push(
-					`${where}: package-emitted topics are not supported on celld yet. The handler is saved but will not run.`,
+					`${where}: package-emitted topics are not delivered on celld yet. The handler is saved but will not run.`,
 				)
 			} else {
 				warnings.push(`${where}: unknown topic. The handler is saved but no celld event triggers it.`)
@@ -358,7 +369,10 @@ function parseSubscriptions(raw: unknown, files: PackageFiles, warnings: Array<s
 				`kody.subscriptions["${topic}"].handler "${handler}" is not in the package files.`,
 			)
 		}
-		if (item.filters !== undefined && item.filters !== null) {
+		if (item.filters !== undefined && !isRecord(item.filters)) {
+			throw new KodyError('invalid_manifest', `kody.subscriptions["${topic}"].filters must be a JSON object.`)
+		}
+		if (item.filters !== undefined && !topic.startsWith('@')) {
 			warnings.push(
 				`kody.subscriptions["${topic}"].filters is not applied on celld; the handler runs for every event on this topic.`,
 			)
@@ -371,9 +385,84 @@ function parseSubscriptions(raw: unknown, files: PackageFiles, warnings: Array<s
 			topic,
 			handler,
 			...(typeof item.description === 'string' ? { description: item.description } : {}),
+			...(isRecord(item.filters) ? { filters: item.filters as JsonObject } : {}),
 		})
 	}
 	return subscriptions
+}
+
+function packageNameScope(name: string): string | null {
+	if (!name.startsWith('@')) return null
+	const separator = name.indexOf('/')
+	if (separator <= 1) return null
+	return name.slice(1, separator)
+}
+
+function parseEmittedEvents(raw: unknown, packageName: string, warnings: Array<string>): Array<EmittedEventDefinition> {
+	if (raw === undefined) return []
+	if (!isRecord(raw)) {
+		throw new KodyError('invalid_manifest', 'kody.emits must be an object keyed by topic.')
+	}
+	const expectedScope = packageNameScope(packageName)
+	const emittedEvents: Array<EmittedEventDefinition> = []
+	for (const [topic, item] of Object.entries(raw)) {
+		if (!customPackageEventTopicPattern.test(topic)) {
+			throw new KodyError(
+				'invalid_manifest',
+				`Invalid package.json:\nkody.emits topic "${topic}" must use the scoped form "@scope/topic.name" with a lower-dot-case topic body.`,
+			)
+		}
+		const topicScope = packageNameScope(topic)
+		if (expectedScope === null) {
+			throw new KodyError(
+				'invalid_manifest',
+				`Invalid package.json:\nkody.emits topic "${topic}" requires the package name to use a scope.`,
+			)
+		}
+		if (topicScope !== expectedScope) {
+			throw new KodyError(
+				'invalid_manifest',
+				`Invalid package.json:\nkody.emits topic "${topic}" must use the package scope "@${expectedScope}".`,
+			)
+		}
+		if (!isRecord(item)) {
+			throw new KodyError('invalid_manifest', `kody.emits["${topic}"] must be an object.`)
+		}
+		if (typeof item.description !== 'string' || item.description.length === 0) {
+			throw new KodyError('invalid_manifest', `kody.emits["${topic}"].description is required.`)
+		}
+		if (item.payloadSchema !== undefined) {
+			if (!isRecord(item.payloadSchema) || item.payloadSchema['type'] !== 'object') {
+				throw new KodyError(
+					'invalid_manifest',
+					`Invalid package.json:\nkody.emits topic "${topic}" payloadSchema must declare "type": "object" (event payloads are JSON objects).`,
+				)
+			}
+			const problems = listJsonSchemaSubsetProblems(item.payloadSchema)
+			if (problems.length > 0) {
+				throw new KodyError(
+					'invalid_manifest',
+					`Invalid package.json:\nkody.emits topic "${topic}" payloadSchema is not a supported JSON Schema subset:\n${problems.join('\n')}`,
+				)
+			}
+		}
+		if (item.mcp !== undefined && typeof item.mcp !== 'boolean') {
+			throw new KodyError('invalid_manifest', `kody.emits["${topic}"].mcp must be a boolean.`)
+		}
+		if (item.mcp === true) {
+			warnings.push(`kody.emits["${topic}"].mcp: MCP Events are not supported on celld; the flag was ignored.`)
+		}
+		for (const key of Object.keys(item)) {
+			if (['description', 'payloadSchema', 'mcp'].includes(key)) continue
+			warnings.push(`kody.emits["${topic}"].${key} is not supported on celld and was dropped.`)
+		}
+		emittedEvents.push({
+			topic,
+			description: item.description,
+			...(isRecord(item.payloadSchema) ? { payloadSchema: item.payloadSchema as JsonObject } : {}),
+		})
+	}
+	return emittedEvents
 }
 
 function parseSecretProvider(raw: unknown, exports: Record<string, string>): SecretProviderDefinition | null {
@@ -523,6 +612,7 @@ export function normalizeStoredManifest(
 		jobs: manifest.jobs ?? {},
 		webhooks: manifest.webhooks ?? [],
 		subscriptions: manifest.subscriptions ?? [],
+		emits: manifest.emits ?? [],
 		secretProvider: manifest.secretProvider ?? null,
 		app: manifest.app ?? null,
 		credentials: manifest.credentials ?? {},
@@ -554,13 +644,14 @@ export function parsePackageManifest(files: PackageFiles): PackageManifest {
 		'jobs',
 		'webhooks',
 		'subscriptions',
+		'emits',
 		'secretProvider',
 		'app',
 		'credentials',
 		'hidden',
 		'dependencies',
 	])
-	const hostedOnlyKodyKeys = new Set(['id', 'tags', 'category', 'searchText', 'secretMounts', 'emits', 'retrievers'])
+	const hostedOnlyKodyKeys = new Set(['id', 'tags', 'category', 'searchText', 'secretMounts', 'retrievers'])
 	for (const key of Object.keys(kody)) {
 		if (handledKodyKeys.has(key)) continue
 		if (hostedOnlyKodyKeys.has(key)) {
@@ -647,6 +738,7 @@ export function parsePackageManifest(files: PackageFiles): PackageManifest {
 		jobs,
 		webhooks: parseWebhooks(kody.webhooks, exports),
 		subscriptions: parseSubscriptions(kody.subscriptions, files, parseWarnings),
+		emits: parseEmittedEvents(kody.emits, name, parseWarnings),
 		secretProvider: parseSecretProvider(kody.secretProvider, exports),
 		app: parseApp(kody.app, files),
 		credentials: parseCredentialSlots(kody.credentials, parseWarnings),

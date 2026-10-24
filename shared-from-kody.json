@@ -338,6 +338,11 @@
       "path": "src/packages/manifest.ts",
       "source": "packages/worker/src/package-registry/manifest.ts",
       "reason": "Same package.json contract surface, local validator. Hosted manifest is larger (apps, billing, org). Shared core later. Cleanup: #69 (replace with @kody/core, then delete interim copy and docs)."
+    },
+    {
+      "path": "src/lib/json-schema-subset.ts",
+      "source": "packages/shared/src/json-schema-subset.ts",
+      "reason": "Adapted to inline canonical JSON and record helpers absent on celld, and to use a JSON object shape supported by Durable Object RPC types."
     }
   ]
 }
