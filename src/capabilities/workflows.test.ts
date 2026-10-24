@@ -26,6 +26,7 @@ function context(userCell: Record<string, (...args: Array<never>) => unknown> = 
 		user: { id: 'user-1' },
 		packageName: null,
 		userCell: {
+			packageGet: () => ({}),
 			workflowCreate: () => record,
 			workflowsList: () => [record],
 			workflowCancel: () => ({ workflow: record, cancelled: true, alreadyTerminal: false }),
@@ -62,6 +63,22 @@ test('workflow create is idempotent and rejects unsupported source revisions', a
 		packageWorkflowCreate.handler({ code: 'export default 1', idempotencyKey: 1 } as never, context()),
 		{ code: 'invalid_args' },
 	)
+})
+
+test('workflow create rejects a missing package before writing a workflow', async () => {
+	const created: Array<unknown> = []
+	const ctx = context({
+		packageGet: () => null,
+		workflowCreate: ((input: unknown) => {
+			created.push(input)
+			return record
+		}) as never,
+	})
+	await assert.rejects(packageWorkflowCreate.handler({ exportName: './run', packageId: 'missing' }, ctx), {
+		code: 'package_not_found',
+		status: 404,
+	})
+	assert.deepEqual(created, [])
 })
 
 test('workflow list returns rows and cancel uses hosted result keys', async () => {

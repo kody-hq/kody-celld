@@ -59,6 +59,12 @@ export const packageWorkflowCreate = defineCapability<WorkflowInput>({
 		const packageId = packaged ? (args.packageId ?? ctx.packageName ?? undefined) : undefined
 		if (packaged && !packageId) invalid('packageId is required for exportName outside a package run.')
 		if (packageId !== undefined && !packageId.trim()) invalid('packageId must be a non-empty string.')
+		if (packaged) {
+			const savedPackage = await ctx.userCell.packageGet(packageId!)
+			if (!savedPackage) {
+				throw new KodyError('package_not_found', `Package "${packageId}" was not found.`, { status: 404 })
+			}
+		}
 		const workflowName = args.workflowName ?? (inline ? 'inline-code' : args.exportName!)
 		if (typeof workflowName !== 'string' || !workflowName.trim()) invalid('workflowName must be a non-empty string.')
 		const runAt = args.runAt === undefined ? new Date().toISOString() : args.runAt

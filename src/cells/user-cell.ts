@@ -78,9 +78,11 @@ import {
 } from '../runs/triage-store.ts'
 import { signatureMatches } from '../webhooks/verify.ts'
 import {
+	workflowAttemptFinishState,
+	workflowAttemptStaleAfterMs,
 	workflowCancelState,
 	workflowClaimableRows,
-	workflowFailureState,
+	workflowLostAttemptFailureState,
 	type WorkflowRecord,
 	type WorkflowSourceType,
 	type WorkflowStatus,
@@ -1705,6 +1707,25 @@ export class UserCell extends DurableObject<Env> {
 
 	workflowsClaimDue(now: string, limit = 25): Array<WorkflowRecord> {
 		return this.ctx.storage.transactionSync(() => {
+			const staleBefore = new Date(Date.parse(now) - workflowAttemptStaleAfterMs).toISOString()
+			const staleRows = this.ctx.storage.sql
+				.exec<WorkflowSqlRow>(`SELECT * FROM workflows WHERE status = 'running' AND updated_at < ?`, staleBefore)
+				.toArray()
+			for (const staleRow of staleRows) {
+				const staleWorkflow = this.workflowFromRow(staleRow)
+				const failure = workflowLostAttemptFailureState(staleWorkflow, now)
+				if (!failure) continue
+				this.ctx.storage.sql.exec(
+					`UPDATE workflows SET status = ?, run_at = ?, last_error = ?, completed_at = ?, updated_at = ?
+					 WHERE id = ? AND status = 'running'`,
+					failure.status,
+					failure.runAt,
+					failure.lastError,
+					failure.completedAt,
+					now,
+					staleWorkflow.id,
+				)
+			}
 			const due = workflowClaimableRows(
 				this.ctx.storage.sql
 					.exec<WorkflowSqlRow>(`SELECT * FROM workflows WHERE status = 'queued'`)
@@ -1731,21 +1752,26 @@ export class UserCell extends DurableObject<Env> {
 	workflowAttemptFinish(input: { id: string; ok: boolean; error: string | null; now: string }) {
 		return this.ctx.storage.transactionSync(() => {
 			const workflow = this.workflowRow(input.id)
-			if (!workflow || workflow.status !== 'running') return workflow
-			if (input.ok) {
+			if (!workflow) return null
+			const next = workflowAttemptFinishState({
+				status: workflow.status,
+				attempts: workflow.attempts,
+				ok: input.ok,
+				error: input.error,
+				now: input.now,
+			})
+			if (!next) return workflow
+			if (next.status === 'complete') {
 				this.ctx.storage.sql.exec(
-					`UPDATE workflows SET status = 'complete', last_error = NULL, completed_at = ?, updated_at = ?
+					`UPDATE workflows SET status = ?, last_error = ?, completed_at = ?, updated_at = ?
 					 WHERE id = ? AND status = 'running'`,
-					input.now,
+					next.status,
+					next.lastError,
+					next.completedAt,
 					input.now,
 					input.id,
 				)
 			} else {
-				const next = workflowFailureState({
-					attempts: workflow.attempts,
-					now: input.now,
-					error: input.error ?? 'Workflow attempt failed.',
-				})
 				this.ctx.storage.sql.exec(
 					`UPDATE workflows SET status = ?, run_at = ?, last_error = ?, completed_at = ?, updated_at = ?
 					 WHERE id = ? AND status = 'running'`,

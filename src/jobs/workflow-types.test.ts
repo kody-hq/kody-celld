@@ -1,11 +1,16 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { backgroundExecutorTimeoutMs } from '../lib/limits.ts'
 import {
 	workflowCreateResult,
+	workflowAttemptFinishState,
 	workflowClaimableRows,
 	workflowCancelState,
+	workflowAttemptStaleAfterMs,
 	workflowFailureState,
 	workflowIsTerminal,
+	workflowLostAttemptFailureState,
+	workflowRetryDelayMs,
 	workflowRunId,
 	workflowRunView,
 	type WorkflowRecord,
@@ -75,6 +80,45 @@ test('workflow failures retry exponentially and stop after four attempts', () =>
 		).map((row) => row.id),
 		['due'],
 	)
+})
+
+test('lost attempts fail after the stale timeout and overdue retries are claimable', () => {
+	assert.equal(workflowAttemptStaleAfterMs, backgroundExecutorTimeoutMs + 5 * 60_000)
+	const updatedAt = '2030-01-01T00:00:00.000Z'
+	const workflowStarted = { ...workflow, status: 'running' as const, updatedAt, attempts: 1 }
+	const staleAt = new Date(Date.parse(updatedAt) + workflowAttemptStaleAfterMs).toISOString()
+	assert.equal(workflowLostAttemptFailureState(workflowStarted, staleAt), null)
+	const retryDueAt = new Date(Date.parse(staleAt) + workflowRetryDelayMs).toISOString()
+	const now = new Date(Date.parse(retryDueAt) + 1).toISOString()
+	const recovered = workflowLostAttemptFailureState(workflowStarted, now)
+	assert.ok(recovered)
+	assert.deepEqual(recovered, {
+		status: 'queued',
+		runAt: retryDueAt,
+		completedAt: null,
+		lastError: 'workflow_attempt_lost: the attempt did not report back.',
+	})
+	assert.deepEqual(
+		workflowClaimableRows([{ ...workflowStarted, ...recovered }], now, 1).map((row) => row.id),
+		[workflowStarted.id],
+	)
+	assert.equal(workflowLostAttemptFailureState({ ...workflowStarted, attempts: 4 }, now)?.status, 'errored')
+	assert.equal(workflowLostAttemptFailureState({ ...workflow, status: 'cancelled' }, now), null)
+})
+
+test('finishing a cancelled attempt preserves cancellation for success and failure', () => {
+	for (const ok of [true, false]) {
+		assert.equal(
+			workflowAttemptFinishState({
+				status: 'cancelled',
+				attempts: 1,
+				ok,
+				error: 'attempt failed',
+				now: '2030-01-01T00:00:00.000Z',
+			}),
+			null,
+		)
+	}
 })
 
 test('create and list views use hosted field names', () => {

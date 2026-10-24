@@ -1,3 +1,5 @@
+import { backgroundExecutorTimeoutMs } from '../lib/limits.ts'
+
 export type WorkflowStatus = 'queued' | 'running' | 'complete' | 'errored' | 'cancelled'
 export type WorkflowSourceType = 'package' | 'inline'
 
@@ -21,6 +23,8 @@ export type WorkflowRecord = {
 
 export const workflowAttemptLimit = 4
 export const workflowRetryDelayMs = 30_000
+export const workflowAttemptStaleAfterMs = backgroundExecutorTimeoutMs + 5 * 60_000
+export const workflowAttemptLostError = 'workflow_attempt_lost: the attempt did not report back.'
 
 export async function workflowRunId(
 	sourceType: WorkflowSourceType,
@@ -60,6 +64,43 @@ export function workflowFailureState(input: { attempts: number; now: string; err
 		completedAt: input.now,
 		lastError: input.error,
 	}
+}
+
+export function workflowLostAttemptFailureState(workflow: WorkflowRecord, now: string) {
+	if (workflow.status !== 'running') return null
+	const updatedAt = Date.parse(workflow.updatedAt)
+	const nowMs = Date.parse(now)
+	if (!Number.isFinite(updatedAt) || !Number.isFinite(nowMs) || nowMs - updatedAt <= workflowAttemptStaleAfterMs) {
+		return null
+	}
+	const failedAt = new Date(updatedAt + workflowAttemptStaleAfterMs).toISOString()
+	return workflowFailureState({
+		attempts: workflow.attempts,
+		now: failedAt,
+		error: workflowAttemptLostError,
+	})
+}
+
+export function workflowAttemptFinishState(input: {
+	status: WorkflowStatus
+	attempts: number
+	ok: boolean
+	error: string | null
+	now: string
+}) {
+	if (input.status !== 'running') return null
+	if (input.ok) {
+		return {
+			status: 'complete' as const,
+			completedAt: input.now,
+			lastError: null,
+		}
+	}
+	return workflowFailureState({
+		attempts: input.attempts,
+		now: input.now,
+		error: input.error ?? 'Workflow attempt failed.',
+	})
 }
 
 export function workflowIsTerminal(status: WorkflowStatus) {
