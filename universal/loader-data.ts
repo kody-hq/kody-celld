@@ -51,6 +51,7 @@ export type SecretView = {
 	packageName: string | null
 	description: string | null
 	updatedAt: string
+	allowedPackages: Array<string>
 }
 
 export type SecretHostView = {
@@ -429,6 +430,14 @@ export type AppLoaderData =
 			csrf: string
 			secrets: Array<SecretView>
 			hosts: Array<SecretHostView>
+	  }
+	| {
+			page: 'accountSecretApprove'
+			csrf: string
+			name: string
+			packageName: string
+			allowedPackages: Array<string>
+			alreadyGranted: boolean
 	  }
 	| {
 			page: 'accountPackages'

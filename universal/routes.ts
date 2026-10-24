@@ -23,6 +23,7 @@ export const routes = route({
 	accountMcpOauthClients: '/account/clients',
 	accountApiTokens: '/account/tokens',
 	accountSecrets: '/account/secrets',
+	accountSecretsApprove: '/account/secrets/approve',
 	accountPackages: '/account/packages',
 	accountPackageDetail: '/account/packages/:name',
 	accountPackageFiles: '/account/packages/:name/files(/*relativePath)',

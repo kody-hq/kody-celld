@@ -168,6 +168,12 @@ roadmap is now shipped; the roadmap below is kept as the change log.
 
 ## celld-specific caveats
 
+- User-scope secrets can be locked to packages. `secretLock` only reports
+  approval status and a website link; only the owner can add or remove grants
+  on `/account/secrets`. Ad hoc runs without a package name remain allowed.
+  Removing the final grant restores `mode: 'any'`. Unlike hosted, celld's
+  `package_id` is the installed package name, and package-scope secrets cannot
+  be locked. Secret host approvals remain per-account, not per-secret.
 - Hosted capability names are available for secrets: `secretSave` aliases
   `secretSet`, and `secretSetMany` is supported. Hosted fields are rejected
   with `unsupported_secret_field` unless they match celld defaults:
