@@ -241,9 +241,7 @@ export async function smokeEmail({ mcp, user }) {
 	assert(scripted.status === 200 && scripted.json.accepted.length === 1, 'scripted html accepted', scripted.json)
 	const scriptedPage = await browser.get(`/account/inbox/${encodeURIComponent(scripted.json.accepted[0].messageId)}`)
 	assert(
-		scriptedPage.status === 200 &&
-			!scriptedPage.text.includes('smokeEmailXss = 1</script>') &&
-			!/<script>window\.smokeEmailXss/.test(scriptedPage.text),
+		scriptedPage.status === 200 && !scriptedPage.text.includes('smokeEmailXss') && scriptedPage.text.includes('hello'),
 		'inbound script never reaches the page or the preview',
 		scriptedPage.status,
 	)
