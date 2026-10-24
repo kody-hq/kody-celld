@@ -49,6 +49,16 @@ Rules enforced by `src/packages/manifest.ts` on `packageSave`:
   time packages simply `import` each other via `kody:@scope/pkg/...` (there is
   no install step).
 
+## Subscriptions
+
+Declare package event handlers under `kody.subscriptions`, keyed by topic.
+Celld emits `email.message.received`, `email.message.quarantined`,
+`email.message.delivery.updated`, `integration.auth.succeeded`, and
+`integration.auth.failed`. Other non-empty topic strings are saved with a
+warning, but no celld event triggers them. Subscription handlers must still
+name an uploaded file. `filters` are not applied and produce a warning; the
+handler is saved and runs for every event on that topic.
+
 ## Credential slots
 
 Declare package credential slots under `kody.credentials`. Slot names start
