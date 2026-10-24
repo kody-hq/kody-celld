@@ -168,6 +168,9 @@ roadmap is now shipped; the roadmap below is kept as the change log.
 
 ## celld-specific caveats
 
+- `/connect/secret-set` does not support `expiresAt` or `allowedPackages`.
+  `allowedPackages` waits on the secretLock grants PR. Hosts in a setup link
+  are approved in the existing per-user host list, not a per-secret list.
 - Import resolution in Worker Loader isolates follows the importing module's
   directory (celld 0.6). The module graph rewrites every static import to a
   relative path. Packages that build specifiers dynamically

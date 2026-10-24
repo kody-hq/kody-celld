@@ -86,7 +86,7 @@ forwarded untouched (`outcome: 'forwarded'`) — the gateway is not an egress
 firewall. Every decision is recorded on the run (`gateway[]`) with host,
 outcome, status, reason and the secret **names** involved.
 
-## Approving hosts (admin only)
+## Approving hosts
 
 ```sh
 curl -X POST $BASE/admin/users/$USER_ID/secret-hosts \
@@ -97,9 +97,18 @@ curl -X DELETE $BASE/admin/users/$USER_ID/secret-hosts/api.github.com -H "author
 ```
 
 Hosts are normalised (lowercase, no port), IPv6 literals are bracketed, and
-`*.example.com` approves exactly one label depth. Users can read their list
-(`kody.secretHostList()`) but not change it; the denial message includes the
-`approvalUrl` so an agent can ask a human precisely.
+`*.example.com` approves exactly one label depth. An account admin can manage
+the list, and a signed-in owner can approve hosts included in a
+`/connect/secret-set` link. That link uses the existing per-user host list, not
+a per-secret allowlist. The denial message includes the `approvalUrl` so an
+agent can ask a human precisely.
+
+## Owner-entered setup links
+
+An agent can send an owner a `/connect/secret-set` link with the secret name,
+description, scope, and hosts to approve. The owner signs in, pastes the value
+in the browser, and celld saves it without returning the value to the agent.
+`expiresAt` and `allowedPackages` are shown as unsupported and are not saved.
 
 ## Development
 

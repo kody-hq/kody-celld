@@ -55,4 +55,5 @@ export const routes = route({
 	oauthAuthorize: '/oauth/authorize',
 	connectOauth: '/connect/oauth/:userId/:connectId',
 	connectOauthCallback: '/connect/oauth/callback',
+	connectSecretSet: '/connect/secret-set',
 })
