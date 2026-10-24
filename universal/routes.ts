@@ -51,6 +51,7 @@ export const routes = route({
 	adminConfig: '/console/config',
 	community: '/community',
 	communityDetail: '/community/:name',
+	brandGuide: '/brand-guide',
 	oauthAuthorize: '/oauth/authorize',
 	connectOauth: '/connect/oauth/:userId/:connectId',
 	connectOauthCallback: '/connect/oauth/callback',

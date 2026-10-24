@@ -16,6 +16,7 @@ capabilities.
 | Route                 | Who              | What                                                                            |
 | --------------------- | ---------------- | ------------------------------------------------------------------------------- |
 | `/`                   | anyone (browser) | redirects to `/account` (signed in) or `/signin`; API clients still get JSON    |
+| `/brand-guide`        | anyone           | logo / mark / app-icon downloads and usage rules (right-click the header mark)  |
 | `/setup`              | first run only   | create the first account with the admin token + a password                      |
 | `/signin`             | anyone           | password, one-time API token, or magic link (when outbound email is configured) |
 | `/signin/link/:token` | anyone with link | invite / password reset (set a password) or magic sign-in (one click)           |

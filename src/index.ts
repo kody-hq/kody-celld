@@ -25,6 +25,7 @@ import { limitsFromEnv, parseQuotaOverride, quotasFromEnv } from './lib/limits.t
 import { handleMcpRequest } from './mcp/server.ts'
 import { handleOAuth, isOAuthRoute } from './oauth/routes.ts'
 import { handleAccount, isAccountRoute } from './web/account.ts'
+import { handleBrandGuide, isBrandGuideRoute } from './web/brand-guide.ts'
 import { handleCommunity, isCommunityRoute } from './web/community.ts'
 import { handleConsole, isConsoleRoute } from './web/console.ts'
 import { renderPage } from '#app/render.tsx'
@@ -86,6 +87,7 @@ function isWebRoute(pathname: string) {
 		isAccountRoute(pathname) ||
 		isConsoleRoute(pathname) ||
 		isCommunityRoute(pathname) ||
+		isBrandGuideRoute(pathname) ||
 		isAppsOpenRoute(pathname) ||
 		pathname === '/oauth/authorize'
 	)
@@ -526,6 +528,7 @@ export default {
 			if (isAccountRoute(url.pathname)) return await handleAccount(request, env, url)
 			if (isConsoleRoute(url.pathname)) return await handleConsole(request, env, ctx, url)
 			if (isCommunityRoute(url.pathname)) return await handleCommunity(request, env, url)
+			if (isBrandGuideRoute(url.pathname)) return await handleBrandGuide(request, env)
 			if (isAppsOpenRoute(url.pathname)) return await handleAppsOpen(request, env, url)
 			if (url.pathname.startsWith('/blobs/')) return await handleSignedBlob(request, env, url)
 			if (url.pathname.startsWith('/webhooks/')) return await handleWebhookIngress(request, env, ctx, url)

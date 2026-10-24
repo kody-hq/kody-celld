@@ -1,4 +1,5 @@
 import { css, type Handle, type RemixNode } from 'remix/component'
+import { KodyMark } from '#client/kody-mark.tsx'
 import { routes } from '#universal/routes.ts'
 import { getSurfaceCardCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
@@ -40,7 +41,7 @@ export function AuthShell(
 					fontSize: '1.1rem',
 				})}
 			>
-				<img src="/images/kody-mark.png" alt="" width={34} height={34} />
+				<KodyMark size={34} />
 				<span>Kody</span>
 			</a>
 			<div mix={css({ display: 'grid', gap: '0.5rem' })}>

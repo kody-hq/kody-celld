@@ -20,6 +20,7 @@ import { AdminAudit } from './admin-audit.tsx'
 import { AdminConfig } from './admin-config.tsx'
 import { AdminUserDetail } from './admin-user-detail.tsx'
 import { AdminUsers } from './admin-users.tsx'
+import { BrandGuide } from './brand-guide.tsx'
 import { Community, CommunityDetail, CommunityNotFound } from './community.tsx'
 import {
 	ConnectOauth,
@@ -112,6 +113,8 @@ export function RouteView(
 				return <CommunityNotFound data={data} />
 			case 'communityDetail':
 				return <CommunityDetail data={data} />
+			case 'brandGuide':
+				return <BrandGuide data={data} />
 			case 'oauthAuthorize':
 				return <OauthAuthorize data={data} />
 			case 'oauthAuthorizeError':
@@ -122,6 +125,11 @@ export function RouteView(
 				return <ConnectOauthDone data={data} />
 			case 'connectOauthError':
 				return <ConnectOauthError data={data} />
+			default: {
+				const _exhaustive: never = data
+				void _exhaustive
+				return null
+			}
 		}
 	}
 }

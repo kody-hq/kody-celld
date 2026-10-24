@@ -1,4 +1,5 @@
 import { run } from 'remix/component'
+import { BrandContextMenu } from '#client/brand-context-menu.tsx'
 import { ConfirmSubmitButton } from '#client/confirm-submit-button.tsx'
 import { CopyTextButton } from '#client/copy-text-button.tsx'
 import { PackageFilesExplorerIsland } from '#client/package-files-explorer-island.tsx'
@@ -14,6 +15,7 @@ import { Toaster } from '#client/toaster.tsx'
  * the browser.
  */
 const islands: Record<string, Function> = {
+	BrandContextMenu,
 	ConfirmSubmitButton,
 	CopyTextButton,
 	PackageFilesExplorerIsland,

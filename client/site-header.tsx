@@ -1,4 +1,6 @@
 import { type Handle, clientEntry, css } from 'remix/component'
+import { BrandContextMenu } from '#client/brand-context-menu.tsx'
+import { KodyMark } from '#client/kody-mark.tsx'
 import { clientEntryId } from '#universal/client-entry.ts'
 import { listenToRouterNavigation } from '#client/client-router.tsx'
 import { on } from '#client/event-mixin.ts'
@@ -98,10 +100,12 @@ function SiteHeaderComponent(handle: Handle<SiteHeaderProps>) {
 		return (
 			<header class="site-header" mix={css(headerCss)}>
 				<nav aria-label="Main" mix={css(navCss)}>
-					<a href="/" mix={css(brandCss)}>
-						<img src="/images/kody-mark.png" alt="" width={34} height={34} />
-						<span>Kody</span>
-					</a>
+					<BrandContextMenu>
+						<a href="/" mix={css(brandCss)}>
+							<KodyMark size={34} />
+							<span>Kody</span>
+						</a>
+					</BrandContextMenu>
 					<div mix={css(navLinksCss)}>
 						{marketingLinks.map((link) => (
 							<a

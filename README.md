@@ -1,8 +1,20 @@
+<div align="center">
+  <img src="./public/images/brand/kody-logo-outlined.svg" alt="Kody logo" width="400" />
+
+  <p>
+    <strong>Self-hosted Kody core on Deno celld: the memory, keys, code, and automations your AI agent keeps, on your own machines.</strong>
+  </p>
+
+  <p>
+    <a href="https://kcd.im/kody-discord"><img src="https://img.shields.io/badge/Discord-Kody-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Join the Discord" /></a>
+  </p>
+</div>
+
+---
+
 # kody-celld
 
-[![Discord](https://img.shields.io/badge/Discord-Kody-5865F2?logo=discord&logoColor=white)](https://kcd.im/kody-discord)
-
-A self-hosted **Kody core** that runs on [Deno celld](https://celld.dev) — the
+A self-hosted **Kody core** that runs on [Deno celld](https://celld.dev) - the
 Cloudflare Workers + Durable Objects programming model on your own machines,
 with an S3-compatible bucket for durability.
 

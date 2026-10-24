@@ -581,6 +581,7 @@ export type AppLoaderData =
 			publicUrl: string
 			pkg: CommunityPackageView
 	  }
+	| { page: 'brandGuide' }
 	| {
 			page: 'oauthAuthorize'
 			clientName: string

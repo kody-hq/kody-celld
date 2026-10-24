@@ -1,4 +1,6 @@
 import { type Handle, css } from 'remix/component'
+import { KodyMark } from '#client/kody-mark.tsx'
+import { routes } from '#universal/routes.ts'
 import { colors, transitions, typography } from '#universal/styles/tokens.ts'
 import {
 	layoutMaxWidths,
@@ -22,7 +24,7 @@ export function SiteFooter(handle: Handle<SiteFooterProps>) {
 		<footer mix={css(footerCss)}>
 			<div mix={css(footerInnerCss)}>
 				<a href="/" mix={css(brandCss)}>
-					<img src="/images/kody-mark.png" alt="" width={28} height={28} />
+					<KodyMark size={28} />
 					<span>Kody</span>
 				</a>
 				<p mix={css(taglineCss)}>
@@ -38,7 +40,8 @@ export function SiteFooter(handle: Handle<SiteFooterProps>) {
 					)}
 				</p>
 				<nav aria-label="Footer" mix={css(footerNavCss)}>
-					<a href="/community">Community</a>
+					<a href={routes.community.href()}>Community</a>
+					<a href={routes.brandGuide.href()}>Brand</a>
 					<a href="https://github.com/kody-hq/kody-celld/tree/main/docs">
 						Docs
 					</a>

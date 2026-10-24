@@ -26,26 +26,54 @@ export function SsrDocument(handle: Handle<SsrDocumentProps>) {
 				{handle.props.robots ? (
 					<meta name="robots" content={handle.props.robots} />
 				) : null}
-				<link rel="icon" href="/favicon.ico" sizes="any" />
+				<link rel="icon" href="/favicon.ico" sizes="32x32" />
 				<link
 					rel="icon"
 					type="image/png"
 					sizes="32x32"
 					href="/favicon-32x32.png"
+					media="(prefers-color-scheme: light)"
 				/>
 				<link
 					rel="icon"
 					type="image/png"
 					sizes="16x16"
 					href="/favicon-16x16.png"
+					media="(prefers-color-scheme: light)"
 				/>
+				<link
+					rel="icon"
+					type="image/png"
+					sizes="32x32"
+					href="/favicon-32x32-dark.png"
+					media="(prefers-color-scheme: dark)"
+				/>
+				<link
+					rel="icon"
+					type="image/png"
+					sizes="16x16"
+					href="/favicon-16x16-dark.png"
+					media="(prefers-color-scheme: dark)"
+				/>
+				<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 				<link
 					rel="apple-touch-icon"
 					sizes="180x180"
 					href="/apple-touch-icon.png"
 				/>
 				<link rel="manifest" href="/site.webmanifest" />
-				<meta name="theme-color" content="#2563eb" />
+				{/* Extensions (e.g. Dark Reader) often rewrite the first theme-color
+				    meta; keep a second so the document still declares both schemes. */}
+				<meta
+					name="theme-color"
+					content="#e6e8ea"
+					media="(prefers-color-scheme: light)"
+				/>
+				<meta
+					name="theme-color"
+					content="#111417"
+					media="(prefers-color-scheme: dark)"
+				/>
 				<link
 					rel="preload"
 					as="font"
