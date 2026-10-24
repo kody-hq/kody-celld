@@ -109,10 +109,12 @@ async function renderConnectSecretSet(
 }
 
 async function connectSecretSetSavedCookieValue(
+	userId: string,
 	setup: Pick<ConnectSecretSetPageData, 'name' | 'scope' | 'packageId' | 'description' | 'hosts'>,
 ) {
 	return sha256Hex(
 		canonicalJsonStringify({
+			userId,
 			name: setup.name,
 			scope: setup.scope,
 			packageId: setup.packageId,
@@ -124,10 +126,11 @@ async function connectSecretSetSavedCookieValue(
 
 export async function connectSecretSetSavedState(
 	request: Request,
+	userId: string,
 	setup: Pick<ConnectSecretSetPageData, 'name' | 'scope' | 'packageId' | 'description' | 'hosts'> | null,
 ) {
 	const savedCookieValue = await readCookie(request, savedCookieName)
-	const expectedValue = setup ? await connectSecretSetSavedCookieValue(setup) : null
+	const expectedValue = setup ? await connectSecretSetSavedCookieValue(userId, setup) : null
 	const saved = expectedValue !== null && savedCookieValue === expectedValue
 	return {
 		saved,
@@ -174,6 +177,7 @@ export async function handleConnectSecretSet(request: Request, env: Env, url: UR
 		request.method === 'GET'
 			? await connectSecretSetSavedState(
 					request,
+					session.user.id,
 					parsed.kind === 'setup' && parsed.error === null ? parsed.setup : null,
 				)
 			: null
@@ -239,7 +243,7 @@ export async function handleConnectSecretSet(request: Request, env: Env, url: UR
 		throw error
 	}
 
-	const savedCookieValue = await connectSecretSetSavedCookieValue(parsed.setup)
+	const savedCookieValue = await connectSecretSetSavedCookieValue(session.user.id, parsed.setup)
 	const savedCookie = await serializeCookie(savedCookieName, savedCookieValue, {
 		maxAgeSeconds: 60,
 		secure: cookiesAreSecure(request.url),

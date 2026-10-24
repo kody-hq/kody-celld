@@ -18,9 +18,10 @@ function setupFromUrl(url: URL): SavedSetup {
 	return parsed.setup
 }
 
-async function savedCookieValue(setup: SavedSetup) {
+async function savedCookieValue(userId: string, setup: SavedSetup) {
 	return sha256Hex(
 		canonicalJsonStringify({
+			userId,
 			name: setup.name,
 			scope: setup.scope,
 			packageId: setup.packageId,
@@ -162,7 +163,7 @@ describe('handleConnectSecretSet', () => {
 		const request = new Request(url, {
 			headers: { cookie },
 		})
-		assert.deepEqual(await connectSecretSetSavedState(request, setupFromUrl(url)), {
+		assert.deepEqual(await connectSecretSetSavedState(request, 'user-1', setupFromUrl(url)), {
 			saved: false,
 			canSubmit: true,
 			clearCookie: null,
@@ -176,10 +177,10 @@ describe('handleConnectSecretSet', () => {
 		)
 		const setup = setupFromUrl(url)
 		const request = new Request(url, {
-			headers: { cookie: `${cookie}; kody_connect_saved=${await savedCookieValue(setup)}` },
+			headers: { cookie: `${cookie}; kody_connect_saved=${await savedCookieValue('user-1', setup)}` },
 		})
 
-		assert.deepEqual(await connectSecretSetSavedState(request, setup), {
+		assert.deepEqual(await connectSecretSetSavedState(request, 'user-1', setup), {
 			saved: true,
 			canSubmit: false,
 			clearCookie: 'kody_connect_saved=; HttpOnly; Max-Age=0; Path=/connect/secret-set; SameSite=Lax',
@@ -190,12 +191,12 @@ describe('handleConnectSecretSet', () => {
 		const { cookie } = await fixture()
 		const url = new URL('http://localhost/connect/secret-set?name=github')
 		const setup = setupFromUrl(url)
-		const mismatchedValue = await savedCookieValue({ ...setup, name: 'other' })
+		const mismatchedValue = await savedCookieValue('user-1', { ...setup, name: 'other' })
 		const request = new Request(url, {
 			headers: { cookie: `${cookie}; kody_connect_saved=${mismatchedValue}` },
 		})
 
-		assert.deepEqual(await connectSecretSetSavedState(request, setup), {
+		assert.deepEqual(await connectSecretSetSavedState(request, 'user-1', setup), {
 			saved: false,
 			canSubmit: true,
 			clearCookie: 'kody_connect_saved=; HttpOnly; Max-Age=0; Path=/connect/secret-set; SameSite=Lax',
@@ -210,10 +211,25 @@ describe('handleConnectSecretSet', () => {
 		const currentUrl = new URL('http://localhost/connect/secret-set?name=github&allowedHosts=api.two.example')
 		const currentSetup = setupFromUrl(currentUrl)
 		const request = new Request(currentUrl, {
-			headers: { cookie: `${cookie}; kody_connect_saved=${await savedCookieValue(savedSetup)}` },
+			headers: { cookie: `${cookie}; kody_connect_saved=${await savedCookieValue('user-1', savedSetup)}` },
 		})
 
-		assert.deepEqual(await connectSecretSetSavedState(request, currentSetup), {
+		assert.deepEqual(await connectSecretSetSavedState(request, 'user-1', currentSetup), {
+			saved: false,
+			canSubmit: true,
+			clearCookie: 'kody_connect_saved=; HttpOnly; Max-Age=0; Path=/connect/secret-set; SameSite=Lax',
+		})
+	})
+
+	it('does not confirm a cookie created for a different user', async () => {
+		const { cookie } = await fixture()
+		const url = new URL('http://localhost/connect/secret-set?name=github')
+		const setup = setupFromUrl(url)
+		const request = new Request(url, {
+			headers: { cookie: `${cookie}; kody_connect_saved=${await savedCookieValue('user-a', setup)}` },
+		})
+
+		assert.deepEqual(await connectSecretSetSavedState(request, 'user-b', setup), {
 			saved: false,
 			canSubmit: true,
 			clearCookie: 'kody_connect_saved=; HttpOnly; Max-Age=0; Path=/connect/secret-set; SameSite=Lax',
@@ -226,7 +242,7 @@ describe('handleConnectSecretSet', () => {
 			'/connect/secret-set?name=github&description=team%20token&scope=package&packageId=acme%2Fagent&allowedHosts=api.example.com&flash=saved'
 		const request = postRequest(path, cookie, { value: 'secret-value', csrf }, 'https://localhost')
 		const response = await handleConnectSecretSet(request, env, new URL(request.url))
-		const expectedCookieValue = await savedCookieValue(setupFromUrl(new URL(request.url)))
+		const expectedCookieValue = await savedCookieValue('user-1', setupFromUrl(new URL(request.url)))
 
 		assert.equal(response.status, 303)
 		const location = response.headers.get('location') ?? ''
