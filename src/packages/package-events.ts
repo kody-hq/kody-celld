@@ -1,8 +1,8 @@
 import type { UserCell } from '../cells/user-cell.ts'
 import type { Env } from '../env.ts'
 import { executeRun, runRecordMaxIdempotencyKeyLength } from '../execute/engine.ts'
+import { canonicalJsonStringify } from '../lib/canonical-json.ts'
 import { sha256Hex } from '../lib/crypto.ts'
-import { canonicalJsonStringify } from '../lib/json-schema-subset.ts'
 
 const untrustedSubscriptionEnvelopeFields = ['synthetic', 'replay_of'] as const
 
