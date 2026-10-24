@@ -55,6 +55,9 @@ export type Quotas = {
 	mcpServers: number
 }
 
+export const backgroundExecutorTimeoutMs = 5 * 60_000
+export const maxConcurrentWorkflows = 25
+
 export type LimitEnv = Partial<
 	Record<
 		| 'KODY_EXECUTE_TIMEOUT_MS'

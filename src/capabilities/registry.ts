@@ -17,6 +17,7 @@ import { mcpServerCapabilities, mcpServersDomain } from './mcp-servers.ts'
 import { secretProviderCapabilities, secretProvidersDomain } from './secret-providers.ts'
 import { accountCapabilities, accountDomain } from './account.ts'
 import { communityCapabilities, communityDomain } from './community.ts'
+import { workflowCapabilities } from './workflows.ts'
 
 export const domains: Array<DomainDefinition> = [
 	systemDomain,
@@ -56,6 +57,7 @@ export const capabilities: Array<CapabilityDefinition> = [
 	...secretProviderCapabilities,
 	...accountCapabilities,
 	...communityCapabilities,
+	...workflowCapabilities,
 ]
 
 const byName = new Map(capabilities.map((c) => [c.name, c]))
