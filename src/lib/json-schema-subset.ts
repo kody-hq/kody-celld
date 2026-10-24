@@ -1,26 +1,9 @@
 // kody: packages/shared/src/json-schema-subset.ts
 
+import { canonicalJsonStringify } from './canonical-json.ts'
+
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function canonicalizeJsonValue(value: unknown): unknown {
-	if (Array.isArray(value)) {
-		return value.map((entry) => canonicalizeJsonValue(entry))
-	}
-	if (value && typeof value === 'object') {
-		const record = value as Record<string, unknown>
-		return Object.fromEntries(
-			Object.keys(record)
-				.sort()
-				.map((key) => [key, canonicalizeJsonValue(record[key])]),
-		)
-	}
-	return value
-}
-
-function canonicalJsonStringify(value: unknown) {
-	return JSON.stringify(canonicalizeJsonValue(value))
 }
 
 /**

@@ -57,8 +57,8 @@ Celld emits `email.message.received`, `email.message.quarantined`,
 `integration.auth.failed`. Other non-empty topic strings are saved with a
 warning, but no celld event triggers them. Subscription handlers must still
 name an uploaded file. `filters` on platform topics are not applied and produce
-a warning. Filters on package-emitted topics are retained without a warning,
-but those handlers are not delivered events yet.
+a warning. Filters on package-emitted topics are applied: the handler runs only
+when every filter key is present in the payload with an equal JSON value.
 
 ## Emitted topics (`kody.emits`)
 
@@ -87,9 +87,26 @@ subset payload schema with root `"type": "object"`.
 }
 ```
 
-Celld parses and validates these declarations, but `events.dispatch` and
-delivery to subscriber handlers are not available yet. The `mcp: true` flag is
-ignored with a warning. Unsupported entry fields are warned about and dropped.
+Package code can emit a declared topic with `events.dispatch`:
+
+```js
+import { events } from 'kody:runtime'
+await events.dispatch({
+  topic: '@example/task.created',
+  idempotencyKey: `task:${task.id}`,
+  payload: { taskId: task.id },
+})
+```
+
+Payloads are checked against `payloadSchema` and capped at 64 KiB of canonical
+JSON. Subscribers receive `{ event, source: { type: 'package', package_id, kody_id }, idempotency_key, payload }`.
+Matching subscribers run sequentially with exactly-once idempotency per source,
+subscriber, topic, and key. Nested package events carry a depth limit of 8.
+Cycles, including a package that subscribes to its own topic, stop at depth 8;
+the hop that goes over the limit records `event_depth_exceeded` in its run.
+Celld returns `status: "delivered_inline"` and schedules subscriber delivery in
+the background. The `mcp: true` flag is ignored with a warning. Unsupported
+entry fields are dropped with warnings.
 
 ## Credential slots
 

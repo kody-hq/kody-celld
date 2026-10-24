@@ -29,6 +29,6 @@ export const provisionGuide = {
 		text: `kody-celld ${KODY_CELLD_VERSION} runs on celld (self-hosted Workers + Durable Objects).
 Built in: MCP search/execute, packages, secrets with gateway injection, jobs on cron, webhooks, quotas/audit, memories (FTS5 + vectors), the web UI, OAuth integrations ({{integration-token:...}}, createAuthenticatedFetch), and external MCP servers (kody.mcp["name"].tool()).
 Through operator-configured generic adapters: AI chat/embeddings (any OpenAI-compatible endpoint; see kody.aiStatus()), vectors (sqlite-vec or Qdrant), blob storage (the celld bucket binding or any S3-compatible endpoint), email (SMTP mail-bridge; see kody.emailStatus()), browser rendering (browserless).
-Not yet in this build: Workflows. The kody:runtime exports \`email\` and \`workflows\` are null; use the kody.email* capabilities for mail. See docs/known-gaps.md for the full matrix.`,
+Not yet in this build: Workflows. The kody:runtime exports \`email\` and \`workflows\` are null; use the kody.email* capabilities for mail. Package \`events.dispatch\` delivers declared events inline. See docs/known-gaps.md for the full matrix.`,
 	},
 }

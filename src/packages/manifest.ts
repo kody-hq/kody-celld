@@ -351,11 +351,7 @@ function parseSubscriptions(raw: unknown, files: PackageFiles, warnings: Array<s
 			const where = `kody.subscriptions["${topic}"]`
 			if (hostedSubscriptionTopicSet.has(topic)) {
 				warnings.push(`${where}: celld does not emit this topic yet. The handler is saved but will not run.`)
-			} else if (topic.startsWith('@')) {
-				warnings.push(
-					`${where}: package-emitted topics are not delivered on celld yet. The handler is saved but will not run.`,
-				)
-			} else {
+			} else if (!topic.startsWith('@')) {
 				warnings.push(`${where}: unknown topic. The handler is saved but no celld event triggers it.`)
 			}
 		}

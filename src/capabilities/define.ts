@@ -22,6 +22,8 @@ export type CapabilityContext = {
 	/** Package whose code is running, or null for ad hoc execute / MCP-direct calls. */
 	packageName: string | null
 	runId: string | null
+	eventDepth: number
+	waitUntil?: (promise: Promise<unknown>) => void
 	baseUrl: string
 	/** Set when the caller is executing inside the Worker Loader sandbox. */
 	fromRuntime: boolean

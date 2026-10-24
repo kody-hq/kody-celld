@@ -2,7 +2,7 @@
 // kody:<pkg>/<export> imports), and prove packageStorage() isolation.
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { assert, log, readPackageDir, sha256 } from './lib.mjs'
+import { assert, log, readPackageDir, sha256, waitFor } from './lib.mjs'
 
 const examples = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../examples/packages')
 
@@ -403,4 +403,215 @@ export default async () => broken()`)
 		typedBroken.error,
 	)
 	log('typescript', { adhoc: adhocTs, packageRun: typedRun.result, kodyImport: typedImport })
+
+	const eventTopic = '@kody-smoke/event.created'
+	const failTopic = '@kody-smoke/event.failed'
+	await mcp.call('packageSave', {
+		files: {
+			'package.json': JSON.stringify({
+				name: '@kody-smoke/event-source',
+				version: '1.0.0',
+				exports: './emit.js',
+				kody: {
+					emits: {
+						[eventTopic]: { description: 'A smoke event.' },
+						[failTopic]: { description: 'A smoke event that fails.' },
+					},
+				},
+			}),
+			'README.md': '# event-source',
+			'AGENTS.md': 'Smoke.',
+			'emit.js': `import { events } from 'kody:runtime'
+export default async ({ kind = 'match', idempotencyKey = 'smoke:1' } = {}) =>
+	events.dispatch({ topic: kind === 'fail' ? '${failTopic}' : '${eventTopic}', idempotencyKey, payload: { kind } })`,
+		},
+	})
+	await mcp.call('packageSave', {
+		files: {
+			'package.json': JSON.stringify({
+				name: '@kody-smoke/event-subscriber',
+				version: '1.0.0',
+				exports: './handle.js',
+				kody: {
+					subscriptions: {
+						[eventTopic]: { handler: './handle.js', filters: { kind: 'match' } },
+						[failTopic]: { handler: './handle.js', filters: { kind: 'fail' } },
+					},
+				},
+			}),
+			'README.md': '# event-subscriber',
+			'AGENTS.md': 'Smoke.',
+			'handle.js': `import { packageStorage } from 'kody:runtime'
+export default async (envelope) => {
+	const storage = packageStorage()
+	if (envelope.payload.kind === 'fail') {
+		const failCount = (await storage.get('failCount')) ?? 0
+		await storage.set('failCount', failCount + 1)
+		throw new Error('smoke subscriber failure')
+	}
+	const count = (await storage.get('count')) ?? 0
+	await storage.set('count', count + 1)
+	await storage.set('envelope', envelope)
+	return count + 1
+}`,
+		},
+	})
+	const eventRun = await mcp.callDirect('packageRun', {
+		name: '@kody-smoke/event-source',
+		params: { kind: 'match', idempotencyKey: 'smoke:events:1' },
+	})
+	assert(
+		eventRun.ok && eventRun.result.status === 'delivered_inline',
+		'events.dispatch should deliver inline',
+		eventRun,
+	)
+	const eventInspect = await waitFor(
+		'matching package event delivery',
+		async () => {
+			const subscriberStorage = await mcp.call('packageStorageInspect', {
+				packageName: '@kody-smoke/event-subscriber',
+			})
+			return subscriberStorage.items.find((item) => item.key === 'count')?.value === 1 ? subscriberStorage : null
+		},
+		{ timeoutMs: 10_000, intervalMs: 250 },
+	)
+	const eventCount = eventInspect.items.find((item) => item.key === 'count')
+	const eventEnvelope = eventInspect.items.find((item) => item.key === 'envelope')
+	assert(eventCount?.value === 1, 'matching event subscription should run once', eventInspect)
+	assert(
+		eventEnvelope?.value?.source?.package_id === '@kody-smoke/event-source',
+		'event envelope source mismatch',
+		eventEnvelope,
+	)
+	const missed = await mcp.callDirect('packageRun', {
+		name: '@kody-smoke/event-source',
+		params: { kind: 'miss', idempotencyKey: 'smoke:events:2' },
+	})
+	assert(missed.ok && missed.result.status === 'delivered_inline', 'nonmatching event should still dispatch', missed)
+	await new Promise((resolve) => setTimeout(resolve, 500))
+	const replay = await mcp.callDirect('packageRun', {
+		name: '@kody-smoke/event-source',
+		params: { kind: 'match', idempotencyKey: 'smoke:events:1' },
+	})
+	assert(replay.ok, 'replaying an event should succeed', replay)
+	await new Promise((resolve) => setTimeout(resolve, 2_000))
+	const afterReplay = await mcp.call('packageStorageInspect', { packageName: '@kody-smoke/event-subscriber' })
+	assert(
+		afterReplay.items.find((item) => item.key === 'count')?.value === 1,
+		'event replay must not duplicate delivery',
+		afterReplay,
+	)
+
+	const failedEvent = await mcp.callDirect('packageRun', {
+		name: '@kody-smoke/event-source',
+		params: { kind: 'fail', idempotencyKey: 'smoke:events:fail:1' },
+	})
+	assert(failedEvent.ok, 'failed event dispatch should return successfully', failedEvent)
+	const failedDelivery = await waitFor(
+		'failed package event handler',
+		async () => {
+			const subscriberStorage = await mcp.call('packageStorageInspect', {
+				packageName: '@kody-smoke/event-subscriber',
+			})
+			return subscriberStorage.items.find((item) => item.key === 'failCount')?.value === 1 ? subscriberStorage : null
+		},
+		{ timeoutMs: 10_000, intervalMs: 250 },
+	)
+	assert(
+		failedDelivery.items.find((item) => item.key === 'failCount')?.value === 1,
+		'failed package event handler should increment the failure count',
+		failedDelivery,
+	)
+	const failedRuns = (await mcp.call('runList', { limit: 200 })).runs.filter(
+		(run) =>
+			run.packageName === '@kody-smoke/event-subscriber' && run.kind === 'subscription' && run.status === 'error',
+	)
+	assert(
+		failedRuns.some((run) => run.error?.message.includes('smoke subscriber failure')),
+		'terminal subscriber failure should remain visible in run history',
+		failedRuns,
+	)
+	const failedReplay = await mcp.callDirect('packageRun', {
+		name: '@kody-smoke/event-source',
+		params: { kind: 'fail', idempotencyKey: 'smoke:events:fail:1' },
+	})
+	assert(failedReplay.ok, 'replaying a failed event should succeed', failedReplay)
+	await new Promise((resolve) => setTimeout(resolve, 2_000))
+	const afterFailedReplay = await mcp.call('packageStorageInspect', {
+		packageName: '@kody-smoke/event-subscriber',
+	})
+	assert(
+		afterFailedReplay.items.find((item) => item.key === 'failCount')?.value === 1,
+		'replaying a terminal failure must not rerun the handler',
+		afterFailedReplay,
+	)
+	const retriedFailure = await mcp.callDirect('packageRun', {
+		name: '@kody-smoke/event-source',
+		params: { kind: 'fail', idempotencyKey: 'smoke:events:fail:2' },
+	})
+	assert(retriedFailure.ok, 'dispatching a failed event with a new key should succeed', retriedFailure)
+	const retriedFailureDelivery = await waitFor(
+		'new-key package event retry',
+		async () => {
+			const subscriberStorage = await mcp.call('packageStorageInspect', {
+				packageName: '@kody-smoke/event-subscriber',
+			})
+			return subscriberStorage.items.find((item) => item.key === 'failCount')?.value === 2 ? subscriberStorage : null
+		},
+		{ timeoutMs: 10_000, intervalMs: 250 },
+	)
+
+	const loopTopic = '@kody-smoke/loop.tick'
+	const loopPackage = '@kody-smoke/event-loop'
+	await mcp.call('packageSave', {
+		files: {
+			'package.json': JSON.stringify({
+				name: loopPackage,
+				version: '1.0.0',
+				exports: './start.js',
+				kody: {
+					emits: { [loopTopic]: { description: 'A loop smoke event.' } },
+					subscriptions: { [loopTopic]: { handler: './handle.js' } },
+				},
+			}),
+			'README.md': '# event-loop',
+			'AGENTS.md': 'Smoke.',
+			'start.js': `import { events } from 'kody:runtime'
+export default async () =>
+	events.dispatch({ topic: '${loopTopic}', idempotencyKey: 'smoke:events:loop:1', payload: {} })`,
+			'handle.js': `import { events } from 'kody:runtime'
+export default async (envelope) =>
+	events.dispatch({
+		topic: '${loopTopic}',
+		idempotencyKey: envelope.idempotency_key + '.x',
+		payload: {},
+	})`,
+		},
+	})
+	const loopStart = await mcp.callDirect('packageRun', { name: loopPackage })
+	assert(loopStart.ok, 'self-subscription loop should start', loopStart)
+	const loopRuns = await waitFor(
+		'self-subscription loop depth failure',
+		async () => {
+			const runs = (await mcp.call('runList', { limit: 200 })).runs.filter(
+				(run) => run.packageName === loopPackage && run.kind === 'subscription',
+			)
+			return runs.some((run) => run.status === 'error' && run.error?.message.includes('event_depth_exceeded'))
+				? runs
+				: null
+		},
+		{ timeoutMs: 10_000, intervalMs: 250 },
+	)
+	assert(loopRuns.length === 8, 'self-subscription loop should stop after eight subscription runs', loopRuns)
+	assert(
+		loopRuns.some((run) => run.status === 'error' && run.error?.message.includes('event_depth_exceeded')),
+		'eighth self-subscription run should record event_depth_exceeded',
+		loopRuns,
+	)
+	log('package events', {
+		status: eventRun.result.status,
+		count: eventCount.value,
+		failedCount: retriedFailureDelivery.items.find((item) => item.key === 'failCount')?.value,
+		loopRuns: loopRuns.length,
+	})
 }

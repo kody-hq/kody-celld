@@ -22,7 +22,7 @@ export function __current() {
 
 function __callContext() {
 	const store = __current()
-	return store ? { runId: store.runId, packageName: store.packageName } : null
+	return store ? { runId: store.runId, packageName: store.packageName, eventDepth: store.eventDepth ?? 0 } : null
 }
 
 function host() {
@@ -139,7 +139,9 @@ export const packageSecrets = {
 export const email = null
 export const workflows = null
 export const packages = null
-export const events = null
+export const events = {
+	dispatch: async (input) => await host().capability('packageEventDispatch', input ?? {}, __callContext()),
+}
 
 export default {
 	kody,
