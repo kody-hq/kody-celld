@@ -306,7 +306,7 @@ export const emailMessageRelease = defineCapability<{ id: string; allowSender?: 
 	},
 })
 
-export const emailAttachmentGet = defineCapability<{ messageId: string; attachmentId: string }>({
+export const emailAttachmentGet = defineCapability<{ messageId?: string; attachmentId: string }>({
 	domain: 'email',
 	name: 'emailAttachmentGet',
 	description:
@@ -316,7 +316,7 @@ export const emailAttachmentGet = defineCapability<{ messageId: string; attachme
 	inputSchema: {
 		type: 'object',
 		properties: { messageId: { type: 'string' }, attachmentId: { type: 'string' } },
-		required: ['messageId', 'attachmentId'],
+		required: ['attachmentId'],
 	},
 	readOnly: true,
 	async handler(args, ctx) {
