@@ -170,6 +170,13 @@ roadmap is now shipped; the roadmap below is kept as the change log.
 
 - **Package credential slots.** Celld parses and stores `kody.credentials`,
   but `credential()` is not available yet.
+- **Package-emitted topics.** Celld parses and validates `kody.emits`, but
+  `events.dispatch` and delivery to subscriber handlers are not available yet.
+  `@` subscriptions are saved with a warning and their filters are retained.
+  The `mcp: true` flag is ignored. Platform-topic filters remain unapplied
+  with a warning.
+- **Unsupported manifest keys.** Hosted-only `kody.*` keys that celld does not
+  support and unknown `kody.*` keys are ignored with warnings.
 - **Package subscriptions and manifest keys.** Celld emits only
   `email.message.received`, `email.message.quarantined`,
   `email.message.delivery.updated`, `integration.auth.succeeded`, and
