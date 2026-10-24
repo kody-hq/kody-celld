@@ -1,5 +1,6 @@
 import { deliverPackageEvent, stripUntrustedSubscriptionEnvelopeFields } from '../packages/package-events.ts'
-import { canonicalJsonStringify, listJsonSchemaSubsetValueErrors } from '../lib/json-schema-subset.ts'
+import { canonicalJsonStringify } from '../lib/canonical-json.ts'
+import { listJsonSchemaSubsetValueErrors } from '../lib/json-schema-subset.ts'
 import { KodyError } from '../lib/errors.ts'
 import { defineCapability, defineDomain, type CapabilityContext } from './define.ts'
 
