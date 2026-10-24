@@ -57,8 +57,8 @@ Celld emits `email.message.received`, `email.message.quarantined`,
 `integration.auth.failed`. Other non-empty topic strings are saved with a
 warning, but no celld event triggers them. Subscription handlers must still
 name an uploaded file. `filters` on platform topics are not applied and produce
-a warning. Filters on package-emitted topics are retained without a warning,
-but those handlers receive matching emitted events.
+a warning. Filters on package-emitted topics are applied: the handler runs only
+when every filter key is present in the payload with an equal JSON value.
 
 ## Emitted topics (`kody.emits`)
 
