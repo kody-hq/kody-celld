@@ -60,6 +60,36 @@ describe('parsePackageManifest', () => {
 		assert.throws(() => parsePackageManifest({ 'README.md': 'x' }), /package\.json is required/)
 	})
 
+	it('warns for hosted-only and unknown kody keys', () => {
+		const parsed = parsePackageManifest(manifest({ kody: { tags: ['example'], bogus: true } }))
+		assert.deepEqual(parsed.parseWarnings, [
+			'kody.tags is not supported on celld yet and was ignored.',
+			'kody.bogus is not a known manifest key and was ignored.',
+		])
+	})
+
+	it('does not warn for kody keys handled by celld', () => {
+		const parsed = parsePackageManifest({
+			...manifest({
+				exports: { '.': './index.js', './secretProvider': './lib/secret-provider.js' },
+				kody: {
+					description: 'Package description',
+					jobs: {},
+					webhooks: [],
+					subscriptions: {},
+					secretProvider: { id: 'test' },
+					app: { entry: './app/server.js' },
+					credentials: {},
+					hidden: false,
+					dependencies: {},
+				},
+			}),
+			'lib/secret-provider.js': 'export default {}',
+			'app/server.js': 'export default {}',
+		})
+		assert.deepEqual(parsed.parseWarnings, [])
+	})
+
 	it('parses credential slots, rejects invalid slot definitions, and defaults stored credentials', () => {
 		const parsed = parsePackageManifest(
 			manifest({
@@ -488,13 +518,67 @@ describe('kody.webhooks + kody.subscriptions', () => {
 			]),
 			/replay\.timestampHeader/,
 		)
-		assert.throws(
-			() =>
-				parsePackageManifest(
-					manifest({ exports: exportsMap, kody: { subscriptions: { 'email.bogus': { handler: './index.js' } } } }),
-				),
-			/unknown topic/,
+	})
+
+	it('accepts unknown topics with warnings', () => {
+		const parsed = parsePackageManifest(
+			manifest({ exports: exportsMap, kody: { subscriptions: { 'email.bogus': { handler: './index.js' } } } }),
 		)
+		assert.deepEqual(parsed.subscriptions, [{ topic: 'email.bogus', handler: 'index.js' }])
+		assert.deepEqual(parsed.parseWarnings, [
+			'kody.subscriptions["email.bogus"]: unknown topic. The handler is saved but no celld event triggers it.',
+		])
+	})
+
+	it('warns for hosted and package-emitted topics but saves their handlers', () => {
+		const parsed = parsePackageManifest(
+			manifest({
+				exports: exportsMap,
+				kody: {
+					subscriptions: {
+						'run.error.recorded': { handler: './index.js' },
+						'@scope/topic': { handler: './lib/other.js' },
+					},
+				},
+			}),
+		)
+		assert.deepEqual(parsed.subscriptions, [
+			{ topic: 'run.error.recorded', handler: 'index.js' },
+			{ topic: '@scope/topic', handler: 'lib/other.js' },
+		])
+		assert.deepEqual(parsed.parseWarnings, [
+			'kody.subscriptions["run.error.recorded"]: celld does not emit this topic yet. The handler is saved but will not run.',
+			'kody.subscriptions["@scope/topic"]: package-emitted topics are not supported on celld yet. The handler is saved but will not run.',
+		])
+	})
+
+	it('warns for unapplied filters and drops filters and extra subscription keys', () => {
+		const parsed = parsePackageManifest(
+			manifest({
+				exports: exportsMap,
+				kody: {
+					subscriptions: {
+						'email.message.received': {
+							handler: './index.js',
+							filters: { source: 'test' },
+							retry: true,
+						},
+					},
+				},
+			}),
+		)
+		assert.deepEqual(parsed.subscriptions, [{ topic: 'email.message.received', handler: 'index.js' }])
+		assert.deepEqual(parsed.parseWarnings, [
+			'kody.subscriptions["email.message.received"].filters is not applied on celld; the handler runs for every event on this topic.',
+			'kody.subscriptions["email.message.received"].retry is not supported on celld and was dropped.',
+		])
+	})
+
+	it('rejects empty topics and missing handlers', () => {
+		const parse = (subscriptions: unknown) =>
+			parsePackageManifest(manifest({ exports: exportsMap, kody: { subscriptions } }))
+		assert.throws(() => parse({ '': { handler: './index.js' } }), /topic must not be empty/)
+		assert.throws(() => parse({ 'email.message.received': {} }), /handler is required/)
 	})
 })
 

@@ -170,6 +170,14 @@ roadmap is now shipped; the roadmap below is kept as the change log.
 
 - **Package credential slots.** Celld parses and stores `kody.credentials`,
   but `credential()` is not available yet.
+- **Package subscriptions and manifest keys.** Celld emits only
+  `email.message.received`, `email.message.quarantined`,
+  `email.message.delivery.updated`, `integration.auth.succeeded`, and
+  `integration.auth.failed`. Other topics, including hosted-only and
+  `@` package-emitted topics, are saved with warnings but have no celld event
+  to trigger them. Subscription `filters` are ignored with a warning, so the
+  handler runs for every event on the topic. Hosted-only `kody.*` keys that
+  celld does not support and unknown `kody.*` keys are ignored with warnings.
 - `/connect/secret-set` does not support `expiresAt` or `allowedPackages`.
   `allowedPackages` waits on the secretLock grants PR. Hosts in a setup link
   are approved in the account-wide host list, so they apply to every secret.
