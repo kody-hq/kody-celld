@@ -200,7 +200,9 @@ async function updateOne(manifest, filePath) {
 	}
 	const entry = manifest.files[index]
 	const upstream = await fetchUpstream(commitOverride, entry.source)
-	await writeFile(path.join(repoRoot, entry.path), upstream)
+	const localPath = path.join(repoRoot, entry.path)
+	await mkdir(path.dirname(localPath), { recursive: true })
+	await writeFile(localPath, upstream)
 	const files = [...manifest.files]
 	files[index] = { ...entry, sha256: sha256(upstream), kodyCommit: commitOverride }
 	await writeFile(manifestPath, serializeManifest({ ...manifest, updatedAt: new Date().toISOString(), files }))
