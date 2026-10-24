@@ -70,14 +70,13 @@ export function packageSourceHostPolicyFromEnv(env: PackageSourceEnv): PackageSo
 	return { allowedHosts: defaultPackageSourceHosts, privateHosts: privateHostsFromEnv(env), dnsResolverUrl }
 }
 
-/** What a fetch of a package source needs: the host policy plus injectable fetches (tests). */
+/** What a fetch of a package source needs: the host policy plus an optional fetch. */
 export type PackageSourceFetchOptions = {
 	allowedHosts: Array<string>
 	privateHosts?: Array<string> | undefined
 	dnsResolverUrl: string
+	/** Fetch for source downloads and DNS-over-HTTPS lookups; defaults to the global `fetch`. */
 	fetch?: FetchLike | undefined
-	/** Fetch used for DNS-over-HTTPS lookups; defaults to `fetch`. */
-	dnsFetch?: FetchLike | undefined
 }
 
 /** Checks one hop (the first URL or a redirect target) and returns it normalized. */
@@ -91,11 +90,10 @@ export function createSourceHopGuard(options: PackageSourceFetchOptions): Source
 	const privateHosts = options.privateHosts ?? []
 	const memo: DnsMemo = new Map()
 	const policy = { allowPrivateHosts: privateHosts, dnsResolverUrl: options.dnsResolverUrl }
-	const dnsFetch = options.dnsFetch ?? options.fetch
 	return async (raw) => {
 		const url = assertAllowedSourceUrl(raw, options.allowedHosts, privateHosts)
 		await assertResolvedHostAllowed(url, policy, {
-			fetch: dnsFetch,
+			fetch: options.fetch,
 			memo,
 			refuse: (message) => new KodyError('package_source_refused', message, { status: 403 }),
 		})

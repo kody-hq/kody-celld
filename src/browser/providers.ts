@@ -55,11 +55,7 @@ function refusePrivate(message: string) {
  * Only the URL Kody is given is checked: redirects, subresources and the
  * browser's own DNS lookup happen inside the browser (see docs/browser.md).
  */
-export async function assertRenderableUrl(
-	raw: unknown,
-	config: NonNullable<BrowserConfig>,
-	options: { dnsFetch?: ((input: string, init: RequestInit) => Promise<Response>) | undefined } = {},
-): Promise<string> {
+export async function assertRenderableUrl(raw: unknown, config: NonNullable<BrowserConfig>): Promise<string> {
 	if (typeof raw !== 'string' || !raw.trim()) throw new KodyError('invalid_args', 'url must be a non-empty string.')
 	let url: URL
 	try {
@@ -82,7 +78,7 @@ export async function assertRenderableUrl(
 	await assertResolvedHostAllowed(
 		url,
 		{ allowPrivateHosts: config.allowPrivateHosts, dnsResolverUrl: config.dnsResolverUrl },
-		{ fetch: options.dnsFetch, refuse: refusePrivate },
+		{ refuse: refusePrivate },
 	)
 	return url.toString()
 }

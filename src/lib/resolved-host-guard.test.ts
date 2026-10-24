@@ -2,9 +2,23 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { KodyError } from './errors.ts'
 import { assertResolvedHostAllowed, dnsResolverUrlFromEnv, type DnsMemo } from './resolved-host-guard.ts'
-import { dohStub, testDnsResolverUrl } from './test-dns.ts'
 
-const policy = { allowPrivateHosts: ['172.30.0.0/16', 'nas.example'], dnsResolverUrl: testDnsResolverUrl }
+const policy = { allowPrivateHosts: ['172.30.0.0/16', 'nas.example'], dnsResolverUrl: 'https://dns.test/dns-query' }
+
+/** Answers DNS-over-HTTPS JSON lookups from `answers` (unlisted names: `fallback`) and records them. */
+function dohStub(answers: Record<string, Array<string>> = {}, fallback = ['93.184.216.34']) {
+	const queries: Array<string> = []
+	const stub = async (input: RequestInfo | URL) => {
+		const url = new URL(String(input))
+		const name = url.searchParams.get('name') ?? ''
+		const type = url.searchParams.get('type')
+		queries.push(`${name}/${type}`)
+		const addresses = answers[name] ?? fallback
+		const wanted = addresses.filter((address) => address.includes(':') === (type === 'AAAA'))
+		return Response.json({ Status: 0, Answer: wanted.map((data) => ({ type: type === 'AAAA' ? 28 : 1, data })) })
+	}
+	return Object.assign(stub, { queries })
+}
 
 describe('dnsResolverUrlFromEnv', () => {
 	it('defaults to Cloudflare and accepts https only', () => {
