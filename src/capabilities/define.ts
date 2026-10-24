@@ -23,6 +23,8 @@ export type CapabilityContext = {
 	packageName: string | null
 	runId: string | null
 	eventDepth: number
+	computedImportDepth: number
+	timeoutMs?: number | undefined
 	waitUntil?: (promise: Promise<unknown>) => void
 	baseUrl: string
 	/** Set when the caller is executing inside the Worker Loader sandbox. */

@@ -16,6 +16,7 @@ function context(overrides: Partial<CapabilityContext> = {}) {
 		packageName: '@example/source',
 		runId: 'run-1',
 		eventDepth: 0,
+		computedImportDepth: 0,
 		baseUrl: 'http://localhost',
 		fromRuntime: true,
 		...overrides,

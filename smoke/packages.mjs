@@ -404,6 +404,72 @@ export default async () => broken()`)
 	)
 	log('typescript', { adhoc: adhocTs, packageRun: typedRun.result, kodyImport: typedImport })
 
+	const computedPackageName = '@kody-smoke/computed-import-target'
+	await mcp.call('packageSave', {
+		files: {
+			'package.json': JSON.stringify({
+				name: computedPackageName,
+				version: '1.0.0',
+				exports: { './double': './double.js' },
+			}),
+			'README.md': '# computed-import-target',
+			'AGENTS.md': 'Smoke.',
+			'double.js': 'export default async ({ n }) => n * 2',
+		},
+	})
+	const computedImport = await mcp.execute(`export default async () => {
+  const name = '${computedPackageName}'
+  const m = await import(\`kody:\${name}/double\`)
+  return await m.default({ n: 2 })
+}`)
+	assert(
+		computedImport.ok && computedImport.result === 4,
+		'computed kody:@ import should call the default export with params',
+		computedImport,
+	)
+	const unknownComputedImport = await mcp.execute(`export default async () => {
+  const name = '@kody-smoke/missing-computed-target'
+  const m = await import(\`kody:\${name}/double\`)
+  return await m.default({ n: 2 })
+}`)
+	assert(
+		!unknownComputedImport.ok && /package_not_found/.test(unknownComputedImport.error?.message ?? ''),
+		'computed kody:@ import of an unknown package should fail',
+		unknownComputedImport.error,
+	)
+
+	const computedLoopName = '@kody-smoke/computed-import-loop'
+	await mcp.call('packageSave', {
+		files: {
+			'package.json': JSON.stringify({
+				name: computedLoopName,
+				version: '1.0.0',
+				exports: './index.js',
+			}),
+			'README.md': '# computed-import-loop',
+			'AGENTS.md': 'Smoke.',
+			'index.js': [
+				'export default async (params) => {',
+				`  const name = '${computedLoopName}'`,
+				'  const m = await import(`kody:${name}`)',
+				'  return await m.default(params)',
+				'}',
+			].join('\n'),
+		},
+	})
+	const computedLoop = await mcp.execute(`export default async () => {
+  const name = '${computedLoopName}'
+  const m = await import(\`kody:\${name}\`)
+  return await m.default()
+}`)
+	assert(
+		!computedLoop.ok &&
+			computedLoop.error?.message.includes('Computed kody:@ import exceeded the maximum nested depth (8).'),
+		'self-recursive computed imports should stop at depth 8',
+		computedLoop.error,
+	)
+	log('computed package imports', { result: computedImport.result, unknown: unknownComputedImport.error?.message })
+
 	const eventTopic = '@kody-smoke/event.created'
 	const failTopic = '@kody-smoke/event.failed'
 	await mcp.call('packageSave', {

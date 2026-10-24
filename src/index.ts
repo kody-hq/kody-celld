@@ -132,6 +132,7 @@ function capabilityContext(env: Env, ctx: ExecutionContext, auth: Principal): Ca
 		packageName: null,
 		runId: null,
 		eventDepth: 0,
+		computedImportDepth: 0,
 		baseUrl: env.KODY_PUBLIC_URL,
 		fromRuntime: false,
 	}
