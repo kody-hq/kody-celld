@@ -73,6 +73,12 @@ Rules enforced by `src/packages/manifest.ts` on `packageSave`:
 | `packageRun({ name, export?, params? })`                                                           | **no** (host only via `/api/call/packageRun`) | Inside a run, import the export instead — it is cheaper and keeps one run record.                                                                                                                                                                                      |
 | `packageStorageInspect({ packageName, prefix?, limit? })` / `packageStorageClear({ packageName })` | yes (a package may only inspect its own)      | KV entries, KV count, SQL tables.                                                                                                                                                                                                                                      |
 
+## Workflows
+
+`workflows.create()` queues durable work for a package export or inline code.
+See [workflows.md](./workflows.md) for arguments, idempotency, retries, and
+cancellation. The account Workflows page is not part of the backend runtime.
+
 ## Importing packages from code
 
 ```ts

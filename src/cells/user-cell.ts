@@ -77,6 +77,16 @@ import {
 	triageFieldsFromRow,
 } from '../runs/triage-store.ts'
 import { signatureMatches } from '../webhooks/verify.ts'
+import {
+	workflowAttemptFinishState,
+	workflowAttemptStaleAfterMs,
+	workflowCancelState,
+	workflowClaimableRows,
+	workflowLostAttemptFailureState,
+	type WorkflowRecord,
+	type WorkflowSourceType,
+	type WorkflowStatus,
+} from '../jobs/workflow-types.ts'
 
 export type SecretMetadata = {
 	name: string
@@ -145,6 +155,24 @@ export type RunRecord = {
 	warnings: Array<string>
 	gateway: Array<GatewayEvent>
 } & RunTriageFields
+
+type WorkflowSqlRow = {
+	id: string
+	source_type: WorkflowSourceType
+	package_id: string | null
+	workflow_name: string
+	export_name: string | null
+	code: string | null
+	params_json: string
+	idempotency_key: string | null
+	run_at: string
+	status: WorkflowStatus
+	attempts: number
+	last_error: string | null
+	created_at: string
+	updated_at: string
+	completed_at: string | null
+}
 
 export type GatewayEvent = {
 	at: string
@@ -427,6 +455,25 @@ export class UserCell extends DurableObject<Env> {
 			);
 			CREATE UNIQUE INDEX IF NOT EXISTS runs_idempotency ON runs(idempotency_key) WHERE idempotency_key IS NOT NULL;
 			CREATE INDEX IF NOT EXISTS runs_created ON runs(created_at DESC);
+			CREATE TABLE IF NOT EXISTS workflows (
+				id TEXT PRIMARY KEY,
+				source_type TEXT NOT NULL,
+				package_id TEXT,
+				workflow_name TEXT NOT NULL,
+				export_name TEXT,
+				code TEXT,
+				params_json TEXT NOT NULL,
+				idempotency_key TEXT,
+				run_at TEXT NOT NULL,
+				status TEXT NOT NULL,
+				attempts INTEGER NOT NULL DEFAULT 0,
+				last_error TEXT,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				completed_at TEXT
+			);
+			CREATE INDEX IF NOT EXISTS workflows_due ON workflows(status, run_at);
+			CREATE INDEX IF NOT EXISTS workflows_recent ON workflows(created_at DESC, id DESC);
 			CREATE TABLE IF NOT EXISTS usage_daily (
 				day TEXT PRIMARY KEY,
 				runs INTEGER NOT NULL DEFAULT 0,
@@ -1581,6 +1628,194 @@ export class UserCell extends DurableObject<Env> {
 		return due
 	}
 
+	private workflowFromRow(row: WorkflowSqlRow): WorkflowRecord {
+		return {
+			id: row.id,
+			sourceType: row.source_type,
+			packageId: row.package_id,
+			workflowName: row.workflow_name,
+			exportName: row.export_name,
+			code: row.code,
+			paramsJson: row.params_json,
+			idempotencyKey: row.idempotency_key,
+			runAt: row.run_at,
+			status: row.status,
+			attempts: row.attempts,
+			lastError: row.last_error,
+			createdAt: row.created_at,
+			updatedAt: row.updated_at,
+			completedAt: row.completed_at,
+		}
+	}
+
+	private workflowRow(id: string): WorkflowRecord | null {
+		const row = this.ctx.storage.sql.exec<WorkflowSqlRow>('SELECT * FROM workflows WHERE id = ?', id).toArray()[0]
+		return row ? this.workflowFromRow(row) : null
+	}
+
+	workflowCreate(input: {
+		id: string
+		sourceType: WorkflowSourceType
+		packageId: string | null
+		workflowName: string
+		exportName: string | null
+		code: string | null
+		paramsJson: string
+		idempotencyKey: string | null
+		runAt: string
+		maxConcurrent: number
+	}): WorkflowRecord {
+		return this.ctx.storage.transactionSync(() => {
+			const existing = this.workflowRow(input.id)
+			if (existing) return existing
+			const count =
+				this.ctx.storage.sql
+					.exec<{ count: number }>(`SELECT COUNT(*) AS count FROM workflows WHERE status IN ('queued', 'running')`)
+					.toArray()[0]?.count ?? 0
+			if (count >= input.maxConcurrent) {
+				throw new KodyError('quota_exceeded', `Concurrent workflow quota reached (${count}/${input.maxConcurrent}).`, {
+					status: 429,
+					details: { quota: 'concurrent_workflows', limit: input.maxConcurrent, used: count },
+				})
+			}
+			const now = nowIso()
+			this.ctx.storage.sql.exec(
+				`INSERT INTO workflows
+					(id, source_type, package_id, workflow_name, export_name, code, params_json, idempotency_key, run_at, status, attempts, created_at, updated_at)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?)`,
+				input.id,
+				input.sourceType,
+				input.packageId,
+				input.workflowName,
+				input.exportName,
+				input.code,
+				input.paramsJson,
+				input.idempotencyKey,
+				input.runAt,
+				now,
+				now,
+			)
+			const created = this.workflowRow(input.id)
+			if (!created) throw new KodyError('internal_error', 'Workflow insert failed.', { status: 500 })
+			return created
+		})
+	}
+
+	workflowGet(id: string) {
+		return this.workflowRow(id)
+	}
+
+	workflowsClaimDue(now: string, limit = 25): Array<WorkflowRecord> {
+		return this.ctx.storage.transactionSync(() => {
+			const staleBefore = new Date(Date.parse(now) - workflowAttemptStaleAfterMs).toISOString()
+			const staleRows = this.ctx.storage.sql
+				.exec<WorkflowSqlRow>(`SELECT * FROM workflows WHERE status = 'running' AND updated_at < ?`, staleBefore)
+				.toArray()
+			for (const staleRow of staleRows) {
+				const staleWorkflow = this.workflowFromRow(staleRow)
+				const failure = workflowLostAttemptFailureState(staleWorkflow, now)
+				if (!failure) continue
+				this.ctx.storage.sql.exec(
+					`UPDATE workflows SET status = ?, run_at = ?, last_error = ?, completed_at = ?, updated_at = ?
+					 WHERE id = ? AND status = 'running'`,
+					failure.status,
+					failure.runAt,
+					failure.lastError,
+					failure.completedAt,
+					now,
+					staleWorkflow.id,
+				)
+			}
+			const due = workflowClaimableRows(
+				this.ctx.storage.sql
+					.exec<WorkflowSqlRow>(`SELECT * FROM workflows WHERE status = 'queued'`)
+					.toArray()
+					.map((row) => this.workflowFromRow(row)),
+				now,
+				limit,
+			)
+			const claimed: Array<WorkflowRecord> = []
+			for (const row of due) {
+				this.ctx.storage.sql.exec(
+					`UPDATE workflows SET status = 'running', attempts = attempts + 1, updated_at = ?
+					 WHERE id = ? AND status = 'queued'`,
+					now,
+					row.id,
+				)
+				const workflow = this.workflowRow(row.id)
+				if (workflow?.status === 'running' && workflow.attempts === row.attempts + 1) claimed.push(workflow)
+			}
+			return claimed
+		})
+	}
+
+	workflowAttemptFinish(input: { id: string; ok: boolean; error: string | null; now: string }) {
+		return this.ctx.storage.transactionSync(() => {
+			const workflow = this.workflowRow(input.id)
+			if (!workflow) return null
+			const next = workflowAttemptFinishState({
+				status: workflow.status,
+				attempts: workflow.attempts,
+				ok: input.ok,
+				error: input.error,
+				now: input.now,
+			})
+			if (!next) return workflow
+			if (next.status === 'complete') {
+				this.ctx.storage.sql.exec(
+					`UPDATE workflows SET status = ?, last_error = ?, completed_at = ?, updated_at = ?
+					 WHERE id = ? AND status = 'running'`,
+					next.status,
+					next.lastError,
+					next.completedAt,
+					input.now,
+					input.id,
+				)
+			} else {
+				this.ctx.storage.sql.exec(
+					`UPDATE workflows SET status = ?, run_at = ?, last_error = ?, completed_at = ?, updated_at = ?
+					 WHERE id = ? AND status = 'running'`,
+					next.status,
+					next.runAt,
+					next.lastError,
+					next.completedAt,
+					input.now,
+					input.id,
+				)
+			}
+			return this.workflowRow(input.id)
+		})
+	}
+
+	workflowCancel(id: string) {
+		return this.ctx.storage.transactionSync(() => {
+			const workflow = this.workflowRow(id)
+			if (!workflow) return null
+			const state = workflowCancelState(workflow.status)
+			if (state.alreadyTerminal) {
+				return { workflow, ...state }
+			}
+			const now = nowIso()
+			this.ctx.storage.sql.exec(
+				`UPDATE workflows SET status = 'cancelled', completed_at = ?, updated_at = ?
+				 WHERE id = ? AND status IN ('queued', 'running')`,
+				now,
+				now,
+				id,
+			)
+			const cancelled = this.workflowRow(id)
+			return cancelled ? { workflow: cancelled, ...state } : null
+		})
+	}
+
+	workflowsList(limit = 25): Array<WorkflowRecord> {
+		const bounded = Math.min(Math.max(Math.trunc(limit), 1), 100)
+		return this.ctx.storage.sql
+			.exec<WorkflowSqlRow>('SELECT * FROM workflows ORDER BY created_at DESC, id DESC LIMIT ?', bounded)
+			.toArray()
+			.map((row) => this.workflowFromRow(row))
+	}
+
 	async jobRunStart(input: { jobId: string; trigger: string }): Promise<string> {
 		const id = randomId('jobrun')
 		this.ctx.storage.sql.exec(
@@ -1934,7 +2169,10 @@ export class UserCell extends DurableObject<Env> {
 	}
 
 	async runList(
-		filter: { limit?: number | undefined; errorTriage?: ErrorTriageFilter | undefined } = {},
+		filter: {
+			limit?: number | undefined
+			errorTriage?: ErrorTriageFilter | undefined
+		} = {},
 	): Promise<Array<Omit<RunRecord, 'resultJson' | 'logsJson' | 'gateway'>>> {
 		const limit = Math.min(Math.max(filter.limit ?? 20, 1), 200)
 		return (

@@ -137,7 +137,9 @@ export const packageSecrets = {
 }
 
 export const email = null
-export const workflows = null
+export const workflows = {
+	create: async (input) => await host().capability('packageWorkflowCreate', input ?? {}, __callContext()),
+}
 export const packages = null
 export const events = null
 
