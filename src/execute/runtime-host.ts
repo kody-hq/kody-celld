@@ -41,6 +41,7 @@ export class RuntimeHost extends WorkerEntrypoint<Env, RuntimeProps> {
 			packageName: this.ctx.props.packageName,
 			runId: call?.runId ?? null,
 			eventDepth: call?.eventDepth ?? 0,
+			waitUntil: (promise) => this.ctx.waitUntil(promise),
 			baseUrl: this.env.KODY_PUBLIC_URL,
 			fromRuntime: true,
 		}

@@ -67,4 +67,20 @@ describe('events.dispatch', () => {
 			'payload_too_large',
 		)
 	})
+
+	it('returns before subscriber delivery settles when waitUntil is available', async () => {
+		let waitUntilCalls = 0
+		const ctx = context({
+			userCell: {
+				packageGet: async () => ({ manifest: { emits: [event] } }),
+				subscriptionList: () => new Promise<never>(() => {}),
+			} as unknown as CapabilityContext['userCell'],
+			waitUntil: () => {
+				waitUntilCalls++
+			},
+		})
+		const result = await packageEventDispatch.handler({ topic: event.topic, idempotencyKey: '1' }, ctx)
+		assert.equal((result as { status: string }).status, 'delivered_inline')
+		assert.equal(waitUntilCalls, 1)
+	})
 })

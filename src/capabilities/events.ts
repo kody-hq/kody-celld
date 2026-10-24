@@ -72,14 +72,14 @@ export const packageEventDispatch = defineCapability({
 				)
 			}
 		}
-		const payloadBytes = new TextEncoder().encode(canonicalJsonStringify(input.payload)).byteLength
+		const payloadBytes = new TextEncoder().encode(canonicalJsonStringify(input.payload) ?? 'null').byteLength
 		if (payloadBytes > maxPackageEventPayloadBytes) {
 			throw new KodyError(
 				'payload_too_large',
 				`events.dispatch payload is ${payloadBytes} bytes; the maximum is ${maxPackageEventPayloadBytes} bytes. Store large data in packageStorage() and emit a reference instead.`,
 			)
 		}
-		await deliverPackageEvent({
+		const delivery = deliverPackageEvent({
 			env: ctx.env,
 			exports: ctx.exports,
 			userCell: ctx.userCell,
@@ -90,6 +90,15 @@ export const packageEventDispatch = defineCapability({
 			payload: input.payload,
 			eventDepth: ctx.eventDepth,
 		})
+		if (ctx.waitUntil) {
+			ctx.waitUntil(
+				delivery.catch((error) => {
+					console.error(`package event ${input.topic} delivery failed:`, error)
+				}),
+			)
+		} else {
+			await delivery
+		}
 		return {
 			topic: input.topic,
 			source: { type: 'package', packageId: ctx.packageName, kodyId: ctx.packageName },

@@ -29,7 +29,7 @@ export async function buildPackageEventSubscriptionIdempotencyKey(input: {
 	topic: string
 	idempotencyKey: string
 }) {
-	const digest = await sha256Hex(canonicalJsonStringify(input))
+	const digest = await sha256Hex(canonicalJsonStringify(input) ?? 'null')
 	const key = `pkgevent:${input.sourcePackageId}:${input.subscriberPackageId}:${input.topic}:${digest.slice(0, 24)}`
 	return key.length <= runRecordMaxIdempotencyKeyLength ? key : `pkgevent:${digest}`
 }
