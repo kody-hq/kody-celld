@@ -6,7 +6,12 @@ tag, and a short index of past ones.
 
 ## [Unreleased]
 
-Nothing yet.
+### Email: links in the HTML body open in a new tab
+
+Links in a message's HTML body now open in a normal new tab, with no opener and
+no referrer. The preview iframe allows popups (and lets them escape the
+sandbox) but still blocks scripts, forms, and same-origin access, as hosted
+Kody does.
 
 ## [0.2.1] - 2026-10-23
 

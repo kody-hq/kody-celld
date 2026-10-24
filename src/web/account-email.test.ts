@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { buildAdminEmailHtmlPreviewDocument } from '#client/email-html-preview.ts'
+import { buildAdminEmailHtmlPreviewDocument, emailHtmlPreviewSandbox } from '#client/email-html-preview.ts'
 import type { EmailMessageRecord } from '../cells/user-cell.ts'
 import { emailMessageDetailView, formatEmailAddress, readEmailBodyView, readEmailMessageId } from './account-email.ts'
 
@@ -130,7 +130,7 @@ describe('email HTML preview (verbatim from hosted Kody)', () => {
 		const doc = buildAdminEmailHtmlPreviewDocument('<p>Hi</p><script>alert(1)</script>')
 		assert.equal(doc.includes('<script'), false)
 		assert.match(doc, /<meta name="referrer" content="no-referrer">/)
-		assert.match(doc, /<base target="_blank" rel="noopener noreferrer">/)
+		assert.match(doc, /<base target="_blank">/)
 		assert.match(doc, /<p>Hi<\/p>/)
 	})
 
@@ -138,6 +138,19 @@ describe('email HTML preview (verbatim from hosted Kody)', () => {
 		const doc = buildAdminEmailHtmlPreviewDocument(
 			'<!DOCTYPE html><html><head><title>t</title></head><body>x</body></html>',
 		)
-		assert.match(doc, /^<!DOCTYPE html><html><head><meta name="referrer" content="no-referrer">/)
+		assert.match(doc, /^<!DOCTYPE html><html><head><meta name="referrer" content="no-referrer"><base target="_blank">/)
+	})
+
+	it('opens every link in a new tab: drops per-link target and rel', () => {
+		const doc = buildAdminEmailHtmlPreviewDocument(
+			'<html><body><a href="https://a.example" target="_self" rel="opener">a</a></body></html>',
+		)
+		assert.match(doc, /^<html><meta name="referrer" content="no-referrer"><base target="_blank"><body>/)
+		assert.match(doc, /<a href="https:\/\/a.example">a<\/a>/)
+	})
+
+	it('sandbox allows popups that escape it, nothing else', () => {
+		const tokens = emailHtmlPreviewSandbox.split(/\s+/).sort()
+		assert.deepEqual(tokens, ['allow-popups', 'allow-popups-to-escape-sandbox'])
 	})
 })
