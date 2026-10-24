@@ -23,6 +23,7 @@ import {
 } from '../lib/limits.ts'
 import {
 	manifestWarnings,
+	normalizeStoredManifest,
 	parsePackageManifest,
 	type PackageFiles,
 	type PackageManifest,
@@ -331,20 +332,7 @@ function nowIso() {
 /** Manifests saved before a field existed come back without it. */
 function storedManifest(json: string): PackageManifest {
 	const manifest = JSON.parse(json) as Partial<PackageManifest> & Pick<PackageManifest, 'name' | 'version'>
-	return {
-		name: manifest.name,
-		version: manifest.version,
-		description: manifest.description ?? '',
-		exports: manifest.exports ?? {},
-		jobs: manifest.jobs ?? {},
-		webhooks: manifest.webhooks ?? [],
-		subscriptions: manifest.subscriptions ?? [],
-		secretProvider: manifest.secretProvider ?? null,
-		app: manifest.app ?? null,
-		dependencies: manifest.dependencies ?? {},
-		hidden: manifest.hidden === true,
-		keywords: manifest.keywords ?? [],
-	}
+	return normalizeStoredManifest(manifest)
 }
 
 function constantTimeEqual(a: string, b: string) {
