@@ -1,5 +1,9 @@
 # Secrets
 
+For package credential slots and runtime clients, see
+[Credential slots](./packages.md#credential-slots) and
+[Credential runtime](./packages.md#credential-runtime).
+
 Design goal, inherited from production Kody: **sandbox code never sees a
 secret value**. It sees placeholders; the host swaps them in at the network
 boundary, and only for destinations approved by an account admin through the

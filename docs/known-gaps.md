@@ -168,8 +168,11 @@ roadmap is now shipped; the roadmap below is kept as the change log.
 
 ## celld-specific caveats
 
-- **Package credential slots.** Celld parses and stores `kody.credentials`,
-  but `credential()` is not available yet.
+- **Package credentials.** Runtime supports `secret`, `oauth`, and `mcp` kinds.
+  Secret hosts come from account-level approved hosts, not per-secret host
+  lists. Celld does not support credential `inject` or `sign()`. Declared
+  `url`, `login`, and `signing` slots fail with `credential_unsupported`.
+  Imported package code resolves credentials as the package being run.
 - `/connect/secret-set` does not support `expiresAt` or `allowedPackages`.
   `allowedPackages` waits on the secretLock grants PR. Hosts in a setup link
   are approved in the account-wide host list, so they apply to every secret.
