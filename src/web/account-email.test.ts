@@ -134,18 +134,21 @@ describe('email HTML preview (verbatim from hosted Kody)', () => {
 		assert.match(doc, /<p>Hi<\/p>/)
 	})
 
-	it('keeps a full document and injects the referrer policy into its head', () => {
+	it('keeps a full document and puts the head tags at its start', () => {
 		const doc = buildAdminEmailHtmlPreviewDocument(
 			'<!DOCTYPE html><html><head><title>t</title></head><body>x</body></html>',
 		)
-		assert.match(doc, /^<!DOCTYPE html><html><head><meta name="referrer" content="no-referrer"><base target="_blank">/)
+		assert.match(
+			doc,
+			/^<!DOCTYPE html><meta name="referrer" content="no-referrer"><base target="_blank"><html><head><title>/,
+		)
 	})
 
 	it('opens every link in a new tab: drops per-link target and rel', () => {
 		const doc = buildAdminEmailHtmlPreviewDocument(
 			'<html><body><a href="https://a.example" target="_self" rel="opener">a</a></body></html>',
 		)
-		assert.match(doc, /^<html><meta name="referrer" content="no-referrer"><base target="_blank"><body>/)
+		assert.match(doc, /^<meta name="referrer" content="no-referrer"><base target="_blank"><html><body>/)
 		assert.match(doc, /<a href="https:\/\/a.example">a<\/a>/)
 	})
 
