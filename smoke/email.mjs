@@ -240,8 +240,15 @@ export async function smokeEmail({ mcp, user }) {
 	})
 	assert(scripted.status === 200 && scripted.json.accepted.length === 1, 'scripted html accepted', scripted.json)
 	const scriptedPage = await browser.get(`/account/inbox/${encodeURIComponent(scripted.json.accepted[0].messageId)}`)
+	// The inbox list beside the open message shows an escaped text snippet, so
+	// check the page for a live script and the preview srcdoc for the marker.
+	const scriptedPreview = /<iframe[^>]*\ssrcdoc=(["'])([\s\S]*?)\1/i.exec(scriptedPage.text)?.[2] ?? null
 	assert(
-		scriptedPage.status === 200 && !scriptedPage.text.includes('smokeEmailXss') && scriptedPage.text.includes('hello'),
+		scriptedPage.status === 200 &&
+			!/<script>window\.smokeEmailXss/.test(scriptedPage.text) &&
+			scriptedPreview !== null &&
+			!scriptedPreview.includes('smokeEmailXss') &&
+			scriptedPreview.includes('hello'),
 		'inbound script never reaches the page or the preview',
 		scriptedPage.status,
 	)
