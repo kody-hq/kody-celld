@@ -6,16 +6,18 @@ tag, and a short index of past ones.
 
 ## [Unreleased]
 
-### Email: links in the HTML body open in a new tab
+## [0.2.2] - 2026-10-25
 
-Links in a message's HTML body now open in a normal new tab, with no opener and
-no referrer. The preview iframe allows popups (and lets them escape the
-sandbox) but still blocks scripts, forms, and same-origin access, as hosted
-Kody does. Link normalization skips HTML comments (including `<!-->` / `--!>`)
-and RAWTEXT contents so a crafted comment or style block cannot preserve
-`rel=opener` on a real link.
+### Email HTML preview links
+
+Links in a message's HTML body open in a normal new tab, with no opener and no
+referrer. The preview iframe allows popups (and lets them escape the sandbox)
+but still blocks scripts, forms, and same-origin access. Link normalization is
+hardened against comment and RAWTEXT bypasses so crafted markup cannot keep an
+opener-granting `rel` on a real link.
 
 ## [0.2.1] - 2026-10-23
+
 
 ### Upgrade notes
 
@@ -85,6 +87,7 @@ Kody. HTML renders the way hosted does: scripts stripped, then a sandboxed
 
 ## Past releases
 
+- [v0.2.2](https://github.com/kody-hq/kody-celld/releases/tag/v0.2.2): email preview links open in a new tab; link normalization hardened against comment and RAWTEXT bypasses
 - [v0.2.1](https://github.com/kody-hq/kody-celld/releases/tag/v0.2.1): resolve hostnames for package sources and browser URLs, Email message view, single-mode Docker fixes
 - [v0.2.0](https://github.com/kody-hq/kody-celld/releases/tag/v0.2.0) — external MCP servers, package apps, one private-host allowlist
 - [v0.1.1](https://github.com/kody-hq/kody-celld/releases/tag/v0.1.1) — keep dev email defaults out of single-node Docker
