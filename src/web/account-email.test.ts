@@ -156,4 +156,45 @@ describe('email HTML preview (verbatim from hosted Kody)', () => {
 		const tokens = emailHtmlPreviewSandbox.split(/\s+/).sort()
 		assert.deepEqual(tokens, ['allow-popups', 'allow-popups-to-escape-sandbox'])
 	})
+
+	it('normalizes links that comments try to hide from the scanner', () => {
+		const commentBoundary = `<!-- <a title=' --> <a href="https://attacker.example" rel="opener" target="_blank">open</a> <!-- '> -->`
+		const doc = buildAdminEmailHtmlPreviewDocument(commentBoundary)
+		const body = doc.slice(doc.indexOf('<body>'))
+		assert.match(body, /<!-- <a title=' --> <a href="https:\/\/attacker\.example">open<\/a> <!-- '> -->/)
+		assert.equal(/\srel\s*=/i.test(body), false)
+		assert.equal(/\starget\s*=/i.test(body), false)
+
+		const doubleQuoted = `<!-- <a title=" --> <a href="https://attacker.example" rel='opener' target='_blank'>x</a> <!-- "> -->`
+		const doubleDoc = buildAdminEmailHtmlPreviewDocument(doubleQuoted)
+		assert.match(doubleDoc, /<a href="https:\/\/attacker\.example">x<\/a>/)
+		assert.equal(/rel=['"]opener['"]/i.test(doubleDoc), false)
+
+		const areaBoundary = `<!-- <area href="/" title=' --> <area href="https://attacker.example" rel="opener" target="_blank"> <!-- '> -->`
+		const areaDoc = buildAdminEmailHtmlPreviewDocument(areaBoundary)
+		assert.match(areaDoc, /<area href="https:\/\/attacker\.example">/)
+		assert.equal(/\srel\s*=/i.test(areaDoc.slice(areaDoc.indexOf('<body>'))), false)
+
+		const inAttribute = `<div title='<a href="https://x.example" rel="opener" target="_blank">'>keep</div><a href="https://y.example" rel="opener">y</a>`
+		const attrDoc = buildAdminEmailHtmlPreviewDocument(inAttribute)
+		assert.match(attrDoc, /<div title='<a href="https:\/\/x\.example" rel="opener" target="_blank">'>keep<\/div>/)
+		assert.match(attrDoc, /<a href="https:\/\/y\.example">y<\/a>/)
+	})
+
+	it('closes comments the way HTML does and skips raw-text contents', () => {
+		const empty = buildAdminEmailHtmlPreviewDocument(
+			`<!--><a href="https://attacker.example" rel="opener" target="_blank">x</a>`,
+		)
+		assert.match(empty, /<a href="https:\/\/attacker\.example">x<\/a>/)
+		assert.equal(/rel=["']opener["']/i.test(empty), false)
+
+		const bang = buildAdminEmailHtmlPreviewDocument(`<!-- x --!><a href="https://attacker.example" rel="opener">z</a>`)
+		assert.match(bang, /<a href="https:\/\/attacker\.example">z<\/a>/)
+
+		const styled = buildAdminEmailHtmlPreviewDocument(
+			`<style>a[title='</style><a href="https://attacker.example" rel="opener" target="_blank">x</a><style>']{}</style>`,
+		)
+		assert.match(styled, /<a href="https:\/\/attacker\.example">x<\/a>/)
+		assert.equal(/rel=["']opener["']/i.test(styled), false)
+	})
 })
