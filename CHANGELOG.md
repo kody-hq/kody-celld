@@ -18,7 +18,6 @@ opener-granting `rel` on a real link.
 
 ## [0.2.1] - 2026-10-23
 
-
 ### Upgrade notes
 
 - **LAN hosts reached by a public DNS name** now need `KODY_PRIVATE_HOSTS`
