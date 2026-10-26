@@ -1523,20 +1523,27 @@ export class UserCell extends DurableObject<Env> {
 
 	/**
 	 * Manual runs must not write `jobs.last_run_at` (that column anchors
-	 * interval/once rescheduling). Prefer the newer of the column and the
-	 * latest job_runs row so Last run stays in sync with last status after
-	 * Run now, including when a cron claim already set the column.
+	 * interval/once rescheduling). When the latest job_runs row is newer than
+	 * the column, surface its started_at, status, and error together so the
+	 * Jobs UI has one source for Last run and status (including an in-flight
+	 * manual run after a prior success). Cron claim may set the column before
+	 * a row exists; keep the column fields in that window.
 	 */
-	private withLatestRunAt(job: JobRecord): JobRecord {
+	private withLatestRun(job: JobRecord): JobRecord {
 		const latest = this.ctx.storage.sql
-			.exec<{ started_at: string }>(
-				'SELECT started_at FROM job_runs WHERE job_id = ? ORDER BY started_at DESC LIMIT 1',
+			.exec<{ started_at: string; status: string; error: string | null }>(
+				'SELECT started_at, status, error FROM job_runs WHERE job_id = ? ORDER BY started_at DESC LIMIT 1',
 				job.id,
 			)
 			.toArray()[0]
 		if (!latest) return job
 		if (!job.lastRunAt || latest.started_at > job.lastRunAt) {
-			return { ...job, lastRunAt: latest.started_at }
+			return {
+				...job,
+				lastRunAt: latest.started_at,
+				lastStatus: latest.status,
+				lastError: latest.error,
+			}
 		}
 		return job
 	}
@@ -1546,17 +1553,17 @@ export class UserCell extends DurableObject<Env> {
 			? this.ctx.storage.sql.exec('SELECT * FROM jobs WHERE package_name = ? ORDER BY id', filter.packageName)
 			: this.ctx.storage.sql.exec('SELECT * FROM jobs ORDER BY id')
 		return (rows.toArray() as Array<Parameters<UserCell['rowToJob']>[0]>).map((row) =>
-			this.withLatestRunAt(this.rowToJob(row)),
+			this.withLatestRun(this.rowToJob(row)),
 		)
 	}
 
 	async jobGet(id: string): Promise<JobRecord | null> {
 		const row = this.ctx.storage.sql.exec('SELECT * FROM jobs WHERE id = ?', id).toArray()[0]
-		return row ? this.withLatestRunAt(this.rowToJob(row as Parameters<UserCell['rowToJob']>[0])) : null
+		return row ? this.withLatestRun(this.rowToJob(row as Parameters<UserCell['rowToJob']>[0])) : null
 	}
 
 	async jobUpdate(input: { id: string; enabled?: boolean | undefined }) {
-		// Read the row directly: jobGet coalesces lastRunAt from job_runs for
+		// Read the row directly: jobGet overlays lastRunAt from job_runs for
 		// display, but resume must anchor on jobs.last_run_at only (cron claim).
 		const row = this.ctx.storage.sql.exec('SELECT * FROM jobs WHERE id = ?', input.id).toArray()[0]
 		if (!row) throw new KodyError('job_not_found', `Job "${input.id}" was not found.`, { status: 404 })

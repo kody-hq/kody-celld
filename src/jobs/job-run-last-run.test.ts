@@ -7,9 +7,11 @@ import { fileURLToPath } from 'node:url'
 const here = (relative: string) => fileURLToPath(new URL(relative, import.meta.url).href)
 
 /**
- * Manual Run now must show a last-run time without writing jobs.last_run_at
- * (that column anchors interval/once rescheduling). The account UI reads
- * lastRunAt from jobList/jobGet, which fall back to the latest job_runs row.
+ * Manual Run now must show last-run time and status without writing
+ * jobs.last_run_at (that column anchors interval/once rescheduling). The
+ * account UI reads lastRunAt/lastStatus/lastError from jobList/jobGet, which
+ * take those fields from the same latest job_runs row when it is newer than
+ * the schedule-anchor column.
  */
 const jobsSchema = `
 	CREATE TABLE jobs (
@@ -32,13 +34,36 @@ const jobsSchema = `
 	);
 `
 
-function displayLastRunAt(db: DatabaseSync, jobId: string, columnLastRunAt: string | null) {
+type DisplayJob = {
+	lastRunAt: string | null
+	lastStatus: string | null
+	lastError: string | null
+}
+
+/** Oracle for withLatestRun: one latest job_runs row drives display fields. */
+function displayFromLatestRun(
+	db: DatabaseSync,
+	jobId: string,
+	column: { last_run_at: string | null; last_status: string | null; last_error: string | null },
+): DisplayJob {
 	const latest = db
-		.prepare('SELECT started_at FROM job_runs WHERE job_id = ? ORDER BY started_at DESC LIMIT 1')
-		.get(jobId) as { started_at: string } | undefined
-	if (!latest) return columnLastRunAt
-	if (!columnLastRunAt || latest.started_at > columnLastRunAt) return latest.started_at
-	return columnLastRunAt
+		.prepare('SELECT started_at, status, error FROM job_runs WHERE job_id = ? ORDER BY started_at DESC LIMIT 1')
+		.get(jobId) as { started_at: string; status: string; error: string | null } | undefined
+	if (!latest) {
+		return { lastRunAt: column.last_run_at, lastStatus: column.last_status, lastError: column.last_error }
+	}
+	if (!column.last_run_at || latest.started_at > column.last_run_at) {
+		return { lastRunAt: latest.started_at, lastStatus: latest.status, lastError: latest.error }
+	}
+	return { lastRunAt: column.last_run_at, lastStatus: column.last_status, lastError: column.last_error }
+}
+
+function readJobColumns(db: DatabaseSync, jobId: string) {
+	return db.prepare('SELECT last_run_at, last_status, last_error FROM jobs WHERE id = ?').get(jobId) as {
+		last_run_at: string | null
+		last_status: string | null
+		last_error: string | null
+	}
 }
 
 describe('job run last_run_at', () => {
@@ -53,10 +78,11 @@ describe('job run last_run_at', () => {
 			/last_run_at = \?/,
 			'jobRunStart must not write last_run_at (manual must not move the schedule anchor)',
 		)
+		assert.match(source, /withLatestRun\b/, 'jobList/jobGet take last-run display from job_runs after manual runs')
 		assert.match(
 			source,
-			/withLatestRunAt/,
-			'jobList/jobGet fall back to job_runs for last-run display after manual runs',
+			/SELECT started_at, status, error FROM job_runs/,
+			'display lastStatus comes from the same latest job_runs row as lastRunAt',
 		)
 	})
 
@@ -86,17 +112,14 @@ describe('job run last_run_at', () => {
 			'pkg#nightly',
 		)
 
-		const job = db.prepare('SELECT last_run_at, last_status FROM jobs WHERE id = ?').get('pkg#nightly') as {
-			last_run_at: string | null
-			last_status: string | null
-		}
+		const job = readJobColumns(db, 'pkg#nightly')
 		assert.equal(job.last_run_at, null, 'manual must leave the schedule-anchor column alone')
 		assert.equal(job.last_status, 'success')
-		assert.equal(
-			displayLastRunAt(db, 'pkg#nightly', job.last_run_at),
-			'2026-04-01T12:00:00.000Z',
-			'UI last-run falls back to the latest job_runs.started_at',
-		)
+		assert.deepEqual(displayFromLatestRun(db, 'pkg#nightly', job), {
+			lastRunAt: '2026-04-01T12:00:00.000Z',
+			lastStatus: 'success',
+			lastError: null,
+		})
 	})
 
 	it('manual run after a cron claim still moves the displayed last-run time', () => {
@@ -122,14 +145,69 @@ describe('job run last_run_at', () => {
 			'pkg#nightly',
 		)
 
-		const job = db.prepare('SELECT last_run_at FROM jobs WHERE id = ?').get('pkg#nightly') as {
-			last_run_at: string | null
-		}
+		const job = readJobColumns(db, 'pkg#nightly')
 		assert.equal(job.last_run_at, '2026-04-01T10:00:00.000Z', 'cron claim column stays the schedule anchor')
-		assert.equal(
-			displayLastRunAt(db, 'pkg#nightly', job.last_run_at),
-			'2026-04-01T12:00:00.000Z',
-			'UI last-run prefers the later manual job_runs row',
+		assert.deepEqual(displayFromLatestRun(db, 'pkg#nightly', job), {
+			lastRunAt: '2026-04-01T12:00:00.000Z',
+			lastStatus: 'success',
+			lastError: null,
+		})
+	})
+
+	it('prior success then in-flight manual run shows running; finish updates status', () => {
+		const db = new DatabaseSync(':memory:')
+		db.exec(jobsSchema)
+		db.prepare(`INSERT INTO jobs (id, last_run_at, last_status, last_error, updated_at) VALUES (?, ?, ?, NULL, ?)`).run(
+			'pkg#nightly',
+			'2026-04-01T10:00:00.000Z',
+			'success',
+			'2026-04-01T10:00:01.000Z',
 		)
+		db.prepare(
+			`INSERT INTO job_runs (id, job_id, trigger, started_at, finished_at, status, logs_json)
+			 VALUES (?, ?, 'cron', ?, ?, 'success', '[]')`,
+		).run('jobrun_prior', 'pkg#nightly', '2026-04-01T10:00:00.000Z', '2026-04-01T10:00:01.000Z')
+
+		db.prepare(`INSERT INTO job_runs (id, job_id, trigger, started_at, status) VALUES (?, ?, ?, ?, 'running')`).run(
+			'jobrun_manual',
+			'pkg#nightly',
+			'manual',
+			'2026-04-01T12:00:00.000Z',
+		)
+
+		const during = readJobColumns(db, 'pkg#nightly')
+		assert.equal(during.last_run_at, '2026-04-01T10:00:00.000Z', 'manual start must not move the schedule anchor')
+		assert.equal(during.last_status, 'success', 'jobs.last_status stays until finish (display comes from job_runs)')
+		assert.deepEqual(
+			displayFromLatestRun(db, 'pkg#nightly', during),
+			{
+				lastRunAt: '2026-04-01T12:00:00.000Z',
+				lastStatus: 'running',
+				lastError: null,
+			},
+			'UI shows the in-flight run as running beside its started_at',
+		)
+
+		db.prepare('UPDATE job_runs SET finished_at = ?, status = ?, error = ?, logs_json = ? WHERE id = ?').run(
+			'2026-04-01T12:00:02.000Z',
+			'success',
+			null,
+			'[]',
+			'jobrun_manual',
+		)
+		db.prepare('UPDATE jobs SET last_status = ?, last_error = ?, updated_at = ? WHERE id = ?').run(
+			'success',
+			null,
+			'2026-04-01T12:00:02.000Z',
+			'pkg#nightly',
+		)
+
+		const after = readJobColumns(db, 'pkg#nightly')
+		assert.equal(after.last_run_at, '2026-04-01T10:00:00.000Z', 'finish still leaves the schedule anchor alone')
+		assert.deepEqual(displayFromLatestRun(db, 'pkg#nightly', after), {
+			lastRunAt: '2026-04-01T12:00:00.000Z',
+			lastStatus: 'success',
+			lastError: null,
+		})
 	})
 })
