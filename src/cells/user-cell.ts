@@ -1017,6 +1017,7 @@ export class UserCell extends DurableObject<Env> {
 			.toArray()
 		for (const row of existingRows) {
 			if (!declared.has(row.job_name)) {
+				this.ctx.storage.sql.exec('DELETE FROM job_runs WHERE job_id = ?', row.id)
 				this.ctx.storage.sql.exec('DELETE FROM jobs WHERE id = ?', row.id)
 			}
 		}
@@ -1136,6 +1137,9 @@ export class UserCell extends DurableObject<Env> {
 	async packageDelete(name: string) {
 		const cursor = this.ctx.storage.sql.exec('DELETE FROM packages WHERE name = ?', name)
 		deletePackageFiles(this.ctx.storage.sql, name)
+		// Drop run history with the jobs: ids are `${package}#${jobName}`, so a
+		// reinstall must not inherit prior last-run display from orphaned rows.
+		this.ctx.storage.sql.exec('DELETE FROM job_runs WHERE job_id IN (SELECT id FROM jobs WHERE package_name = ?)', name)
 		this.ctx.storage.sql.exec('DELETE FROM jobs WHERE package_name = ?', name)
 		this.ctx.storage.sql.exec('DELETE FROM secrets WHERE scope = ? AND package_name = ?', 'package', name)
 		for (const row of this.ctx.storage.sql
