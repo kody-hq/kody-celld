@@ -32,12 +32,13 @@ const jobsSchema = `
 	);
 `
 
-function latestRunAt(db: DatabaseSync, jobId: string, columnLastRunAt: string | null) {
-	if (columnLastRunAt) return columnLastRunAt
+function displayLastRunAt(db: DatabaseSync, jobId: string, columnLastRunAt: string | null) {
 	const latest = db
 		.prepare('SELECT started_at FROM job_runs WHERE job_id = ? ORDER BY started_at DESC LIMIT 1')
 		.get(jobId) as { started_at: string } | undefined
-	return latest?.started_at ?? null
+	if (!latest) return columnLastRunAt
+	if (!columnLastRunAt || latest.started_at > columnLastRunAt) return latest.started_at
+	return columnLastRunAt
 }
 
 describe('job run last_run_at', () => {
@@ -92,9 +93,43 @@ describe('job run last_run_at', () => {
 		assert.equal(job.last_run_at, null, 'manual must leave the schedule-anchor column alone')
 		assert.equal(job.last_status, 'success')
 		assert.equal(
-			latestRunAt(db, 'pkg#nightly', job.last_run_at),
+			displayLastRunAt(db, 'pkg#nightly', job.last_run_at),
 			'2026-04-01T12:00:00.000Z',
 			'UI last-run falls back to the latest job_runs.started_at',
+		)
+	})
+
+	it('manual run after a cron claim still moves the displayed last-run time', () => {
+		const db = new DatabaseSync(':memory:')
+		db.exec(jobsSchema)
+		db.prepare(`INSERT INTO jobs (id, last_run_at, last_status, last_error, updated_at) VALUES (?, ?, ?, NULL, ?)`).run(
+			'pkg#nightly',
+			'2026-04-01T10:00:00.000Z',
+			'success',
+			'2026-04-01T10:00:00.000Z',
+		)
+		db.prepare(
+			`INSERT INTO job_runs (id, job_id, trigger, started_at, finished_at, status, logs_json)
+			 VALUES (?, ?, 'cron', ?, ?, 'success', '[]')`,
+		).run('jobrun_cron', 'pkg#nightly', '2026-04-01T10:00:00.000Z', '2026-04-01T10:00:01.000Z')
+		db.prepare(
+			`INSERT INTO job_runs (id, job_id, trigger, started_at, finished_at, status, logs_json)
+			 VALUES (?, ?, 'manual', ?, ?, 'success', '[]')`,
+		).run('jobrun_manual', 'pkg#nightly', '2026-04-01T12:00:00.000Z', '2026-04-01T12:00:01.000Z')
+		db.prepare('UPDATE jobs SET last_status = ?, updated_at = ? WHERE id = ?').run(
+			'success',
+			'2026-04-01T12:00:01.000Z',
+			'pkg#nightly',
+		)
+
+		const job = db.prepare('SELECT last_run_at FROM jobs WHERE id = ?').get('pkg#nightly') as {
+			last_run_at: string | null
+		}
+		assert.equal(job.last_run_at, '2026-04-01T10:00:00.000Z', 'cron claim column stays the schedule anchor')
+		assert.equal(
+			displayLastRunAt(db, 'pkg#nightly', job.last_run_at),
+			'2026-04-01T12:00:00.000Z',
+			'UI last-run prefers the later manual job_runs row',
 		)
 	})
 })

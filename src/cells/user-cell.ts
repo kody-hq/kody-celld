@@ -1523,18 +1523,22 @@ export class UserCell extends DurableObject<Env> {
 
 	/**
 	 * Manual runs must not write `jobs.last_run_at` (that column anchors
-	 * interval/once rescheduling). Fall back to the latest job_runs row so the
-	 * account UI still shows a last-run time after Run now.
+	 * interval/once rescheduling). Prefer the newer of the column and the
+	 * latest job_runs row so Last run stays in sync with last status after
+	 * Run now, including when a cron claim already set the column.
 	 */
 	private withLatestRunAt(job: JobRecord): JobRecord {
-		if (job.lastRunAt) return job
 		const latest = this.ctx.storage.sql
 			.exec<{ started_at: string }>(
 				'SELECT started_at FROM job_runs WHERE job_id = ? ORDER BY started_at DESC LIMIT 1',
 				job.id,
 			)
 			.toArray()[0]
-		return latest ? { ...job, lastRunAt: latest.started_at } : job
+		if (!latest) return job
+		if (!job.lastRunAt || latest.started_at > job.lastRunAt) {
+			return { ...job, lastRunAt: latest.started_at }
+		}
+		return job
 	}
 
 	async jobList(filter: { packageName?: string | undefined } = {}): Promise<Array<JobRecord>> {
