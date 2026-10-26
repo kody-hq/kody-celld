@@ -4,6 +4,8 @@ import { DatabaseSync } from 'node:sqlite'
 import { describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
+const here = (relative: string) => fileURLToPath(new URL(relative, import.meta.url).href)
+
 /**
  * Regression for manual Run now: cron sets last_run_at in jobsClaimDue, but
  * manual runs only go through jobRunStart/jobRunFinish. Without a last_run_at
@@ -31,16 +33,19 @@ const jobsSchema = `
 	);
 `
 
-function applyJobRunStart(
-	db: DatabaseSync,
-	input: { id: string; jobId: string; trigger: string; startedAt: string },
-) {
-	db.prepare(
-		`INSERT INTO job_runs (id, job_id, trigger, started_at, status) VALUES (?, ?, ?, ?, 'running')`,
-	).run(input.id, input.jobId, input.trigger, input.startedAt)
-	db.prepare(
-		'UPDATE jobs SET last_run_at = ?, last_status = ?, updated_at = ? WHERE id = ?',
-	).run(input.startedAt, 'running', input.startedAt, input.jobId)
+function applyJobRunStart(db: DatabaseSync, input: { id: string; jobId: string; trigger: string; startedAt: string }) {
+	db.prepare(`INSERT INTO job_runs (id, job_id, trigger, started_at, status) VALUES (?, ?, ?, ?, 'running')`).run(
+		input.id,
+		input.jobId,
+		input.trigger,
+		input.startedAt,
+	)
+	db.prepare('UPDATE jobs SET last_run_at = ?, last_status = ?, updated_at = ? WHERE id = ?').run(
+		input.startedAt,
+		'running',
+		input.startedAt,
+		input.jobId,
+	)
 }
 
 function applyJobRunFinish(
@@ -56,17 +61,17 @@ function applyJobRunFinish(
 	db.prepare(
 		'UPDATE job_runs SET finished_at = ?, status = ?, result_json = ?, error = ?, logs_json = ? WHERE id = ?',
 	).run(input.finishedAt, input.status, null, input.error ?? null, '[]', input.id)
-	db.prepare(
-		'UPDATE jobs SET last_status = ?, last_error = ?, updated_at = ? WHERE id = ?',
-	).run(input.status, input.error ?? null, input.finishedAt, input.jobId)
+	db.prepare('UPDATE jobs SET last_status = ?, last_error = ?, updated_at = ? WHERE id = ?').run(
+		input.status,
+		input.error ?? null,
+		input.finishedAt,
+		input.jobId,
+	)
 }
 
 describe('job run last_run_at', () => {
 	it('jobRunStart in UserCell writes last_run_at (manual path has no jobsClaimDue)', () => {
-		const source = readFileSync(
-			fileURLToPath(new URL('../cells/user-cell.ts', import.meta.url)),
-			'utf8',
-		)
+		const source = readFileSync(here('../cells/user-cell.ts'), 'utf8')
 		const start = source.indexOf('async jobRunStart')
 		const finish = source.indexOf('async jobRunFinish')
 		assert.ok(start >= 0 && finish > start, 'jobRunStart/jobRunFinish markers present')
@@ -93,9 +98,10 @@ describe('job run last_run_at', () => {
 			trigger: 'manual',
 			startedAt: '2026-04-01T12:00:00.000Z',
 		})
-		let job = db.prepare('SELECT last_run_at, last_status FROM jobs WHERE id = ?').get('pkg#nightly') as {
+		let job = db.prepare('SELECT last_run_at, last_status, last_error FROM jobs WHERE id = ?').get('pkg#nightly') as {
 			last_run_at: string | null
 			last_status: string | null
+			last_error: string | null
 		}
 		assert.equal(job.last_run_at, '2026-04-01T12:00:00.000Z')
 		assert.equal(job.last_status, 'running')

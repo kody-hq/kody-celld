@@ -697,9 +697,7 @@ export async function smokeWeb({ user, mcp }) {
 		ranJobPage.status,
 	)
 	assert(
-		ranJobPage.status === 200 &&
-			ranJobPage.text.includes('success') &&
-			!ranJobPage.text.includes('never'),
+		ranJobPage.status === 200 && ranJobPage.text.includes('success') && !ranJobPage.text.includes('never'),
 		'job detail last run updates after a manual run (no longer never)',
 	)
 	const jobsAfterRun = await browser.get('/account/jobs')
@@ -710,12 +708,12 @@ export async function smokeWeb({ user, mcp }) {
 			!jobsAfterRun.text.includes('never'),
 		'jobs list last run updates after a manual run',
 	)
-	const listed = await admin.jobs(user.id)
-	const listedJob = listed.json.jobs?.find((job) => job.id === jobId)
+	const jobsApi = await admin.jobs(user.id)
+	const jobsApiRow = jobsApi.json.jobs?.find((job) => job.id === jobId)
 	assert(
-		listed.status === 200 && listedJob?.lastRunAt && listedJob?.lastStatus === 'success',
+		jobsApi.status === 200 && jobsApiRow?.lastRunAt && jobsApiRow?.lastStatus === 'success',
 		'admin jobs API records lastRunAt after a manual run',
-		listed,
+		jobsApi,
 	)
 	assert((await browser.get('/account/packages')).text.includes(packageHref), 'packages list links to package detail')
 	log('account details', 'package, nested file, and job pages render; 404, CSRF, toggle and run-now checks passed')
