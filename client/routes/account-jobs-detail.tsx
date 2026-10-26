@@ -42,6 +42,12 @@ export function AccountJobDetail(
 							<ActionForm
 								action={detailHref}
 								csrf={data.csrf}
+								fields={{ action: 'run', id: job.id }}
+								label="Run now"
+							/>
+							<ActionForm
+								action={detailHref}
+								csrf={data.csrf}
 								fields={{
 									action: 'toggle',
 									id: job.id,

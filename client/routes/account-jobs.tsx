@@ -8,12 +8,12 @@ import {
 	AccountPageHeader,
 	TimestampValue,
 } from './account-management-components.tsx'
-import { ActionForm, Code, Muted } from './form-controls.tsx'
+import { ActionForm, Actions, Code, Muted } from './form-controls.tsx'
 import { RecordTable } from './record-table.tsx'
 
 type Data = Extract<AppLoaderData, { page: 'accountJobs' }>
 
-/** `/account/jobs`: package-owned schedules with pause/resume. */
+/** `/account/jobs`: package-owned schedules with run now and pause/resume. */
 export function AccountJobs(handle: Handle<{ data: Data; pathname: string }>) {
 	return () => {
 		const d = handle.props.data
@@ -88,16 +88,24 @@ export function AccountJobs(handle: Handle<{ data: Data; pathname: string }>) {
 									</>
 								),
 								actions: (
-									<ActionForm
-										action={action}
-										csrf={d.csrf}
-										fields={{
-											action: 'toggle',
-											id: job.id,
-											enabled: job.enabled ? 'false' : 'true',
-										}}
-										label={job.enabled ? 'Pause' : 'Resume'}
-									/>
+									<Actions>
+										<ActionForm
+											action={action}
+											csrf={d.csrf}
+											fields={{ action: 'run', id: job.id }}
+											label="Run now"
+										/>
+										<ActionForm
+											action={action}
+											csrf={d.csrf}
+											fields={{
+												action: 'toggle',
+												id: job.id,
+												enabled: job.enabled ? 'false' : 'true',
+											}}
+											label={job.enabled ? 'Pause' : 'Resume'}
+										/>
+									</Actions>
 								),
 							},
 						}))}

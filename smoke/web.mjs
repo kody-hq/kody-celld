@@ -673,9 +673,21 @@ export async function smokeWeb({ user, mcp }) {
 		enabledJobPage.status === 200 && enabledJobPage.text.includes('Enabled'),
 		'job detail reflects the enabled state',
 	)
+	const ran = await browser.post(jobHref, { action: 'run', id: jobId, csrf })
+	assert(
+		ran.status === 303 && ran.location?.includes(`${jobHref}?flash=job_ran`),
+		'run now redirects back to job detail with a success flash',
+		ran,
+	)
+	const ranJobPage = await browser.get(`${jobHref}?flash=job_ran`)
+	assert(
+		ranJobPage.status === 200 && ranJobPage.text.includes('Run now') && ranJobPage.text.includes('manual'),
+		'job detail lists the manual run',
+		ranJobPage.status,
+	)
 	assert((await browser.get('/account/packages')).text.includes(packageHref), 'packages list links to package detail')
 	assert((await browser.get('/account/jobs')).text.includes(jobHref), 'jobs list links to job detail')
-	log('account details', 'package, nested file, and job pages render; 404, CSRF, and toggle checks passed')
+	log('account details', 'package, nested file, and job pages render; 404, CSRF, toggle and run-now checks passed')
 	const published = await browser.post('/account/packages', { action: 'publish', name: pkgName, csrf })
 	assert(
 		published.status === 303 && published.location?.includes('flash=published'),
