@@ -123,21 +123,25 @@ export const accountActionsCss = {
 /**
  * Single-line actions for a narrow table cell: equal-width buttons stay on
  * one row instead of wrapping under each other and doubling the row height.
+ * Compact horizontal padding so "Run now" + "Pause" fit the Actions column.
  */
 export const accountActionsInlineCss = {
 	display: 'flex',
 	flexWrap: 'nowrap' as const,
 	alignItems: 'center' as const,
-	gap: '0.5rem',
-	width: 'max-content',
-	maxWidth: '100%',
+	gap: '0.4rem',
+	width: '100%',
+	minWidth: 0,
 	'& > form': {
 		flex: '1 1 0',
-		minWidth: '5.5rem',
+		minWidth: 0,
 		margin: 0,
 	},
 	'& > form > button': {
 		width: '100%',
+		boxSizing: 'border-box' as const,
+		paddingLeft: '0.65rem',
+		paddingRight: '0.65rem',
 	},
 }
 

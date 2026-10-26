@@ -14,6 +14,7 @@ describe('jobs list action row', () => {
 		const cssSource = readFileSync(here('../../client/routes/account-management-components.tsx'), 'utf8')
 		assert.match(cssSource, /export const accountActionsInlineCss/)
 		assert.match(cssSource, /flexWrap: 'nowrap'/)
+		assert.match(cssSource, /paddingLeft: '0\.65rem'/)
 	})
 
 	it('job detail Run now also shows Running… while the POST is in flight', () => {
