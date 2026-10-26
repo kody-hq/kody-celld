@@ -44,6 +44,7 @@ export function AccountJobDetail(
 								csrf={data.csrf}
 								fields={{ action: 'run', id: job.id }}
 								label="Run now"
+								pendingLabel="Running…"
 							/>
 							<ActionForm
 								action={detailHref}

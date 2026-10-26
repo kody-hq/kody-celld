@@ -670,8 +670,19 @@ export async function smokeWeb({ user, mcp }) {
 	)
 	const enabledJobPage = await browser.get(jobHref)
 	assert(
-		enabledJobPage.status === 200 && enabledJobPage.text.includes('Enabled'),
-		'job detail reflects the enabled state',
+		enabledJobPage.status === 200 &&
+			enabledJobPage.text.includes('Enabled') &&
+			enabledJobPage.text.includes('never') &&
+			enabledJobPage.text.includes('data-pending-label="Running…"'),
+		'job detail reflects the enabled state, last run never, and Run now pending label',
+	)
+	const jobsBeforeRun = await browser.get('/account/jobs')
+	assert(
+		jobsBeforeRun.status === 200 &&
+			jobsBeforeRun.text.includes(jobHref) &&
+			jobsBeforeRun.text.includes('never') &&
+			jobsBeforeRun.text.includes('data-pending-label="Running…"'),
+		'jobs list shows never before a manual run and includes the Running… pending label',
 	)
 	const ran = await browser.post(jobHref, { action: 'run', id: jobId, csrf })
 	assert(
@@ -685,8 +696,28 @@ export async function smokeWeb({ user, mcp }) {
 		'job detail lists the manual run',
 		ranJobPage.status,
 	)
+	assert(
+		ranJobPage.status === 200 &&
+			ranJobPage.text.includes('success') &&
+			!ranJobPage.text.includes('never'),
+		'job detail last run updates after a manual run (no longer never)',
+	)
+	const jobsAfterRun = await browser.get('/account/jobs')
+	assert(
+		jobsAfterRun.status === 200 &&
+			jobsAfterRun.text.includes(jobHref) &&
+			jobsAfterRun.text.includes('success') &&
+			!jobsAfterRun.text.includes('never'),
+		'jobs list last run updates after a manual run',
+	)
+	const listed = await admin.jobs(user.id)
+	const listedJob = listed.json.jobs?.find((job) => job.id === jobId)
+	assert(
+		listed.status === 200 && listedJob?.lastRunAt && listedJob?.lastStatus === 'success',
+		'admin jobs API records lastRunAt after a manual run',
+		listed,
+	)
 	assert((await browser.get('/account/packages')).text.includes(packageHref), 'packages list links to package detail')
-	assert((await browser.get('/account/jobs')).text.includes(jobHref), 'jobs list links to job detail')
 	log('account details', 'package, nested file, and job pages render; 404, CSRF, toggle and run-now checks passed')
 	const published = await browser.post('/account/packages', { action: 'publish', name: pkgName, csrf })
 	assert(

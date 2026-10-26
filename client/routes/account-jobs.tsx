@@ -88,12 +88,13 @@ export function AccountJobs(handle: Handle<{ data: Data; pathname: string }>) {
 									</>
 								),
 								actions: (
-									<Actions>
+									<Actions layout="inline">
 										<ActionForm
 											action={action}
 											csrf={d.csrf}
 											fields={{ action: 'run', id: job.id }}
 											label="Run now"
+											pendingLabel="Running…"
 										/>
 										<ActionForm
 											action={action}

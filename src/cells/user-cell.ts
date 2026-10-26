@@ -1583,12 +1583,23 @@ export class UserCell extends DurableObject<Env> {
 
 	async jobRunStart(input: { jobId: string; trigger: string }): Promise<string> {
 		const id = randomId('jobrun')
+		const startedAt = nowIso()
 		this.ctx.storage.sql.exec(
 			`INSERT INTO job_runs (id, job_id, trigger, started_at, status) VALUES (?, ?, ?, ?, 'running')`,
 			id,
 			input.jobId,
 			input.trigger,
-			nowIso(),
+			startedAt,
+		)
+		// Same last-run fields jobsClaimDue writes for cron, without touching
+		// next_run_at (manual runs leave the schedule alone). Cron already set
+		// these at claim; rewriting here keeps one path for every trigger.
+		this.ctx.storage.sql.exec(
+			'UPDATE jobs SET last_run_at = ?, last_status = ?, updated_at = ? WHERE id = ?',
+			startedAt,
+			'running',
+			startedAt,
+			input.jobId,
 		)
 		return id
 	}
