@@ -68,9 +68,7 @@ export function AccountJobDetail(
 						items={[
 							{
 								label: 'Job id',
-								value: (
-									<IdValue value={job.id} label="job id" copy="ghost" />
-								),
+								value: <IdValue value={job.id} label="job id" copy="ghost" />,
 							},
 							{
 								label: 'Package',
