@@ -7,10 +7,9 @@ import { fileURLToPath } from 'node:url'
 const here = (relative: string) => fileURLToPath(new URL(relative, import.meta.url).href)
 
 /**
- * Regression for manual Run now: cron sets last_run_at in jobsClaimDue, but
- * manual runs only go through jobRunStart/jobRunFinish. Without a last_run_at
- * write on start, the account UI keeps showing "never" next to a successful
- * last status.
+ * Manual Run now must show a last-run time without writing jobs.last_run_at
+ * (that column anchors interval/once rescheduling). The account UI reads
+ * lastRunAt from jobList/jobGet, which fall back to the latest job_runs row.
  */
 const jobsSchema = `
 	CREATE TABLE jobs (
@@ -33,92 +32,69 @@ const jobsSchema = `
 	);
 `
 
-function applyJobRunStart(db: DatabaseSync, input: { id: string; jobId: string; trigger: string; startedAt: string }) {
-	db.prepare(`INSERT INTO job_runs (id, job_id, trigger, started_at, status) VALUES (?, ?, ?, ?, 'running')`).run(
-		input.id,
-		input.jobId,
-		input.trigger,
-		input.startedAt,
-	)
-	db.prepare('UPDATE jobs SET last_run_at = ?, last_status = ?, updated_at = ? WHERE id = ?').run(
-		input.startedAt,
-		'running',
-		input.startedAt,
-		input.jobId,
-	)
-}
-
-function applyJobRunFinish(
-	db: DatabaseSync,
-	input: {
-		id: string
-		jobId: string
-		status: 'success' | 'error'
-		finishedAt: string
-		error?: string | null
-	},
-) {
-	db.prepare(
-		'UPDATE job_runs SET finished_at = ?, status = ?, result_json = ?, error = ?, logs_json = ? WHERE id = ?',
-	).run(input.finishedAt, input.status, null, input.error ?? null, '[]', input.id)
-	db.prepare('UPDATE jobs SET last_status = ?, last_error = ?, updated_at = ? WHERE id = ?').run(
-		input.status,
-		input.error ?? null,
-		input.finishedAt,
-		input.jobId,
-	)
+function latestRunAt(db: DatabaseSync, jobId: string, columnLastRunAt: string | null) {
+	if (columnLastRunAt) return columnLastRunAt
+	const latest = db
+		.prepare('SELECT started_at FROM job_runs WHERE job_id = ? ORDER BY started_at DESC LIMIT 1')
+		.get(jobId) as { started_at: string } | undefined
+	return latest?.started_at ?? null
 }
 
 describe('job run last_run_at', () => {
-	it('jobRunStart in UserCell writes last_run_at (manual path has no jobsClaimDue)', () => {
+	it('jobRunStart does not write jobs.last_run_at (schedule anchor stays for cron claim)', () => {
 		const source = readFileSync(here('../cells/user-cell.ts'), 'utf8')
 		const start = source.indexOf('async jobRunStart')
 		const finish = source.indexOf('async jobRunFinish')
 		assert.ok(start >= 0 && finish > start, 'jobRunStart/jobRunFinish markers present')
 		const body = source.slice(start, finish)
-		assert.match(body, /last_run_at = \?/, 'jobRunStart must update last_run_at')
-		assert.match(body, /last_status = \?/, 'jobRunStart must update last_status')
 		assert.doesNotMatch(
 			body,
-			/SET[^;]*next_run_at/,
-			'jobRunStart must not advance the schedule (manual leaves it alone)',
+			/last_run_at = \?/,
+			'jobRunStart must not write last_run_at (manual must not move the schedule anchor)',
+		)
+		assert.match(
+			source,
+			/withLatestRunAt/,
+			'jobList/jobGet fall back to job_runs for last-run display after manual runs',
 		)
 	})
 
-	it('manual start writes last_run_at so finish leaves a timestamp beside last status', () => {
+	it('manual runs surface last-run time from job_runs without moving jobs.last_run_at', () => {
 		const db = new DatabaseSync(':memory:')
 		db.exec(jobsSchema)
 		db.prepare(
 			`INSERT INTO jobs (id, last_run_at, last_status, last_error, updated_at) VALUES (?, NULL, NULL, NULL, ?)`,
 		).run('pkg#nightly', '2026-01-01T00:00:00.000Z')
 
-		applyJobRunStart(db, {
-			id: 'jobrun_1',
-			jobId: 'pkg#nightly',
-			trigger: 'manual',
-			startedAt: '2026-04-01T12:00:00.000Z',
-		})
-		let job = db.prepare('SELECT last_run_at, last_status, last_error FROM jobs WHERE id = ?').get('pkg#nightly') as {
-			last_run_at: string | null
-			last_status: string | null
-			last_error: string | null
-		}
-		assert.equal(job.last_run_at, '2026-04-01T12:00:00.000Z')
-		assert.equal(job.last_status, 'running')
+		db.prepare(`INSERT INTO job_runs (id, job_id, trigger, started_at, status) VALUES (?, ?, ?, ?, 'running')`).run(
+			'jobrun_1',
+			'pkg#nightly',
+			'manual',
+			'2026-04-01T12:00:00.000Z',
+		)
+		db.prepare('UPDATE job_runs SET finished_at = ?, status = ?, logs_json = ? WHERE id = ?').run(
+			'2026-04-01T12:00:01.000Z',
+			'success',
+			'[]',
+			'jobrun_1',
+		)
+		db.prepare('UPDATE jobs SET last_status = ?, last_error = ?, updated_at = ? WHERE id = ?').run(
+			'success',
+			null,
+			'2026-04-01T12:00:01.000Z',
+			'pkg#nightly',
+		)
 
-		applyJobRunFinish(db, {
-			id: 'jobrun_1',
-			jobId: 'pkg#nightly',
-			status: 'success',
-			finishedAt: '2026-04-01T12:00:01.000Z',
-		})
-		job = db.prepare('SELECT last_run_at, last_status, last_error FROM jobs WHERE id = ?').get('pkg#nightly') as {
+		const job = db.prepare('SELECT last_run_at, last_status FROM jobs WHERE id = ?').get('pkg#nightly') as {
 			last_run_at: string | null
 			last_status: string | null
-			last_error: string | null
 		}
-		assert.equal(job.last_run_at, '2026-04-01T12:00:00.000Z', 'finish must not clear last_run_at')
+		assert.equal(job.last_run_at, null, 'manual must leave the schedule-anchor column alone')
 		assert.equal(job.last_status, 'success')
-		assert.equal(job.last_error, null)
+		assert.equal(
+			latestRunAt(db, 'pkg#nightly', job.last_run_at),
+			'2026-04-01T12:00:00.000Z',
+			'UI last-run falls back to the latest job_runs.started_at',
+		)
 	})
 })

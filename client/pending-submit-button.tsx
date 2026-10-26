@@ -16,9 +16,9 @@ export type PendingSubmitButtonProps = {
 const ghostCss = css(getGhostButtonCss({ size: 'sm' }))
 
 /**
- * Submit button that disables itself and swaps to `pendingLabel` on the first
- * click so a slow POST cannot double-submit. Without JavaScript it is a plain
- * submit, so the form still works — the pending state is an enhancement.
+ * Submit button that disables itself and swaps to `pendingLabel` after the
+ * first click so a slow POST cannot double-submit. Without JavaScript it is a
+ * plain submit, so the form still works — the pending state is an enhancement.
  */
 export const PendingSubmitButton = clientEntry(
 	clientEntryId('PendingSubmitButton'),
@@ -46,9 +46,10 @@ function PendingSubmitButtonComponent(
 						return
 					}
 					pending = true
-					// Let the browser begin the form submit before re-rendering
-					// so disabling the button does not cancel navigation.
-					queueMicrotask(() => handle.update())
+					// Macrotask, not microtask: microtasks run before the click
+					// default action, and disabling the submitter then aborts
+					// the form submission. setTimeout runs after submit starts.
+					setTimeout(() => handle.update(), 0)
 				}),
 			]}
 		>
