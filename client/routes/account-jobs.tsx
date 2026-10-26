@@ -34,82 +34,92 @@ export function AccountJobs(handle: Handle<{ data: Data; pathname: string }>) {
 						columns={[
 							{ key: 'job', label: 'Job', primary: true },
 							{ key: 'schedule', label: 'Schedule', drop: 3 },
-							{ key: 'next', label: 'Next run', drop: 2 },
-							{ key: 'last', label: 'Last run', drop: 2 },
-							{ key: 'status', label: 'Status', drop: 1 },
-							{ key: 'actions', label: 'Actions' },
+							{ key: 'next', label: 'Next run', drop: 2, width: '11rem' },
+							{ key: 'last', label: 'Last run', drop: 2, width: '11rem' },
+							{ key: 'status', label: 'Status', drop: 1, width: '5.5rem' },
+							// Two sm ghost buttons ("Run now" + "Resume") with
+							// design-system padding and a 0.7rem gap.
+							{ key: 'actions', label: 'Actions', width: '13.5rem' },
 						]}
-						rows={d.jobs.map((job) => ({
-							id: job.id,
-							cells: {
-								job: (
-									<>
-										<a href={routes.accountJobDetail.href({ jobId: job.id })}>
-											<strong>
-												{job.packageName}/{job.jobName}
-											</strong>
-										</a>
-										{job.description ? (
-											<>
-												<br />
-												<Muted small>{job.description}</Muted>
-											</>
-										) : null}
-									</>
-								),
-								schedule: (
-									<>
-										<Code>{job.schedule}</Code>
-										{job.timezone ? <Muted small> {job.timezone}</Muted> : null}
-									</>
-								),
-								next: job.enabled ? (
-									<TimestampValue value={job.nextRunAt} />
-								) : (
-									<Muted>paused</Muted>
-								),
-								last: <TimestampValue value={job.lastRunAt} fallback="never" />,
-								status: (
-									<>
-										{job.lastStatus ?? '—'}
-										{job.lastError ? (
-											<>
-												<br />
-												<span
-													mix={css({
-														color: colors.error,
-														fontSize: typography.fontSize.sm,
-													})}
-												>
-													{job.lastError}
-												</span>
-											</>
-										) : null}
-									</>
-								),
-								actions: (
-									<Actions layout="inline">
-										<ActionForm
-											action={action}
-											csrf={d.csrf}
-											fields={{ action: 'run', id: job.id }}
-											label="Run now"
-											pendingLabel="Running…"
-										/>
-										<ActionForm
-											action={action}
-											csrf={d.csrf}
-											fields={{
-												action: 'toggle',
-												id: job.id,
-												enabled: job.enabled ? 'false' : 'true',
-											}}
-											label={job.enabled ? 'Pause' : 'Resume'}
-										/>
-									</Actions>
-								),
-							},
-						}))}
+						rows={d.jobs.map((job) => {
+							const jobLabel = `${job.packageName}/${job.jobName}`
+							return {
+								id: job.id,
+								cells: {
+									job: (
+										<>
+											<a
+												href={routes.accountJobDetail.href({ jobId: job.id })}
+												title={jobLabel}
+											>
+												<strong>{jobLabel}</strong>
+											</a>
+											{job.description ? (
+												<>
+													<br />
+													<Muted small>{job.description}</Muted>
+												</>
+											) : null}
+										</>
+									),
+									schedule: (
+										<>
+											<Code>{job.schedule}</Code>
+											{job.timezone ? (
+												<Muted small> {job.timezone}</Muted>
+											) : null}
+										</>
+									),
+									next: job.enabled ? (
+										<TimestampValue value={job.nextRunAt} />
+									) : (
+										<Muted>paused</Muted>
+									),
+									last: (
+										<TimestampValue value={job.lastRunAt} fallback="never" />
+									),
+									status: (
+										<>
+											{job.lastStatus ?? '—'}
+											{job.lastError ? (
+												<>
+													<br />
+													<span
+														mix={css({
+															color: colors.error,
+															fontSize: typography.fontSize.sm,
+														})}
+													>
+														{job.lastError}
+													</span>
+												</>
+											) : null}
+										</>
+									),
+									actions: (
+										<Actions layout="inline">
+											<ActionForm
+												action={action}
+												csrf={d.csrf}
+												fields={{ action: 'run', id: job.id }}
+												label="Run now"
+												pendingLabel="Running…"
+											/>
+											<ActionForm
+												action={action}
+												csrf={d.csrf}
+												fields={{
+													action: 'toggle',
+													id: job.id,
+													enabled: job.enabled ? 'false' : 'true',
+												}}
+												label={job.enabled ? 'Pause' : 'Resume'}
+											/>
+										</Actions>
+									),
+								},
+							}
+						})}
 					/>
 				</AccountManagementPanel>
 			</AccountManagementShell>

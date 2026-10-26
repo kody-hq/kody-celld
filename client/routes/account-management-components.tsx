@@ -121,27 +121,25 @@ export const accountActionsCss = {
 }
 
 /**
- * Single-line actions for a narrow table cell: equal-width buttons stay on
- * one row instead of wrapping under each other and doubling the row height.
- * Compact horizontal padding so "Run now" + "Pause" fit the Actions column.
+ * Single-line actions for a table cell: equal-width design-system `sm`
+ * ghost buttons on one row. The row sizes to the buttons (`max-content`)
+ * rather than stretching to fill a starved column and crushing padding —
+ * pair with an Actions column width that fits both labels (see jobs list).
  */
 export const accountActionsInlineCss = {
 	display: 'flex',
 	flexWrap: 'nowrap' as const,
 	alignItems: 'center' as const,
-	gap: '0.4rem',
-	width: '100%',
-	minWidth: 0,
+	gap: '0.7rem',
+	width: 'max-content',
+	maxWidth: '100%',
 	'& > form': {
 		flex: '1 1 0',
-		minWidth: 0,
 		margin: 0,
 	},
 	'& > form > button': {
 		width: '100%',
 		boxSizing: 'border-box' as const,
-		paddingLeft: '0.65rem',
-		paddingRight: '0.65rem',
 	},
 }
 
@@ -605,49 +603,66 @@ export function MetadataGrid(handle: Handle<MetadataGridProps>) {
  * all` turns one click into a whole-value selection for anyone the clipboard
  * button does not work for. `title` is the mouse-hover convenience on top of
  * that, not the mechanism.
+ *
+ * `copy="chip"` (default) is the dense control for table primary accessories.
+ * `copy="ghost"` is the account `sm` ghost pill — same family as Run now /
+ * Pause — for metadata bands where a chip reads as a mismatched control.
  */
 export function IdValue(
 	handle: Handle<{
 		value: string
 		/** Field name, so the copy button says which id it takes. */
 		label: string
+		copy?: 'chip' | 'ghost'
 	}>,
 ) {
-	return () => (
-		<span
-			mix={css({
-				display: 'flex',
-				alignItems: 'center',
-				gap: '0.35rem',
-				minWidth: 0,
-			})}
-		>
-			<code
-				title={handle.props.value}
+	return () => {
+		const copy = handle.props.copy ?? 'chip'
+		return (
+			<span
 				mix={css({
+					display: 'flex',
+					alignItems: 'center',
+					gap: copy === 'ghost' ? '0.5rem' : '0.35rem',
 					minWidth: 0,
-					overflow: 'hidden',
-					textOverflow: 'ellipsis',
-					whiteSpace: 'nowrap',
-					userSelect: 'all',
-					fontFamily: 'monospace',
-					fontSize: typography.fontSize.sm,
-					padding: '0.2rem 0.42rem',
-					borderRadius: radius.sm,
-					border: `1px solid ${colors.border}`,
-					backgroundColor: colors.background,
-					color: colors.text,
 				})}
 			>
-				{handle.props.value}
-			</code>
-			<CopyTextButton
-				value={handle.props.value}
-				variant="chip"
-				ariaLabel={`Copy ${handle.props.label}`}
-			/>
-		</span>
-	)
+				<code
+					title={handle.props.value}
+					mix={css({
+						minWidth: 0,
+						overflow: 'hidden',
+						textOverflow: 'ellipsis',
+						whiteSpace: 'nowrap',
+						userSelect: 'all',
+						fontFamily: 'monospace',
+						fontSize: typography.fontSize.sm,
+						padding: '0.2rem 0.42rem',
+						borderRadius: radius.sm,
+						border: `1px solid ${colors.border}`,
+						backgroundColor: colors.background,
+						color: colors.text,
+					})}
+				>
+					{handle.props.value}
+				</code>
+				{copy === 'ghost' ? (
+					<CopyTextButton
+						value={handle.props.value}
+						variant="ghost"
+						size="sm"
+						ariaLabel={`Copy ${handle.props.label}`}
+					/>
+				) : (
+					<CopyTextButton
+						value={handle.props.value}
+						variant="chip"
+						ariaLabel={`Copy ${handle.props.label}`}
+					/>
+				)}
+			</span>
+		)
+	}
 }
 
 /**
@@ -658,19 +673,23 @@ export function IdValue(
 export function TimestampValue(
 	handle: Handle<{ value: string | null; fallback?: string }>,
 ) {
-	return () => (
-		<span
-			mix={css({
-				whiteSpace: 'nowrap',
-				fontVariantNumeric: 'tabular-nums',
-			})}
-		>
-			{formatNullableTimestamp(
-				handle.props.value,
-				handle.props.fallback ?? '—',
-			)}
-		</span>
-	)
+	return () => {
+		const label = formatNullableTimestamp(
+			handle.props.value,
+			handle.props.fallback ?? '—',
+		)
+		return (
+			<span
+				title={label}
+				mix={css({
+					whiteSpace: 'nowrap',
+					fontVariantNumeric: 'tabular-nums',
+				})}
+			>
+				{label}
+			</span>
+		)
+	}
 }
 
 /**

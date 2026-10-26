@@ -58,6 +58,12 @@ export type RecordTableColumn = {
 	 * than a labeled field below 620px. Exactly one column should set it.
 	 */
 	primary?: boolean
+	/**
+	 * Fixed width for `table-layout: fixed` (e.g. `13.5rem` for an Actions
+	 * cell that must fit two `sm` ghost buttons). Omit to share remaining
+	 * space with other undropped columns.
+	 */
+	width?: string
 }
 
 export type RecordTableRow = {
@@ -459,10 +465,16 @@ export function RecordTable(handle: Handle<RecordTableProps>) {
 							columns,
 							columns.length - 1 - index,
 						)
+						const widthCss = column.width
+							? css({ width: column.width })
+							: undefined
 						return (
 							<col
 								key={column.key}
-								mix={maxWidth === null ? undefined : collapsedColCss[maxWidth]}
+								mix={[
+									widthCss,
+									maxWidth === null ? undefined : collapsedColCss[maxWidth],
+								]}
 							/>
 						)
 					})}

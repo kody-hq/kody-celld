@@ -8,10 +8,14 @@ import { isAuthShellPage } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
 import {
 	getAlertCardCss,
+	pageGutter,
 	visuallyHiddenUntilFocusedCss,
 } from '#universal/styles/style-primitives.ts'
 import { spacing } from '#universal/styles/tokens.ts'
 import { getPageContainerCss } from '#client/page-layout.ts'
+
+/** Same breakpoint as `accountManagementNarrowMq` — rail collapses to a row. */
+const accountRailNarrowMq = '@media (max-width: 860px)'
 
 export type { AppRootProps }
 
@@ -45,7 +49,10 @@ export function AppRoot(handle: Handle<AppRootProps>) {
 				)}
 				<main id="main" mix={css(mainCss)}>
 					{flash ? (
-						<div mix={css(authShell ? authFlashWrapCss : flashWrapCss)}>
+						<div
+							data-page-flash
+							mix={css(authShell ? authFlashWrapCss : flashWrapCss)}
+						>
 							<p
 								class={`flash ${flash.kind}`}
 								role={flash.kind === 'error' ? 'alert' : 'status'}
@@ -80,11 +87,21 @@ const rootCss = {
 	minHeight: '100vh',
 }
 
-/** Every route renders one page box from `#client/page-layout.ts` in here. */
+/**
+ * Every route renders one page box from `#client/page-layout.ts` in here.
+ * When the account/console rail is present, the flash sits in the content
+ * column (same left inset as the shell) instead of spanning above the rail.
+ */
 const mainCss = {
 	flex: 1,
 	width: '100%',
 	boxSizing: 'border-box' as const,
+	[`&:has([data-account-nav]) > [data-page-flash]`]: {
+		paddingLeft: `calc(${pageGutter} + 200px + clamp(2rem, 5vw, 4.5rem))`,
+		[accountRailNarrowMq]: {
+			paddingLeft: pageGutter,
+		},
+	},
 }
 
 const flashWrapCss = {

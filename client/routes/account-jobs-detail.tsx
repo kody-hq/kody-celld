@@ -1,6 +1,7 @@
-import { type Handle } from 'remix/component'
+import { css, type Handle } from 'remix/component'
 import { type AppLoaderData } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
+import { primaryLinkCss } from '#universal/styles/style-primitives.ts'
 import {
 	AccountManagementPanel,
 	AccountManagementShell,
@@ -59,13 +60,17 @@ export function AccountJobDetail(
 						</Actions>
 					}
 				/>
-				<a href={routes.accountJobs.href()}>Back to jobs</a>
+				<a href={routes.accountJobs.href()} mix={css(primaryLinkCss)}>
+					Back to jobs
+				</a>
 				<AccountManagementPanel ariaLabel="Job details">
 					<MetadataGrid
 						items={[
 							{
 								label: 'Job id',
-								value: <IdValue value={job.id} label="job id" />,
+								value: (
+									<IdValue value={job.id} label="job id" copy="ghost" />
+								),
 							},
 							{
 								label: 'Package',
@@ -74,6 +79,7 @@ export function AccountJobDetail(
 										href={routes.accountPackageDetail.href({
 											name: job.packageName,
 										})}
+										mix={css(primaryLinkCss)}
 									>
 										{job.packageName}
 									</a>
