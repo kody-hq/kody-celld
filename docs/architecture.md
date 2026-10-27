@@ -2,7 +2,7 @@
 
 kody-celld is one Worker plus four Durable Object classes and two Worker
 Entrypoints, all in a single `celld` deployment. Everything a user does enters
-through MCP (`/mcp`) or the equivalent direct API (`/api/call/:capability`);
+through MCP (`/mcp`) or the equivalent HTTP API (`/v1`, described by `/openapi.json`);
 operators use `/admin/*` with the admin token.
 
 ```

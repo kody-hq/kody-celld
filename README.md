@@ -210,7 +210,7 @@ those two tools; there is no other MCP surface.
 
 A package is a file map with `package.json`, a non-empty `README.md` and
 `AGENTS.md`, JS modules, and optional `kody.jobs`. Save it with
-`kody.packageSave({ files })` (or `POST /api/call/packageSave`), then either
+`kody.packageSave({ files })` (or `POST /v1/packages`), then either
 run an export (`packageRun`, host-side) or import it from any run:
 
 ```ts

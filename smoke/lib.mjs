@@ -1,8 +1,9 @@
-// Shared helpers for the smoke workloads. Plain Node (>= 20), no dependencies.
+// Shared helpers for the smoke workloads. Plain Node (>= 24.3), no dependencies.
 import { readdir, readFile } from 'node:fs/promises'
 import { createServer, request as httpRequest } from 'node:http'
 import { createHash, randomBytes } from 'node:crypto'
 import path from 'node:path'
+import { apiOperationOptions, apiOperations } from '../src/api/operations.ts'
 
 export const baseUrl = (process.env.KODY_URL ?? 'http://127.0.0.1:8787').replace(/\/$/, '')
 export const adminToken = process.env.KODY_ADMIN_TOKEN ?? 'dev-admin-token'
@@ -36,7 +37,43 @@ async function request(pathname, { method = 'GET', token, body } = {}) {
 	} catch {
 		json = { raw: text }
 	}
-	return { status: response.status, json }
+	return { status: response.status, json, headers: response.headers }
+}
+
+/** Maps a capability call onto its /v1 route, or null when /v1 has no route for it yet. */
+function v1Route(capability, args) {
+	const operation = apiOperations.find(([, , operationId]) => operationId === capability)
+	if (!operation) return null
+	const [method, template] = operation
+	const renames = apiOperationOptions[capability]?.pathParams ?? {}
+	const params = { ...args }
+	const pathname = template.replace(/\{([^{}]+)\}/g, (_, name) => {
+		const key = renames[name] ?? name
+		const value = params[key]
+		delete params[key]
+		return encodeURIComponent(String(value))
+	})
+	if (method !== 'GET' && method !== 'DELETE') return { method, pathname, body: params }
+	const query = new URLSearchParams()
+	for (const [key, value] of Object.entries(params)) {
+		if (value === undefined || value === null) continue
+		for (const item of Array.isArray(value) ? value : [value]) {
+			query.append(key, typeof item === 'object' ? JSON.stringify(item) : String(item))
+		}
+	}
+	return { method, pathname: query.size > 0 ? `${pathname}?${query}` : pathname }
+}
+
+/** Calls a capability over /v1 when it has a route, else over the deprecated /api/call. */
+async function callOverHttp(token, capability, args) {
+	const route = v1Route(capability, args)
+	if (route) {
+		const { status, json } = await request(route.pathname, { method: route.method, token, body: route.body })
+		return { ok: status >= 200 && status < 300, status, result: json, payload: json }
+	}
+	const { status, json, headers } = await request(`/api/call/${capability}`, { method: 'POST', token, body: args })
+	assert(headers.get('deprecation'), `/api/call/${capability} is marked deprecated`, Object.fromEntries(headers))
+	return { ok: status === 200 && json.ok, status, result: json.result, payload: json }
 }
 
 export const admin = {
@@ -141,20 +178,21 @@ export class McpClient {
 	}
 
 	/**
-	 * Calls a capability directly over the REST surface (POST /api/call/:name),
-	 * i.e. from outside a run. Needed for host-only capabilities such as
-	 * packageRun and jobRunNow, which are not available to sandbox code.
+	 * Calls a capability directly over HTTP, i.e. from outside a run: the /v1
+	 * route when there is one, else the deprecated POST /api/call/:name. Needed
+	 * for host-only capabilities such as packageRun and jobRunNow, which are not
+	 * available to sandbox code.
 	 */
 	async callDirect(capability, args = {}) {
-		const { status, json } = await request(`/api/call/${capability}`, { method: 'POST', token: this.token, body: args })
-		assert(status === 200 && json.ok, `direct call ${capability} failed (HTTP ${status})`, json)
-		return json.result
+		const outcome = await callOverHttp(this.token, capability, args)
+		assert(outcome.ok, `direct call ${capability} failed (HTTP ${outcome.status})`, outcome.payload)
+		return outcome.result
 	}
 
 	/** Like callDirect but returns the raw outcome so callers can assert on refusals. */
 	async callDirectRaw(capability, args = {}) {
-		const { status, json } = await request(`/api/call/${capability}`, { method: 'POST', token: this.token, body: args })
-		return { status, isError: !(status === 200 && json.ok), payload: json }
+		const outcome = await callOverHttp(this.token, capability, args)
+		return { status: outcome.status, isError: !outcome.ok, payload: outcome.payload }
 	}
 
 	/** Calls a single capability from inside an execute run. */

@@ -56,8 +56,8 @@ GET  /oauth/userinfo
   with a refresh token it kills the family. Users can revoke a client at any
   time from `/account/clients` (or `kody.mcpClientRevoke()`), and the operator
   can sign a user out of everything with `POST /admin/users/:id/signout`.
-- **Bearer tokens** are accepted wherever `kc_…` API tokens are: `/mcp` and
-  `/api/*`. A revoked/expired token returns `401` with
+- **Bearer tokens** are accepted wherever `kc_…` API tokens are: `/mcp`, `/v1`,
+  and the deprecated `/api/*`. A revoked/expired token returns `401` with
   `error="invalid_token"` in the challenge so clients re-authenticate.
 - `OPTIONS /mcp` and the OAuth endpoints answer CORS preflights, so
   browser-based MCP hosts work too.

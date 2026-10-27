@@ -6,6 +6,15 @@ tag, and a short index of past ones.
 
 ## [Unreleased]
 
+### Legacy capability API deprecated
+
+`POST /api/call/:capability` and `GET /api/capabilities` are deprecated in favor
+of the `/v1` HTTP API and `GET /openapi.json`; see [docs/api.md](docs/api.md).
+Responses from the legacy routes now carry a `Deprecation` header and a
+`Link: <.../docs/api.md>; rel="deprecation"` header. The legacy routes keep
+working until they are removed in v0.3.0. The smoke suite now calls `/v1`
+wherever a route exists.
+
 ## [0.2.3] - 2026-10-27
 
 ### Secret injection and redirects

@@ -359,13 +359,11 @@ export async function smokeOAuthServer({ user, mcp }) {
 		!JSON.stringify(clients).includes('mcpat_') && !JSON.stringify(clients).includes('mcprt_'),
 		'grant listing has no token material',
 	)
-	const restApi = await fetch(`${baseUrl}/api/call/apiTokenList`, {
-		method: 'POST',
-		headers: { authorization: `Bearer ${tokens.json.access_token}`, 'content-type': 'application/json' },
-		body: '{}',
+	const restApi = await fetch(`${baseUrl}/v1/me`, {
+		headers: { authorization: `Bearer ${tokens.json.access_token}` },
 	})
-	assert(restApi.status === 200, 'OAuth token also authenticates /api', restApi.status)
-	log('access', 'search + execute + userinfo + /api with the OAuth token; grant listed without material')
+	assert(restApi.status === 200, 'OAuth token also authenticates /v1', restApi.status)
+	log('access', 'search + execute + userinfo + /v1 with the OAuth token; grant listed without material')
 
 	// --- refresh rotation + replay detection ----------------------------------
 	const refreshed = await tokenRequest({

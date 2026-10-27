@@ -24,6 +24,7 @@ import { recordAudit } from './lib/audit.ts'
 import { errorStatus, errorToJson, KodyError } from './lib/errors.ts'
 import { limitsFromEnv, parseQuotaOverride, quotasFromEnv } from './lib/limits.ts'
 import { handleMcpRequest } from './mcp/server.ts'
+import { isLegacyCapabilityApiPath, withLegacyCapabilityApiDeprecation } from './api/legacy-deprecation.ts'
 import { handleApiRequest } from './api/http-handler.ts'
 import { handleOAuth, isOAuthRoute } from './oauth/routes.ts'
 import { handleAccount, isAccountRoute } from './web/account.ts'
@@ -530,6 +531,12 @@ export default {
 			if (url.pathname.startsWith('/connect/oauth/')) return await handleOAuthConnect(request, env, ctx, url)
 			if (url.pathname === '/admin' || url.pathname.startsWith('/admin/')) {
 				return await handleAdmin(request, env, ctx, url)
+			}
+			if (isLegacyCapabilityApiPath(url.pathname)) {
+				const response = await handleApi(request, env, ctx, url).catch((error: unknown) =>
+					json(errorToJson(error), errorStatus(error)),
+				)
+				return withLegacyCapabilityApiDeprecation(response)
 			}
 			if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return await handleApi(request, env, ctx, url)
 			if (url.pathname === '/openapi.json' || url.pathname === '/v1' || url.pathname.startsWith('/v1/')) {

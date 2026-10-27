@@ -207,7 +207,10 @@ roadmap is now shipped; the roadmap below is kept as the change log.
   webhooks, email, integrations, MCP servers, community, and storage are
   present and appear when their capabilities are registered. Token routes,
   `/v1/search/tool`, capability proxy and local-execute, and repos are not
-  ported yet.
+  ported yet. Some capabilities with no `/v1` route yet (for example
+  `packageRun`, `packageInstall`, `webhookDelete`, and email inbox claims) are
+  still reachable over HTTP only through the deprecated `/api/call`, which is
+  slated for removal in v0.3.0.
 - **Package subscriptions.** Celld emits only `email.message.received`,
   `email.message.quarantined`, `email.message.delivery.updated`,
   `integration.auth.succeeded`, and `integration.auth.failed`. Other platform

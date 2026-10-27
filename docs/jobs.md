@@ -57,7 +57,7 @@ await kody.jobUpdate({ id, enabled: false })
 await kody.jobRuns({ jobId: id, limit: 20 })
 ```
 
-`jobRunNow({ id })` is host-only (`POST /api/call/jobRunNow`) and records a
+`jobRunNow({ id })` is host-only (`POST /v1/jobs/{id}/run`) and records a
 run with `trigger: 'manual'`. `POST /admin/jobs` forces a dispatch cycle for
 every user — handy right after a deploy or to test without waiting a minute.
 `GET /admin/users/:id/jobs` lists a user's jobs for operators.

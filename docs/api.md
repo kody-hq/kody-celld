@@ -26,3 +26,14 @@ in that celld build.
 
 Other routes invoke the corresponding capability and return its raw result.
 See `/openapi.json` for the routes available in the running deployment.
+
+## Legacy capability API
+
+`POST /api/call/:capability` and `GET /api/capabilities` are deprecated and
+will be removed in v0.3.0. Their responses carry a `Deprecation` header (RFC 9745) and `Link: <https://github.com/kody-hq/kody-celld/blob/main/docs/api.md>;
+rel="deprecation"`. Move callers to the `/v1` route for the same capability
+(listed in `/openapi.json` by `operationId`), and use `GET /openapi.json`
+instead of `GET /api/capabilities`. `/v1` returns the raw capability result
+instead of the `{ ok, result }` envelope, and errors as
+`{ error: { code, message } }`. `/api/blobs/*` and `GET /api/webhooks/:handle/url`
+are not part of this deprecation.
