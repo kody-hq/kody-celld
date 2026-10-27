@@ -28,6 +28,12 @@ test('documents unique operations registered in the capability registry', () => 
 			.map((operation) => operation.operationId),
 	)
 	assert.equal(new Set(operationIds).size, operationIds.length)
+	for (const path of Object.values(document.paths)) {
+		for (const operation of Object.values(path) as Array<{ responses?: Record<string, unknown> }>) {
+			assert(operation.responses?.['200'])
+			assert(operation.responses?.default)
+		}
+	}
 })
 
 test('documents hosted path parameter names with celld input schemas', () => {

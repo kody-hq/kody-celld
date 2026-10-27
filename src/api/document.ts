@@ -70,6 +70,13 @@ export function buildOpenApiDocument(publicUrl: string, registeredCapabilities: 
 					: []),
 			],
 			'x-kody-read-only': operationId === 'search' || capabilityByName.get(operationId)?.readOnly === true,
+			responses: {
+				'200': {
+					description: 'Capability result.',
+					content: { 'application/json': { schema: {} } },
+				},
+				default: { $ref: '#/components/responses/Error' },
+			},
 		}
 		if (!isQuery) {
 			const requestProperties = Object.fromEntries(
@@ -117,6 +124,12 @@ export function buildOpenApiDocument(publicUrl: string, registeredCapabilities: 
 						},
 					},
 					required: ['error'],
+				},
+			},
+			responses: {
+				Error: {
+					description: 'Error envelope.',
+					content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
 				},
 			},
 			securitySchemes: {
