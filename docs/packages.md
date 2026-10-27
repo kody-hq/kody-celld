@@ -112,7 +112,7 @@ hyphens. Each slot requires a description from 1 to 500 characters.
 ```
 
 `kind` is optional and accepts `secret`, `oauth`, `mcp`, `url`, `login`, or
-`signing`. `provider` is optional and trimmed to 1-64 characters. Celld does not
+`signing`. `provider` is optional. When present, celld trims surrounding whitespace and requires 1-64 characters; it rejects longer values instead of truncating them. Celld does not
 default it to the slot name. `multiple` is an optional boolean. Celld warns and drops unknown
 slot fields, `placement`, and `ownerCredentialForVisitors`.
 
