@@ -4,7 +4,7 @@ import { SiteHeader } from '#client/site-header.tsx'
 import { Toaster } from '#client/toaster.tsx'
 import { RouteView } from '#client/routes/index.tsx'
 import { type AppRootProps } from '#universal/app-root-props.ts'
-import { isAuthShellPage } from '#universal/loader-data.ts'
+import { isAuthShellPage, pageHasAccountRail } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
 import {
 	getAlertCardCss,
@@ -32,14 +32,9 @@ export function AppRoot(handle: Handle<AppRootProps>) {
 		const { session, pathname, flash, data } = handle.props
 		const loginHref = routes.login.href()
 		const authShell = isAuthShellPage(data.page)
-		// Account and console shells carry a 200px rail; offset the flash into
-		// the content column so it does not paint above the rail.
-		const accountChrome =
-			!authShell &&
-			(pathname === '/account' ||
-				pathname.startsWith('/account/') ||
-				pathname === '/console' ||
-				pathname.startsWith('/console/'))
+		// Offset the flash into the content column only when the page actually
+		// renders the account/console rail (not package detail/files/preview).
+		const accountChrome = !authShell && pageHasAccountRail(data.page)
 		return (
 			<div mix={css(rootCss)}>
 				<a href="#main" mix={css(visuallyHiddenUntilFocusedCss)}>
