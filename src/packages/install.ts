@@ -594,7 +594,7 @@ export function packagePreviewFromFetched(fetched: FetchedPackage): PackagePrevi
 			dependencies: Object.keys(manifest.dependencies),
 		},
 		manifest,
-		warnings: fetched.warnings,
+		warnings: [...fetched.warnings, ...manifest.parseWarnings],
 		files: fetched.files,
 	}
 }

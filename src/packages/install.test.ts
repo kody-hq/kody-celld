@@ -16,6 +16,7 @@ import {
 	filesFromJson,
 	githubTarballUrl,
 	packageFileView,
+	packagePreviewFromFetched,
 	packageSourceHostPolicyFromEnv,
 	packageSourceHostsFromEnv,
 	parsePackageSource,
@@ -595,5 +596,22 @@ describe('packageFileView', () => {
 			fetch: fetchImpl,
 		})
 		assert.equal(packageFileView(preview.files, 'main.js').content, packageFiles['main.js'])
+	})
+})
+
+describe('packagePreviewFromFetched', () => {
+	it('includes manifest parse warnings alongside fetch warnings', () => {
+		const preview = packagePreviewFromFetched({
+			files: {
+				'package.json': JSON.stringify({ name: '@scope/pkg', version: '1.0.0', kody: { madeUp: true } }),
+				'README.md': '# pkg',
+				'AGENTS.md': '# pkg',
+			},
+			warnings: ['fetch warning'],
+			source: 'https://example.com/pkg',
+			fetchedFrom: 'https://example.com/pkg',
+		})
+		assert.equal(preview.warnings[0], 'fetch warning')
+		assert(preview.warnings.some((warning) => warning.includes('kody.madeUp')))
 	})
 })
