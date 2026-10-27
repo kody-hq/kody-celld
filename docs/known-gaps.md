@@ -184,6 +184,12 @@ roadmap is now shipped; the roadmap below is kept as the change log.
   hosts use the account's approved secret hosts.
 - **Package credential slots.** Celld parses and stores `kody.credentials`,
   but `credential()` is not available yet.
+- **Package subscriptions.** Celld emits only `email.message.received`,
+  `email.message.quarantined`, `email.message.delivery.updated`,
+  `integration.auth.succeeded`, and `integration.auth.failed`. Other platform
+  topics, including hosted-only topics, are saved with warnings but have no
+  celld event to trigger them. Platform-topic subscription `filters` are
+  ignored with a warning, so the handler runs for every event on the topic.
 - **Package-emitted topics.** Celld parses and validates `kody.emits`, but
   `events.dispatch` and delivery to subscriber handlers are not available yet.
   `@` subscriptions are saved with a warning and their filters are retained.
