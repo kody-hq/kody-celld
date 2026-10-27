@@ -40,7 +40,8 @@ roadmap is now shipped; the roadmap below is kept as the change log.
 | Sign-in + web UI                               | password / invite / reset / magic-link sign-in, account pages, operator console ([web-ui.md](./web-ui.md))                                                                                                                                                                                   | magic links ride on whichever outbound email adapter is configured                                                         | **Built-in**, smoke-tested                                                                                                   |
 | Install packages from GitHub / URL             | `packageInstall` + `packageUpdate` + `packagePreview`: `github:owner/repo[/dir][#ref]`, public `kody.codes/@owner/leaf[.git]` (read-only smart-HTTP clone), tarball or JSON file-map URLs, host allowlist + SSRF guard ([packages.md](./packages.md#install-from-github-kodycodes-or-a-url)) | GitHub hosts and `kody.codes` built in; private/LAN hosts (Gitea/Forgejo/GitLab) listed in `KODY_PRIVATE_HOSTS`            | **Built-in**, unit-tested; live kody.codes `.git` needs hosted upload-pack                                                   |
 | Community package catalog                      | node-local registry in the registry cell: publish/unpublish, search, install/fork/update, public `/community` pages ([community.md](./community.md))                                                                                                                                         | —                                                                                                                          | **Built-in**, smoke-tested                                                                                                   |
-| Queues, Workflows, KV, D1                      | available in celld                                                                                                                                                                                                                                                                           | —                                                                                                                          | Not needed by the core yet                                                                                                   |
+| Queues, KV, D1                                 | available in celld                                                                                                                                                                                                                                                                           | None                                                                                                                       | Not needed by the core yet                                                                                                   |
+| Workflows                                      | Durable per-user queue, runtime helper and one-minute cron dispatcher                                                                                                                                                                                                                        | None                                                                                                                       | **Built-in**; see [workflows.md](./workflows.md)                                                                             |
 
 ## Roadmap (sequential PRs)
 
@@ -87,6 +88,11 @@ roadmap is now shipped; the roadmap below is kept as the change log.
   [operations.md](./operations.md).
 - **`execute` timeout** defaults to 60 s per run and applies to jobs too
   (`KODY_EXECUTE_TIMEOUT_MS`, 1 s – 15 min).
+- **Workflows** use a five-minute background timeout and are dispatched by the
+  one-minute cron, so run times have approximately one-minute precision.
+  Pinned source revisions are unsupported. Cancelling a running workflow does
+  not interrupt its attempt; its result is discarded and it is not retried.
+  The account Workflows page is not included.
 - **Quotas** default to unlimited; a shared node should set
   `KODY_QUOTA_RUNS_PER_DAY` and friends. The daily execute-time budget is
   checked before a run starts, so the final run of the day may overshoot it.
@@ -168,6 +174,14 @@ roadmap is now shipped; the roadmap below is kept as the change log.
 
 ## celld-specific caveats
 
+- Hosted capability names are available for secrets: `secretSave` aliases
+  `secretSet`, and `secretSetMany` is supported. Hosted fields are rejected
+  with `unsupported_secret_field` unless they match celld defaults:
+  `expires_at`, `provider`, `hosts`, and `login_exchange` omitted or null;
+  `kind` omitted or `secret`; `inject` omitted, null, or the default
+  Authorization bearer header (`kind: header`, `name: Authorization`,
+  `format: Bearer {value}`); `placement` omitted, null, or all-true. Null
+  hosts use the account's approved secret hosts.
 - **Package credential slots.** Celld parses and stores `kody.credentials`,
   but `credential()` is not available yet.
 - **Hosted HTTP API.** celld serves `/v1` at the origin of `KODY_PUBLIC_URL`,
@@ -176,6 +190,14 @@ roadmap is now shipped; the roadmap below is kept as the change log.
   `/v1/search/tool`, capability proxy and local-execute, repos, webhooks,
   email, integrations, MCP servers, community, and storage routes are deferred
   to follow-up PRs.
+- **Package subscriptions and manifest keys.** Celld emits only
+  `email.message.received`, `email.message.quarantined`,
+  `email.message.delivery.updated`, `integration.auth.succeeded`, and
+  `integration.auth.failed`. Other topics, including hosted-only and
+  `@` package-emitted topics, are saved with warnings but have no celld event
+  to trigger them. Subscription `filters` are ignored with a warning, so the
+  handler runs for every event on the topic. Hosted-only `kody.*` keys that
+  celld does not support and unknown `kody.*` keys are ignored with warnings.
 - `/connect/secret-set` does not support `expiresAt` or `allowedPackages`.
   `allowedPackages` waits on the secretLock grants PR. Hosts in a setup link
   are approved in the account-wide host list, so they apply to every secret.

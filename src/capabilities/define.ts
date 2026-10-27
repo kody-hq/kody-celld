@@ -38,6 +38,7 @@ export type CapabilityDefinition<Args = Record<string, unknown>, Result = unknow
 	/** Short execute snippet shown by search entity detail. */
 	example?: string
 	readOnly?: boolean
+	aliases?: Array<string>
 	handler: (args: Args, ctx: CapabilityContext) => Promise<Result>
 }
 

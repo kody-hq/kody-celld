@@ -215,7 +215,7 @@ export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 				return denied({
 					status: 404,
 					code: 'secret_not_found',
-					message: `Unknown secret(s): ${resolved.missing.join(', ')}. Save them with secretSave first.`,
+					message: `Unknown secret(s): ${resolved.missing.join(', ')}. Save them with secretSet first.`,
 					details: { host, missing: resolved.missing },
 					secrets,
 				})

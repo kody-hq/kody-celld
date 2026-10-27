@@ -49,6 +49,16 @@ Rules enforced by `src/packages/manifest.ts` on `packageSave`:
   time packages simply `import` each other via `kody:@scope/pkg/...` (there is
   no install step).
 
+## Subscriptions
+
+Declare package event handlers under `kody.subscriptions`, keyed by topic.
+Celld emits `email.message.received`, `email.message.quarantined`,
+`email.message.delivery.updated`, `integration.auth.succeeded`, and
+`integration.auth.failed`. Other non-empty topic strings are saved with a
+warning, but no celld event triggers them. Subscription handlers must still
+name an uploaded file. `filters` are not applied and produce a warning; the
+handler is saved and runs for every event on that topic.
+
 ## Credential slots
 
 Declare package credential slots under `kody.credentials`. Slot names start
@@ -97,6 +107,12 @@ slot fields, `placement`, and `ownerCredentialForVisitors`.
 | `packageDelete({ name })`                                                                          | yes                                           | Also deletes its jobs. Package storage is kept until `packageStorageClear`.                                                                                                                                                                                            |
 | `packageRun({ name, export?, params? })`                                                           | **no** (host only via `/api/call/packageRun`) | Inside a run, import the export instead — it is cheaper and keeps one run record.                                                                                                                                                                                      |
 | `packageStorageInspect({ packageName, prefix?, limit? })` / `packageStorageClear({ packageName })` | yes (a package may only inspect its own)      | KV entries, KV count, SQL tables.                                                                                                                                                                                                                                      |
+
+## Workflows
+
+`workflows.create()` queues durable work for a package export or inline code.
+See [workflows.md](./workflows.md) for arguments, idempotency, retries, and
+cancellation. The account Workflows page is not part of the backend runtime.
 
 ## Importing packages from code
 

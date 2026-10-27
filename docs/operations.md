@@ -116,7 +116,7 @@ Enforcement happens in the user's Durable Object, before the work starts:
 
 - a run over `runsPerDay` / `executeMsPerDay` is rejected with
   `quota_exceeded` (HTTP 429) and is **not** recorded or counted;
-- `packageSave`, `secretSave` (new name) and manifest jobs over their count are
+- `packageSave`, `secretSet` and manifest jobs over their count are
   rejected the same way, leaving existing data untouched;
 - `blobPut` (capability or `PUT /api/blobs/…`) over `blobs` / `blobBytes` is
   rejected before anything is written to the bucket;

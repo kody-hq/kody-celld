@@ -15,7 +15,7 @@ import { defineCapability, defineDomain } from './define.ts'
 export const runsDomain = defineDomain({
 	name: 'runs',
 	description:
-		'History of execute/package/job runs: status, console logs, warnings, and the fetch-gateway decisions (forwarded / injected / denied) made on their behalf. Error runs can be soft-triaged as ignored or resolved (kody parity).',
+		'History of execute/package/job/workflow runs: status, console logs, warnings, and the fetch-gateway decisions (forwarded / injected / denied) made on their behalf. Error runs can be soft-triaged as ignored or resolved (kody parity).',
 })
 
 const errorTriageFilterSchema = {
@@ -31,7 +31,7 @@ const runTriageUpdateSchema = {
 	description: 'ignored (noise), resolved (fixed), or open (clear triage).',
 }
 
-export const runList = defineCapability<{ limit?: number; errorTriage?: string }>({
+export const runList = defineCapability<{ limit?: number; errorTriage?: string; workflow_id?: string }>({
 	domain: 'runs',
 	name: 'runList',
 	description:
@@ -40,7 +40,11 @@ export const runList = defineCapability<{ limit?: number; errorTriage?: string }
 	keywords: ['recent runs', 'execution history', 'what ran', 'open errors', 'failures'],
 	inputSchema: {
 		type: 'object',
-		properties: { limit: { type: 'integer' }, errorTriage: errorTriageFilterSchema },
+		properties: {
+			limit: { type: 'integer' },
+			errorTriage: errorTriageFilterSchema,
+			workflow_id: { type: 'string', description: 'Return only attempts belonging to this workflow.' },
+		},
 	},
 	readOnly: true,
 	async handler(args, ctx) {
@@ -48,6 +52,7 @@ export const runList = defineCapability<{ limit?: number; errorTriage?: string }
 			runs: await ctx.userCell.runList({
 				limit: args.limit,
 				errorTriage: parseErrorTriageFilter(args.errorTriage, 'all'),
+				workflowId: args.workflow_id,
 			}),
 		}
 	},

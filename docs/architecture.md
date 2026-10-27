@@ -192,7 +192,7 @@ sandbox: `aiChat`/`aiEmbed` are ordinary capabilities dispatched by
 
 `src/lib/limits.ts` parses the `KODY_*` limit/quota variables once per cell.
 `UserCell` enforces quotas at the point of mutation (`runStart`, `packageSave`,
-`secretSave`, job reconciliation) and throws `quota_exceeded` (429); `runFinish`
+`secretSet`, job reconciliation) and throws `quota_exceeded` (429); `runFinish`
 accrues duration/errors into `usage_daily` and prunes runs past the retention
 count/age. `executeRun` reads the same limits for the timeout, log cap and
 result cap. Audit entries are appended to the registry cell through
