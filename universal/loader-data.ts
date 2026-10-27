@@ -664,6 +664,7 @@ export function pageHasAccountRail(page: AppPage): boolean {
 		case 'account':
 		case 'accountMcpOauthClients':
 		case 'accountApiTokens':
+		case 'accountWorkflows':
 		case 'accountSecrets':
 		case 'accountPackages':
 		case 'accountJobs':
