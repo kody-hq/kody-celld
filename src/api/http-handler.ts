@@ -214,7 +214,9 @@ export async function handleApiRequest(request: Request, env: Env, execution: Ex
 		const capContext: CapabilityContext = context(env, execution, auth)
 		if (operationId === 'search') {
 			const runSearch = (await import('../mcp/search.ts')).search
-			return Response.json(await runSearch(params as SearchInput, capContext))
+			return Response.json(await runSearch(params as SearchInput, capContext), {
+				headers: { 'Cache-Control': 'no-store' },
+			})
 		}
 		if (operationId === 'execute') {
 			if (params.credentials !== undefined) {
@@ -222,10 +224,12 @@ export async function handleApiRequest(request: Request, env: Env, execution: Ex
 			}
 			validateExecuteApiInput(params)
 			const runExecute = (await import('../mcp/server.ts')).runExecuteTool
-			return Response.json(await runExecute(params, capContext))
+			return Response.json(await runExecute(params, capContext), { headers: { 'Cache-Control': 'no-store' } })
 		}
 		const runCapability = (await import('../capabilities/registry.ts')).runCapability
-		return Response.json(await runCapability(operationId, params, capContext))
+		return Response.json(await runCapability(operationId, params, capContext), {
+			headers: { 'Cache-Control': 'no-store' },
+		})
 	} catch (caught) {
 		return errorResponse(caught, url.pathname)
 	}
