@@ -74,7 +74,10 @@ describe('check-cla', () => {
 		)
 		assert.match(formatClaFailure(failing), new RegExp(individualClaSigningPhrase))
 		assert.match(formatClaFailure(failing), /That signing comment on the pull request satisfies this check\./)
-		assert.match(formatClaFailure(failing), /The signer is recorded on main after the pull request merges\./)
+		assert.match(
+			formatClaFailure(failing),
+			/The signer is recorded on the cla-signatures branch after the pull request merges\./,
+		)
 	})
 
 	it('records the signing comment once and ignores everything else', () => {

@@ -39,8 +39,8 @@ There is no exception for docs-only or one-line patches.
 
 Signing once covers past, present, and future contributions from that GitHub
 identity. Unsigned prior contributors sign the same way before their next merge.
-The workflow reads existing signers from `main`, not from the pull request
-branch, so adding your own username on the branch does not pass the check. Only
+The workflow reads existing signers from the `cla-signatures` branch, not from
+the pull request branch, so adding your own username on the branch does not pass the check. Only
 the GitHub identity that posted the exact signing comment is treated as signed.
 
 Fork and same-repo pull requests both use `pull_request_target` for the check so
@@ -49,12 +49,9 @@ base branch tip and never runs pull request head code.
 
 After a pull request merges, the recorder scans it and the most recent 50 merged
 pull requests, so a replaced or missed run is healed by a later run. A
-maintainer can also start the recorder manually with `workflow_dispatch`. New
-signers are recorded by a bot pull request on the fixed `cla/record-signers`
-branch. The recorder dispatches `CI` on that branch (GITHUB_TOKEN pushes do not
-start workflows) and merges only after
-`validate (typecheck, lint, format, unit tests)` succeeds for the exact head SHA
-that was validated.
+maintainer can also start the recorder manually with `workflow_dispatch`. New signers are committed directly to `cla-signers.json` on the `cla-signatures`
+branch. That branch holds only signer records, sits outside the `main` ruleset,
+and runs no workflows, so recording needs no bot pull request or Validate run.
 
 ## How to sign (entity)
 
@@ -72,7 +69,8 @@ Licensor records those usernames after accepting the agreement.
 
 ## Who does not sign
 
-These identities are allowlisted in `.github/cla-signers.json` and do not sign:
+These identities are allowlisted in `cla-signers.json` on the `cla-signatures`
+branch and do not sign:
 
 - `kentcdodds` (Licensor)
 - `kody-bot` and other logins listed in that file
@@ -87,14 +85,12 @@ authors the pull request as `kentcdodds` and the commits as `cursoragent`.
 
 Do not merge a pull request while the `CLA` check is red.
 
-Individual signatures are recorded automatically after merge through the
-`cla/record-signers` bot pull request. The recorder self-heals over the most
-recent 50 merged pull requests and can be started manually with
-`workflow_dispatch`; the signer PR merges only when the dispatched
-`validate (typecheck, lint, format, unit tests)` check succeeds on the exact
-validated head SHA. After an accepted Entity CLA, add each authorized username to
-`.github/cla-signers.json` on `main` with `signedAt` as an ISO date
-(`YYYY-MM-DD`) and `cla` of `entity`.
+Individual signatures are recorded automatically after merge as commits to the
+`cla-signatures` branch. The recorder self-heals over the most recent 50 merged
+pull requests and can be started manually with `workflow_dispatch`. After an
+accepted Entity CLA, add each authorized username to `cla-signers.json` on the
+`cla-signatures` branch with `signedAt` as an ISO date (`YYYY-MM-DD`) and `cla`
+of `entity`. Allowlist edits go in the same file.
 
 Make the `CLA` check required for `main` in GitHub branch protection so a green
 review cannot skip it.

@@ -4,8 +4,6 @@ on:
   push:
     branches: [main]
   pull_request:
-  # CLA record-on-merge dispatches this on cla/record-signers because pushes
-  # and PRs created with GITHUB_TOKEN do not start new workflow runs.
   workflow_dispatch:
 
 concurrency:
