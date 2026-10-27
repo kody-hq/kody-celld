@@ -157,6 +157,8 @@ export type GatewayEvent = {
 	reason?: string
 	/** Set for host-side MCP tool calls (method 'MCP'). */
 	mcp?: { server: string; tool: string; ms: number }
+	/** Set on a followed redirect's hop: 1 for the first redirect target. */
+	redirect?: number
 }
 
 export type DailyUsage = {

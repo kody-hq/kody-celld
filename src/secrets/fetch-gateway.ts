@@ -16,12 +16,24 @@ import {
 	type SecretScope,
 } from './placeholders.ts'
 import { normalizeProviderHosts } from './provider-store.ts'
+import { LANDING_REDIRECTED_HEADER, LANDING_URL_HEADER } from './gateway-landing.ts'
 
 const RUN_HEADER = 'x-kody-run'
 const MAX_INSPECTED_BODY_BYTES = 2 * 1024 * 1024
+const MAX_REDIRECTS = 20
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
+const REQUEST_BODY_HEADERS = [
+	'content-type',
+	'content-length',
+	'content-encoding',
+	'content-language',
+	'content-location',
+]
+const CROSS_ORIGIN_DROPPED_HEADERS = ['authorization', 'proxy-authorization', 'cookie']
 
 const textLikeContentType =
 	/^(?:text\/|application\/(?:json|x-www-form-urlencoded|xml|graphql|javascript|x-ndjson)|multipart\/form-data)/i
+const jsonContentType = /^application\/(?:[\w.-]+\+)?json\s*(?:;|$)|^application\/x-ndjson\b/i
 
 export type GatewaySend = { url: string; method?: string; headers?: Record<string, string>; body?: string | null }
 export type GatewayReply = { status: number; ok: boolean; headers: Record<string, string>; body: string }
@@ -37,6 +49,9 @@ export type GatewayReply = { status: number; ok: boolean; headers: Record<string
  *    to get approval
  *  - requests to this deployment's own /admin surface are blocked so sandbox
  *    code can never reach the approval boundary
+ *  - redirects are followed here (never by fetch), each hop re-checked and
+ *    recorded; a hop that fails the decision gets no placeholder-derived
+ *    header, URL, or body
  */
 export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 	/**
@@ -56,54 +71,92 @@ export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 		const runId = request.headers.get(RUN_HEADER)
 		const headers = new Headers(request.headers)
 		headers.delete(RUN_HEADER)
-		const url = new URL(request.url)
-		const host = requestHost(url)
-		const record = (event: Omit<GatewayEvent, 'at' | 'method' | 'url' | 'host'>) => {
+		const body = request.body && sendsBody(request.method) ? await request.arrayBuffer() : null
+		const record = (hop: GatewayHop, event: GatewayRecordEvent) => {
 			if (!runId) return
 			this.ctx.waitUntil(
 				this.env.USER.getByName(this.ctx.props.userId).runRecordGatewayEvent({
 					runId,
 					event: {
 						at: new Date().toISOString(),
-						method: request.method,
-						url: redactUrl(url),
-						host,
+						method: hop.method,
+						url: redactUrl(hop.url),
+						host: requestHost(hop.url),
 						...event,
+						...(hop.redirect > 0 ? { redirect: hop.redirect } : {}),
 					},
 				}),
 			)
 		}
 
-		if (this.isOwnAdminSurface(url)) {
-			record({ outcome: 'denied', status: 403, secrets: [], reason: 'admin_surface_blocked' })
-			return deny(403, 'admin_surface_blocked', 'Sandbox code cannot call the Kody admin API.', {})
-		}
-
-		const urlText = decodeSecretPlaceholderDelimiters(url.toString())
-		let headerText = ''
-		for (const [name, value] of headers) headerText += `${name}: ${value}\n`
-		let bodyText: string | null = null
-		let bodyBytes: ArrayBuffer | null = null
-		if (request.body && request.method !== 'GET' && request.method !== 'HEAD') {
-			bodyBytes = await request.arrayBuffer()
-			const contentType = headers.get('content-type') ?? ''
-			if (bodyBytes.byteLength <= MAX_INSPECTED_BODY_BYTES && (!contentType || textLikeContentType.test(contentType))) {
-				bodyText = new TextDecoder().decode(bodyBytes)
+		// Redirects are followed here, never by fetch(), so every hop gets the
+		// full gateway decision before anything placeholder-derived is sent.
+		let hop: GatewayHop = { url: new URL(request.url), method: request.method, headers, body, redirect: 0 }
+		for (;;) {
+			const current = hop
+			let result = await this.sendHop(current, (event) => record(current, event))
+			if (result.kind === 'denied' && current.redirect > 0 && result.denial.code !== 'admin_surface_blocked') {
+				// A redirect target that fails the decision gets no secret: drop the
+				// headers that carried placeholders and send only if the URL and
+				// body no longer reference one.
+				const stripped = withoutPlaceholderHeaders(current)
+				if (!inspectHop(stripped).hasPlaceholders) {
+					const reason = `placeholder_headers_dropped:${result.denial.code}`
+					hop = stripped
+					result = await this.sendHop(stripped, (event) => record(stripped, { reason, ...event }))
+				}
 			}
+			if (result.kind === 'denied') {
+				const { denial } = result
+				record(hop, {
+					outcome: 'denied',
+					status: denial.status,
+					secrets: denial.secrets,
+					reason: denial.reason ?? denial.code,
+				})
+				return landed(deny(denial.status, denial.code, denial.message, denial.details), hop)
+			}
+			const response = result.response
+			const location = REDIRECT_STATUSES.has(response.status) ? response.headers.get('location') : null
+			const nextUrl = location === null ? null : parseUrl(location, hop.url)
+			if (nextUrl === null || request.redirect === 'manual') return landed(response, hop)
+			await response.body?.cancel()
+			if (request.redirect === 'error') {
+				throw new TypeError(`Redirect (${response.status}) not allowed: the request set redirect: 'error'.`)
+			}
+			if (hop.redirect >= MAX_REDIRECTS) {
+				record(hop, { outcome: 'denied', status: 502, secrets: [], reason: 'redirect_limit_exceeded' })
+				return landed(deny(502, 'redirect_limit_exceeded', `Stopped after ${MAX_REDIRECTS} redirects.`, {}), hop)
+			}
+			hop = nextHop(hop, response.status, nextUrl)
+		}
+	}
+
+	/**
+	 * One request, no redirect following: the gateway decision for this exact
+	 * URL, then forward (placeholders replaced) or a denial for the caller.
+	 */
+	private async sendHop(hop: GatewayHop, record: (event: GatewayRecordEvent) => void): Promise<HopResult> {
+		const { url, headers } = hop
+		const host = requestHost(url)
+		if (this.isOwnAdminSurface(url)) {
+			return denied({
+				status: 403,
+				code: 'admin_surface_blocked',
+				message: 'Sandbox code cannot call the Kody admin API.',
+				details: {},
+				secrets: [],
+			})
 		}
 
-		const hasPlaceholders =
-			containsSecretPlaceholder(urlText) ||
-			containsSecretPlaceholder(headerText) ||
-			(bodyText !== null && containsSecretPlaceholder(bodyText))
+		const { urlText, bodyText, combined, hasPlaceholders } = inspectHop(hop)
 
 		if (!hasPlaceholders) {
-			const response = await forward(request, url, headers, bodyBytes)
+			const response = await forward(hop, url, headers, hop.body)
 			record({ outcome: 'forwarded', status: response.status, secrets: [] })
-			return response
+			return { kind: 'sent', response }
 		}
 
-		const combined = `${urlText}\n${headerText}\n${bodyText ?? ''}`
 		const placeholders = collectPlaceholders(combined)
 		const secretNames = new Set<string>()
 		for (const s of placeholders.secrets) secretNames.add(s.name)
@@ -122,13 +175,14 @@ export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 
 		const allowInsecure = privateHostsFromEnv(this.env)
 		if (!isCredentialTransportAllowed(url, allowInsecure)) {
-			record({ outcome: 'denied', status: 403, secrets, reason: 'insecure_scheme' })
-			return deny(
-				403,
-				'secret_requires_https',
-				`Secrets are only injected over https. Request to ${url.protocol}//${host} was blocked.`,
-				{ host },
-			)
+			return denied({
+				status: 403,
+				code: 'secret_requires_https',
+				reason: 'insecure_scheme',
+				message: `Secrets are only injected over https. Request to ${url.protocol}//${host} was blocked.`,
+				details: { host },
+				secrets,
+			})
 		}
 
 		const userCell = this.env.USER.getByName(this.ctx.props.userId)
@@ -141,13 +195,13 @@ export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 		if (secretNames.size > 0) {
 			if (!hostApproved) {
 				const approvalUrl = `${this.env.KODY_PUBLIC_URL}/admin/users/${this.ctx.props.userId}/secret-hosts`
-				record({ outcome: 'denied', status: 403, secrets, reason: 'secret_host_not_approved' })
-				return deny(
-					403,
-					'secret_host_not_approved',
-					`Host "${host}" is not approved for secret injection. Stop retrying; ask an account admin to approve it (POST ${approvalUrl} {"host":"${host}"}) and retry only after approval.`,
-					{ host, secrets: [...secretNames], approvalUrl },
-				)
+				return denied({
+					status: 403,
+					code: 'secret_host_not_approved',
+					message: `Host "${host}" is not approved for secret injection. Stop retrying; ask an account admin to approve it (POST ${approvalUrl} {"host":"${host}"}) and retry only after approval.`,
+					details: { host, secrets: [...secretNames], approvalUrl },
+					secrets,
+				})
 			}
 			const refs: Array<{ name: string; scope: SecretScope | null }> = [
 				...placeholders.secrets.map((s) => ({ name: s.name, scope: s.scope })),
@@ -158,13 +212,13 @@ export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 			]
 			const resolved = await userCell.secretResolveValues({ names: refs, packageName })
 			if (resolved.missing.length > 0) {
-				record({ outcome: 'denied', status: 404, secrets, reason: 'secret_not_found' })
-				return deny(
-					404,
-					'secret_not_found',
-					`Unknown secret(s): ${resolved.missing.join(', ')}. Save them with secretSave first.`,
-					{ host, missing: resolved.missing },
-				)
+				return denied({
+					status: 404,
+					code: 'secret_not_found',
+					message: `Unknown secret(s): ${resolved.missing.join(', ')}. Save them with secretSave first.`,
+					details: { host, missing: resolved.missing },
+					secrets,
+				})
 			}
 			for (const s of placeholders.secrets) replacements.set(s.placeholder, resolved.values[s.name] ?? '')
 			for (const b of placeholders.basic) {
@@ -193,19 +247,26 @@ export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 			return null
 		}
 		if (integrationNames.length > 0) {
-			const denied = await injectIntegrations(false)
-			if (denied) {
-				record({ outcome: 'denied', status: denied.status, secrets, reason: denied.code })
-				return deny(denied.status, denied.code, denied.message, {
-					host,
-					integration: denied.record ? { name: denied.record.name, status: denied.record.status } : null,
+			const integrationDenied = await injectIntegrations(false)
+			if (integrationDenied) {
+				return denied({
+					status: integrationDenied.status,
+					code: integrationDenied.code,
+					message: integrationDenied.message,
+					details: {
+						host,
+						integration: integrationDenied.record
+							? { name: integrationDenied.record.name, status: integrationDenied.record.status }
+							: null,
+					},
+					secrets,
 				})
 			}
 		}
 
 		// --- {{secret/provider:ref}}: resolved by the bound provider package in a sealed run.
 		if (providerRefs.length > 0) {
-			const denied = await this.injectProviderSecrets({
+			const providerDenied = await this.injectProviderSecrets({
 				userCell,
 				providerRefs,
 				placeholders: placeholders.providerSecrets,
@@ -213,22 +274,47 @@ export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 				hostApproved,
 				replacements,
 			})
-			if (denied) {
-				record({ outcome: 'denied', status: denied.status, secrets, reason: denied.code })
-				return deny(denied.status, denied.code, denied.message, { host, ...denied.details })
+			if (providerDenied) {
+				return denied({
+					status: providerDenied.status,
+					code: providerDenied.code,
+					message: providerDenied.message,
+					details: { host, ...providerDenied.details },
+					secrets,
+				})
 			}
 		}
 
+		const jsonBody = isJsonContentType(headers.get('content-type'))
 		const inject = () => {
-			const injectedUrl = new URL(replaceSecretPlaceholders(urlText, replacements))
+			const injectedUrl = parseUrl(replaceSecretPlaceholders(urlText, replacements))
+			if (!injectedUrl) {
+				throw new InjectionError(
+					'secret_invalid_url',
+					'An injected value does not form a valid URL; the request was not sent.',
+					{},
+				)
+			}
 			const injectedHeaders = new Headers()
-			for (const [name, value] of headers) injectedHeaders.set(name, replaceSecretPlaceholders(value, replacements))
-			let injectedBody: BodyInit | null = bodyBytes
+			for (const [name, value] of headers) {
+				try {
+					injectedHeaders.set(name, replaceSecretPlaceholders(value, replacements))
+				} catch {
+					throw new InjectionError(
+						'secret_invalid_header_value',
+						`The value injected into header "${name}" is not a valid HTTP header value (for example, it contains a newline); the request was not sent.`,
+						{ header: name },
+					)
+				}
+			}
+			let injectedBody: BodyInit | null = hop.body
 			const text = bodyText
 			if (text !== null && [...replacements.keys()].some((placeholder) => text.includes(placeholder))) {
-				injectedBody = replaceSecretPlaceholders(text, replacements)
+				// A JSON body gets each value JSON-string-escaped, so a quote or a
+				// newline in a secret cannot break or extend the document.
+				injectedBody = replaceSecretPlaceholders(text, jsonBody ? jsonStringEscaped(replacements) : replacements)
 			}
-			return forward(request, injectedUrl, injectedHeaders, injectedBody)
+			return forward(hop, injectedUrl, injectedHeaders, injectedBody)
 		}
 
 		try {
@@ -236,24 +322,30 @@ export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 			// A 401 with an integration token usually means the provider revoked or
 			// expired it early: refresh once host-side and replay the request.
 			if (response.status === 401 && integrationNames.length > 0) {
-				const denied = await injectIntegrations(true)
-				if (!denied) {
+				const refreshDenied = await injectIntegrations(true)
+				if (!refreshDenied) {
 					await response.body?.cancel()
 					response = await inject()
 					record({ outcome: 'injected', status: response.status, secrets, reason: 'integration_refreshed' })
-					return response
+					return { kind: 'sent', response }
 				}
 			}
 			record({ outcome: 'injected', status: response.status, secrets })
-			return response
+			return { kind: 'sent', response }
 		} catch (error) {
-			record({
-				outcome: 'error',
-				status: null,
-				secrets,
-				reason: error instanceof Error ? error.message : String(error),
-			})
-			throw error
+			if (error instanceof InjectionError) {
+				return denied({
+					status: 400,
+					code: error.code,
+					message: error.message,
+					details: { host, ...error.details },
+					secrets,
+				})
+			}
+			const reason = redactValues(error instanceof Error ? error.message : String(error), replacements)
+			record({ outcome: 'error', status: null, secrets, reason })
+			// oxlint-disable-next-line preserve-caught-error -- the cause can carry an injected value
+			throw new TypeError(reason)
 		}
 	}
 
@@ -394,16 +486,6 @@ export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 	}
 }
 
-async function forward(original: Request, url: URL, headers: Headers, body: BodyInit | null) {
-	const init: RequestInit = {
-		method: original.method,
-		headers,
-		redirect: original.redirect,
-	}
-	if (body !== null && original.method !== 'GET' && original.method !== 'HEAD') init.body = body
-	return fetch(url, init)
-}
-
 function deny(status: number, code: string, message: string, details: Record<string, unknown>) {
 	return Response.json({ error: code, message, ...details }, { status, headers: { 'x-kody-gateway': code } })
 }
@@ -450,4 +532,121 @@ function redactUrl(url: URL) {
 	const copy = new URL(url.toString())
 	for (const [key] of copy.searchParams) copy.searchParams.set(key, '…')
 	return `${copy.origin}${copy.pathname}${copy.search ? '?…' : ''}`
+}
+
+type GatewayRecordEvent = Omit<GatewayEvent, 'at' | 'method' | 'url' | 'host'>
+
+/** One request the gateway sends: the sandbox's own, or a redirect target. */
+type GatewayHop = {
+	url: URL
+	method: string
+	headers: Headers
+	body: ArrayBuffer | null
+	/** 0 for the sandbox's request, n for the nth followed redirect. */
+	redirect: number
+}
+
+type GatewayDenial = {
+	status: number
+	code: string
+	/** Run history reason when it differs from `code`. */
+	reason?: string
+	message: string
+	details: Record<string, unknown>
+	secrets: Array<string>
+}
+
+type HopResult = { kind: 'denied'; denial: GatewayDenial } | { kind: 'sent'; response: Response }
+
+class InjectionError extends Error {
+	readonly code: string
+	readonly details: Record<string, unknown>
+	constructor(code: string, message: string, details: Record<string, unknown>) {
+		super(message)
+		this.code = code
+		this.details = details
+	}
+}
+
+function denied(denial: GatewayDenial): HopResult {
+	return { kind: 'denied', denial }
+}
+
+function sendsBody(method: string) {
+	return method !== 'GET' && method !== 'HEAD'
+}
+
+function inspectHop(hop: GatewayHop) {
+	const urlText = decodeSecretPlaceholderDelimiters(hop.url.toString())
+	let headerText = ''
+	for (const [name, value] of hop.headers) headerText += `${name}: ${value}\n`
+	let bodyText: string | null = null
+	if (hop.body !== null && hop.body.byteLength <= MAX_INSPECTED_BODY_BYTES) {
+		const contentType = hop.headers.get('content-type') ?? ''
+		if (!contentType || textLikeContentType.test(contentType)) bodyText = new TextDecoder().decode(hop.body)
+	}
+	const combined = `${urlText}\n${headerText}\n${bodyText ?? ''}`
+	return { urlText, bodyText, combined, hasPlaceholders: containsSecretPlaceholder(combined) }
+}
+
+function withoutPlaceholderHeaders(hop: GatewayHop): GatewayHop {
+	const headers = new Headers()
+	for (const [name, value] of hop.headers) {
+		if (!containsSecretPlaceholder(value)) headers.set(name, value)
+	}
+	return { ...hop, headers }
+}
+
+/** Fetch's redirect rules: method rewrite, and credentials stay on their origin. */
+function nextHop(hop: GatewayHop, status: number, url: URL): GatewayHop {
+	const toGet =
+		(status === 303 && hop.method !== 'HEAD') || ((status === 301 || status === 302) && hop.method === 'POST')
+	const headers = new Headers(hop.headers)
+	if (toGet) for (const name of REQUEST_BODY_HEADERS) headers.delete(name)
+	if (url.origin !== hop.url.origin) for (const name of CROSS_ORIGIN_DROPPED_HEADERS) headers.delete(name)
+	return { url, method: toGet ? 'GET' : hop.method, headers, body: toGet ? null : hop.body, redirect: hop.redirect + 1 }
+}
+
+/** Marks a followed redirect's final response; strips any upstream copy of the markers. */
+function landed(response: Response, hop: GatewayHop) {
+	const spoofed = response.headers.has(LANDING_URL_HEADER) || response.headers.has(LANDING_REDIRECTED_HEADER)
+	if (response.status < 200 || (hop.redirect === 0 && !spoofed)) return response
+	const headers = new Headers(response.headers)
+	headers.delete(LANDING_URL_HEADER)
+	headers.delete(LANDING_REDIRECTED_HEADER)
+	if (hop.redirect > 0) {
+		headers.set(LANDING_URL_HEADER, hop.url.toString())
+		headers.set(LANDING_REDIRECTED_HEADER, '1')
+	}
+	return new Response(response.body, { status: response.status, statusText: response.statusText, headers })
+}
+
+function parseUrl(value: string, base?: URL) {
+	try {
+		return new URL(value, base)
+	} catch {
+		return null
+	}
+}
+
+function isJsonContentType(contentType: string | null) {
+	return contentType !== null && jsonContentType.test(contentType)
+}
+
+function jsonStringEscaped(replacements: ReadonlyMap<string, string>) {
+	return new Map([...replacements].map(([placeholder, value]) => [placeholder, JSON.stringify(value).slice(1, -1)]))
+}
+
+function redactValues(text: string, replacements: ReadonlyMap<string, string>) {
+	let next = text
+	for (const value of replacements.values()) {
+		if (value) next = next.replaceAll(value, '[redacted]')
+	}
+	return next
+}
+
+async function forward(hop: GatewayHop, url: URL, headers: Headers, body: BodyInit | null) {
+	const init: RequestInit = { method: hop.method, headers, redirect: 'manual' }
+	if (body !== null && sendsBody(hop.method)) init.body = body
+	return fetch(url, init)
 }

@@ -81,6 +81,32 @@ secret missing?         → 404 secret_not_found          { missing }
 otherwise               → replace, forward, record 'injected'
 ```
 
+A value that is not a valid header value (for example one with a newline) is
+refused with `400 secret_invalid_header_value` rather than sent.
+
+### Redirects
+
+The gateway follows redirects itself; `fetch` never does. Each redirect target
+gets the whole decision above again (admin surface, transport, host approval,
+integration and provider host lists) and its own `gateway[]` entry with
+`redirect: n`. Fetch's own rules apply first: 301/302 turn POST into GET, 303
+turns everything but HEAD into GET (dropping the body), and `authorization`,
+`proxy-authorization` and `cookie` stay on their origin. When a target fails
+the decision, headers that carried a placeholder are dropped (reason
+`placeholder_headers_dropped:<code>`); if the URL or body still references a
+secret the hop is denied instead. After at most 20 redirects the gateway
+answers `502 redirect_limit_exceeded`. The sandbox sees the real `res.url` and
+`res.redirected`; `redirect: 'manual'` returns the 3xx untouched and
+`redirect: 'error'` rejects.
+
+### Body encoding
+
+In a body sent as JSON (`application/json`, `application/*+json`,
+`application/x-ndjson`) each value is JSON-string-escaped, so a placeholder
+belongs inside a JSON string, which is where `JSON.stringify` puts it. Other
+bodies (text, form-encoded, multipart) get the raw value, so encode for the
+format yourself.
+
 Denials are synthetic `Response`s returned to the sandbox with a JSON body;
 the request never leaves the node. Requests **without** placeholders are
 forwarded untouched (`outcome: 'forwarded'`) — the gateway is not an egress
