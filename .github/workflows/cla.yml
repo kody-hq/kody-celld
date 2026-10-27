@@ -537,17 +537,25 @@ jobs:
           echo "pr_number=$pr_number" >> "$GITHUB_OUTPUT"
           echo "pr_url=https://github.com/${GITHUB_REPOSITORY}/pull/${pr_number}" >> "$GITHUB_OUTPUT"
 
-      - name: ✅ Wait for validate check
+      - name: ✅ Dispatch and wait for validate
         id: validate
         if: steps.pr.outputs.added == 'true'
         env:
+          BRANCH: ${{ steps.pr.outputs.branch }}
           HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
           PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
           PR_URL: ${{ steps.pr.outputs.pr_url }}
         run: |
           set -euo pipefail
-          # CI runs automatically on pull_request; wait for the validate job.
+          # GITHUB_TOKEN pushes/PRs do not start workflows; dispatch CI explicitly
+          # (same pattern as hosted kody's validate.yml dispatch).
           check_name='validate (typecheck, lint, format, unit tests)'
+          dispatch_started_at="$(date +%s%3N)"
+          if ! gh workflow run ci.yml --ref "$BRANCH"; then
+            echo "::warning title=CLA signer PR::Could not dispatch CI for PR #${PR_NUMBER}: ${PR_URL}"
+            echo "passed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           deadline=$(( $(date +%s) + 3000 ))
           check_runs_url="repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/check-runs?per_page=100"
           while [ "$(date +%s)" -lt "$deadline" ]; do
@@ -560,20 +568,23 @@ jobs:
               [.check_runs[] | select(.name == $name)]
               | if length == 0 then "" else
                   (sort_by(.started_at // .completed_at // .id) | last
-                    | [.status // "", .conclusion // ""]
+                    | [.status // "", .conclusion // "", .started_at // .completed_at // ""]
                     | @tsv)
                 end
             ')"
             if [ -n "$check_run" ]; then
-              IFS=$'\t' read -r status conclusion <<< "$check_run"
-              if [ "$status" = completed ]; then
-                if [ "$conclusion" = success ]; then
-                  echo "passed=true" >> "$GITHUB_OUTPUT"
+              IFS=$'\t' read -r status conclusion started_at <<< "$check_run"
+              started_at_ms="$(date -d "$started_at" +%s%3N 2>/dev/null || echo 0)"
+              if [ "$started_at_ms" -ge "$dispatch_started_at" ]; then
+                if [ "$status" = completed ]; then
+                  if [ "$conclusion" = success ]; then
+                    echo "passed=true" >> "$GITHUB_OUTPUT"
+                    exit 0
+                  fi
+                  echo "::warning title=CLA signer PR::validate concluded ${conclusion:-without a conclusion} for PR #${PR_NUMBER}: ${PR_URL}"
+                  echo "passed=false" >> "$GITHUB_OUTPUT"
                   exit 0
                 fi
-                echo "::warning title=CLA signer PR::validate concluded ${conclusion:-without a conclusion} for PR #${PR_NUMBER}: ${PR_URL}"
-                echo "passed=false" >> "$GITHUB_OUTPUT"
-                exit 0
               fi
             fi
             sleep 30

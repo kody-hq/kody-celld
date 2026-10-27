@@ -51,8 +51,10 @@ After a pull request merges, the recorder scans it and the most recent 50 merged
 pull requests, so a replaced or missed run is healed by a later run. A
 maintainer can also start the recorder manually with `workflow_dispatch`. New
 signers are recorded by a bot pull request on the fixed `cla/record-signers`
-branch. It merges only after `validate (typecheck, lint, format, unit tests)`
-succeeds for the exact head SHA that was validated.
+branch. The recorder dispatches `CI` on that branch (GITHUB_TOKEN pushes do not
+start workflows) and merges only after
+`validate (typecheck, lint, format, unit tests)` succeeds for the exact head SHA
+that was validated.
 
 ## How to sign (entity)
 
@@ -88,9 +90,9 @@ Do not merge a pull request while the `CLA` check is red.
 Individual signatures are recorded automatically after merge through the
 `cla/record-signers` bot pull request. The recorder self-heals over the most
 recent 50 merged pull requests and can be started manually with
-`workflow_dispatch`; the signer PR merges only when
-`validate (typecheck, lint, format, unit tests)` succeeds on the exact validated
-head SHA. After an accepted Entity CLA, add each authorized username to
+`workflow_dispatch`; the signer PR merges only when the dispatched
+`validate (typecheck, lint, format, unit tests)` check succeeds on the exact
+validated head SHA. After an accepted Entity CLA, add each authorized username to
 `.github/cla-signers.json` on `main` with `signedAt` as an ISO date
 (`YYYY-MM-DD`) and `cla` of `entity`.
 

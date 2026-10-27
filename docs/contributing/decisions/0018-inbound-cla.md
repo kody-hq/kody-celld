@@ -60,8 +60,9 @@ How it works:
   `I have read the CLA and I hereby sign the CLA` from the identity that needs
   to sign. That exact comment satisfies the `CLA` check for that identity. After
   the pull request merges, the workflow opens a bot-generated pull request to
-  add the signer to `.github/cla-signers.json`; it waits for
-  `validate (typecheck, lint, format, unit tests)` and merges the signer pull
+  add the signer to `.github/cla-signers.json`; it dispatches `CI` (because
+  GITHUB_TOKEN pushes do not start workflows), waits for
+  `validate (typecheck, lint, format, unit tests)`, and merges the signer pull
   request only if that check succeeds. Signing covers past, present, and future
   contributions from that identity. Entity CLA recording stays a maintainer
   step.
