@@ -102,7 +102,7 @@ slot fields, `placement`, and `ownerCredentialForVisitors`.
 
 `workflows.create()` queues durable work for a package export or inline code.
 See [workflows.md](./workflows.md) for arguments, idempotency, retries, and
-cancellation. The account Workflows page is not part of the backend runtime.
+cancellation. The account Workflows page at `/account/workflows` lists and cancels workflows.
 
 ## Importing packages from code
 

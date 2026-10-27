@@ -107,7 +107,11 @@ export function AccountWorkflows(
 										csrf={d.csrf}
 										fields={{ action: 'cancel', id: workflow.id }}
 										label="Cancel"
-										confirmLabel="Confirm cancel"
+										confirmLabel={
+											workflow.status === 'running'
+												? 'Confirm cancel (the running attempt finishes, its result and retries are discarded)'
+												: 'Confirm cancel'
+										}
 									/>
 								) : (
 									<Muted>none</Muted>

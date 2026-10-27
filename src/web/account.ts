@@ -744,9 +744,12 @@ export async function handleAccount(request: Request, env: Env, ctx: ExecutionCo
 			if (post) {
 				if (form.action === 'cancel' && form.id) {
 					const result = await userCell.workflowCancel(form.id)
-					if (result?.cancelled) await audit('workflow.cancel', form.id, { via: 'web' })
+					if (result?.cancelled) {
+						await audit('workflow.cancel', form.id, { via: 'web' })
+						return redirect('/account/workflows?flash=saved')
+					}
 				}
-				return redirect('/account/workflows?flash=saved')
+				return redirect('/account/workflows')
 			}
 			const workflows = await userCell.workflowsList(100)
 			return view(session, {
