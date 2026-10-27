@@ -516,8 +516,9 @@ export default async (envelope) => {
 		throw new Error('smoke subscriber failure')
 	}
 	const count = (await storage.get('count')) ?? 0
-	await storage.set('count', count + 1)
 	await storage.set('envelope', envelope)
+	// count is written last because the smoke waits on it.
+	await storage.set('count', count + 1)
 	return count + 1
 }`,
 		},
