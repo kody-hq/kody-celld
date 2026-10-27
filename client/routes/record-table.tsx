@@ -11,7 +11,10 @@ import {
 	getSurfaceCardCss,
 	hoverMq,
 } from '#universal/styles/style-primitives.ts'
-import { droppedColumnCollapseMaxWidth } from '#universal/record-table-columns.ts'
+import {
+	dropThresholds,
+	packedColWidths,
+} from '#universal/record-table-columns.ts'
 import { visuallyHiddenCss } from './record-table-controls.tsx'
 
 export {
@@ -190,43 +193,16 @@ type RecordTableProps = {
 const defaultScrollHeight = '22rem'
 
 /**
- * Collapse a dropped cell without `display: none`. Removing middle cells
- * from the box tree shifts later cells onto earlier `<col>` widths
- * (`table-layout: fixed`), which crushed Jobs Actions into the Status
- * track. Keep the slot, zero it out, and only `display: none` in card
- * mode (≤620px) where the row is no longer a table grid.
- */
-const droppedCellCollapseCss = {
-	width: 0,
-	minWidth: 0,
-	maxWidth: 0,
-	padding: 0,
-	border: 'none',
-	overflow: 'hidden',
-	visibility: 'hidden' as const,
-	fontSize: 0,
-	lineHeight: 0,
-	pointerEvents: 'none' as const,
-}
-
-/**
  * Columns drop one priority at a time as the container narrows, then the
  * whole table becomes cards. Each threshold is its own class so a cell can
- * carry exactly one.
+ * carry exactly one. `display: none` packs later cells into earlier `<col>`
+ * tracks — pair with {@link packedColWidths} on `<col>` so Actions keeps
+ * its width instead of inheriting a zeroed middle track.
  */
 const dropCss = {
-	1: css({
-		'@container (max-width: 680px)': droppedCellCollapseCss,
-		'@container (max-width: 620px)': { display: 'none' },
-	}),
-	2: css({
-		'@container (max-width: 780px)': droppedCellCollapseCss,
-		'@container (max-width: 620px)': { display: 'none' },
-	}),
-	3: css({
-		'@container (max-width: 900px)': droppedCellCollapseCss,
-		'@container (max-width: 620px)': { display: 'none' },
-	}),
+	1: css({ '@container (max-width: 680px)': { display: 'none' } }),
+	2: css({ '@container (max-width: 780px)': { display: 'none' } }),
+	3: css({ '@container (max-width: 900px)': { display: 'none' } }),
 } as const
 
 const numericCss = css({
@@ -490,30 +466,38 @@ export function RecordTable(handle: Handle<RecordTableProps>) {
 		const table = (
 			<table aria-label={handle.props.ariaLabel} mix={css(tableCss)}>
 				<colgroup>
-					{columns.map((column) => {
-						const maxWidth = droppedColumnCollapseMaxWidth(column)
-						// One `css()` so the drop collapse can override
-						// `column.width` — separate classes live in sibling
-						// cascade layers and the explicit width won before.
-						const colStyle = {
-							...(column.width ? { width: column.width } : {}),
-							...(maxWidth === null
-								? {}
-								: {
-										[`@container (max-width: ${maxWidth}px)`]: {
+					{columns.map((column, index) => {
+						// One `css()` object: base width plus packed widths at
+						// each drop threshold (narrower queries listed later so
+						// they override when several match).
+						const collapseQueries: Record<
+							string,
+							{
+								width: string | number
+								minWidth?: number
+								maxWidth?: number
+								overflow?: 'hidden'
+							}
+						> = {}
+						for (const { maxWidth } of dropThresholds) {
+							const packed = packedColWidths(columns, maxWidth)[index] ?? null
+							collapseQueries[`@container (max-width: ${maxWidth}px)`] =
+								packed === 0
+									? {
 											width: 0,
 											minWidth: 0,
 											maxWidth: 0,
 											overflow: 'hidden',
-										},
-									}),
+										}
+									: { width: packed === null ? 'auto' : packed }
 						}
 						return (
 							<col
 								key={column.key}
-								mix={
-									Object.keys(colStyle).length > 0 ? css(colStyle) : undefined
-								}
+								mix={css({
+									...(column.width ? { width: column.width } : {}),
+									...collapseQueries,
+								})}
 							/>
 						)
 					})}
