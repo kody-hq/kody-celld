@@ -36,11 +36,15 @@ describe('jobs list action row', () => {
 		assert.match(idValue, /const wrap = handle\.props\.copy === 'ghost'/)
 		assert.match(idValue, /variant=\{wrap \? 'ghost' : 'chip'\}/)
 		assert.match(idValue, /size=\{wrap \? 'sm' : undefined\}/)
-		assert.match(idValue, /overflowWrap: 'anywhere'/)
+		assert.match(idValue, /embedded=\{wrap \|\| undefined\}/)
+		assert.match(idValue, /overflowWrap: 'break-word'/)
 		assert.match(idValue, /textOverflow: 'ellipsis'/)
 		assert.match(idValue, /borderLeft: `1px solid \$\{colors\.border\}`/)
-		assert.match(idValue, /Wrapper owns the segment chrome/)
+		assert.match(idValue, /embedded` on the button/)
 		assert.match(idValue, /main:has\(> \[data-page-flash\]\) > &/)
+		const copyBtn = readFileSync(here('../../client/copy-text-button.tsx'), 'utf8')
+		assert.match(copyBtn, /embedded\?: boolean/)
+		assert.match(copyBtn, /embeddedGhostCopyButtonCss/)
 	})
 
 	it('jobs list uses primary link styling and wraps the job name at slashes', () => {

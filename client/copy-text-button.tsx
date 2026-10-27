@@ -28,6 +28,12 @@ type CopyTextButtonProps = {
 	 */
 	size?: 'md' | 'sm'
 	/**
+	 * Stretch to fill an input-group segment (job-detail IdValue). Own-layer
+	 * styles — a parent `css()` cannot reliably override this button's
+	 * radius/height across Remix cascade sub-layers.
+	 */
+	embedded?: boolean
+	/**
 	 * Names the button when its own label cannot. A metadata band carries one
 	 * copy button per id, and a screen reader's button list of six identical
 	 * "Copy" entries says nothing about which id each one takes.
@@ -70,6 +76,19 @@ const smallGhostCopyButtonCss = mergeCss(
 	getSwapLabelCss(),
 )
 
+/** Sm ghost that fills an IdValue segment: square to the divider, full height. */
+const embeddedGhostCopyButtonCss = mergeCss(
+	getGhostButtonCss({ size: 'sm' }),
+	{
+		height: '100%',
+		alignSelf: 'stretch',
+		borderRadius: 0,
+		boxShadow: 'none',
+		paddingInline: '1.15rem',
+	},
+	getSwapLabelCss(),
+)
+
 const copyButtonCssByVariant = {
 	primary: primaryCopyButtonCss,
 	secondary: secondaryCopyButtonCss,
@@ -86,7 +105,11 @@ const smallCopyButtonCssByVariant = {
 function getCopyButtonCss(
 	variant: NonNullable<CopyTextButtonProps['variant']>,
 	size: CopyTextButtonProps['size'],
+	embedded: CopyTextButtonProps['embedded'],
 ) {
+	if (embedded && variant === 'ghost') {
+		return embeddedGhostCopyButtonCss
+	}
 	if (size === 'sm' && (variant === 'pill' || variant === 'ghost')) {
 		return smallCopyButtonCssByVariant[variant]
 	}
@@ -152,6 +175,7 @@ function CopyTextButtonComponent(handle: Handle<CopyTextButtonProps>) {
 					getCopyButtonCss(
 						handle.props.variant ?? 'primary',
 						handle.props.size,
+						handle.props.embedded,
 					),
 				),
 				on('click', () => void copyValue()),

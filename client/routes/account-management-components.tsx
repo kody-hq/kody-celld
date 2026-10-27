@@ -610,7 +610,10 @@ export function MetadataGrid(handle: Handle<MetadataGridProps>) {
 							margin: 0,
 							color: colors.text,
 							minWidth: 0,
-							overflowWrap: 'anywhere',
+							// Let children (IdValue, Code, …) choose their own
+							// wrap; `anywhere` here forced mid-token breaks in
+							// the job-id control.
+							overflowWrap: 'break-word',
 						})}
 					>
 						{item.value}
@@ -647,6 +650,13 @@ export function IdValue(
 ) {
 	return () => {
 		const wrap = handle.props.copy === 'ghost'
+		// Soft-wrap at `/` and `#` only when the field is allowed to wrap.
+		const displayValue = wrap
+			? handle.props.value
+					.replaceAll('-', '\u2011')
+					.replaceAll('/', '/\u200B')
+					.replaceAll('#', '#\u200B')
+			: handle.props.value
 		return (
 			<span
 				mix={css({
@@ -669,13 +679,14 @@ export function IdValue(
 									minWidth: 0,
 									display: 'flex',
 									alignItems: 'center',
-									overflowWrap: 'anywhere',
+									overflowWrap: 'break-word',
+									hyphens: 'none',
 									whiteSpace: 'normal' as const,
 									userSelect: 'all' as const,
 									fontFamily: 'monospace',
 									fontSize: typography.fontSize.sm,
 									lineHeight: 1.35,
-									padding: '0.4rem 0.55rem',
+									padding: '0.55rem 0.65rem',
 									border: 'none',
 									backgroundColor: 'transparent',
 									color: colors.text,
@@ -698,10 +709,10 @@ export function IdValue(
 								},
 					)}
 				>
-					{handle.props.value}
+					{displayValue}
 				</code>
-				{/* Wrapper owns the segment chrome — a child `css()` layer on the
-				    button cannot be overridden from the parent reliably. */}
+				{/* Wrapper owns the segment chrome; `embedded` on the button
+				    owns fill/radius on the button's own css() layer. */}
 				<span
 					mix={css(
 						wrap
@@ -711,13 +722,6 @@ export function IdValue(
 									flex: 'none',
 									borderLeft: `1px solid ${colors.border}`,
 									backgroundColor: colors.surface,
-									'& > button': {
-										height: '100%',
-										alignSelf: 'stretch',
-										borderRadius: 0,
-										boxShadow: 'none',
-										paddingInline: '1.1rem',
-									},
 								}
 							: {
 									display: 'flex',
@@ -733,6 +737,7 @@ export function IdValue(
 						value={handle.props.value}
 						variant={wrap ? 'ghost' : 'chip'}
 						size={wrap ? 'sm' : undefined}
+						embedded={wrap || undefined}
 						ariaLabel={`Copy ${handle.props.label}`}
 					/>
 				</span>
