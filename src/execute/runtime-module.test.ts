@@ -56,7 +56,7 @@ describe('runtime credential clients', () => {
 			const client = await module.credential('api')
 			assert.ok(client.fetch)
 			await client.fetch('https://api.example.com/data', { headers: { Authorization: 'Caller value' } })
-			assert.equal(request?.headers.get('authorization'), 'Bearer {{secret:api}}')
+			assert.equal(request?.headers.get('authorization'), 'Bearer {{secret:api|scope=user}}')
 		} finally {
 			globalThis.fetch = originalFetch
 		}
@@ -152,7 +152,7 @@ describe('runtime credential clients', () => {
 			const client = await module.credential('api')
 			assert.ok(client.fetch)
 			await client.fetch('https://api.example.com/start')
-			assert.equal(requests[0]?.headers.get('authorization'), 'Bearer {{secret:api}}')
+			assert.equal(requests[0]?.headers.get('authorization'), 'Bearer {{secret:api|scope=user}}')
 			assert.equal(requests[1]?.url, 'https://other.example.com/next')
 			assert.equal(requests[1]?.headers.has('authorization'), false)
 		} finally {

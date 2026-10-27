@@ -123,6 +123,36 @@ describe('resolveCredentials', () => {
 		)
 	})
 
+	it('ignores unrelated usage-locked matches when a permitted credential matches', () => {
+		assert.deepEqual(
+			resolve({
+				key: 'github',
+				candidates: [secret('github'), oauth('github', 'github', { mode: 'packages', packages: ['@other/pkg'] })],
+			}),
+			{ name: 'github', scope: 'user', kind: 'secret', hosts: ['api.example.com'] },
+		)
+	})
+
+	it('opens pending client-credentials integrations for on-demand token refresh', () => {
+		const pending = (flow?: string): CredentialCandidate => ({
+			kind: 'oauth',
+			name: 'service',
+			provider: 'service',
+			status: 'pending',
+			flow,
+			usage: { mode: 'any' },
+			hosts: ['api.example.com'],
+		})
+		assert.equal(
+			(resolve({ name: 'service', candidates: [pending('client_credentials')] }) as { kind: string }).kind,
+			'oauth',
+		)
+		assert.throws(
+			() => resolve({ name: 'service', candidates: [pending()] }),
+			(error: unknown) => (error as { code?: string }).code === 'credential_unbound',
+		)
+	})
+
 	it('returns all matches for a declared multiple slot in resolution order', () => {
 		const result = resolve({
 			slot: { multiple: true },

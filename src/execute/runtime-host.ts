@@ -109,6 +109,7 @@ export class RuntimeHost extends WorkerEntrypoint<Env, RuntimeProps> {
 					name: integration.name,
 					provider: integration.provider,
 					status: integration.status,
+					flow: integration.flow,
 					usage: integration.usage,
 					hosts: integration.allowedHosts,
 				})),

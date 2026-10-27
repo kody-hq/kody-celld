@@ -101,7 +101,7 @@ function credentialResolveUrl(input, hosts) {
 
 function credentialPlaceholder(opened) {
 	if (opened.kind === 'secret') {
-		const scope = opened.scope === 'package' ? '|scope=package' : ''
+		const scope = '|scope=' + (opened.scope === 'package' ? 'package' : 'user')
 		return 'Bearer {{secret:' + opened.name + scope + '}}'
 	}
 	return 'Bearer {{integration-token:' + opened.name + '}}'
@@ -133,12 +133,18 @@ function credentialFetch(opened) {
 			await response.body?.cancel()
 			const next = new URL(location, response.url || request.url)
 			const current = new URL(request.url)
-			const rewrite = response.status === 303 || ((response.status === 301 || response.status === 302) && request.method === 'POST')
+			const rewrite =
+				(response.status === 303 && request.method !== 'HEAD') ||
+				((response.status === 301 || response.status === 302) && request.method === 'POST')
 			headers = new Headers(replay.headers)
+			if (next.origin !== current.origin) {
+				headers.delete('cookie')
+				headers.delete('proxy-authorization')
+			}
 			if (
 				next.protocol !== 'https:' ||
 				!credentialHostAllowed(opened.hosts, next.hostname) ||
-				next.hostname !== current.hostname
+				next.origin !== current.origin
 			) {
 				headers.delete('authorization')
 			}

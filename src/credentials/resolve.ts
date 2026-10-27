@@ -15,6 +15,7 @@ export type CredentialCandidate =
 			name: string
 			provider: string
 			status: string
+			flow?: string
 			usage: IntegrationUsage
 			hosts: Array<string>
 	  }
@@ -25,6 +26,10 @@ export type CredentialCandidate =
 			usage: IntegrationUsage
 			hosts: Array<string>
 	  }
+
+function isLocked(candidate: CredentialCandidate, packageName: string | null) {
+	return (candidate.kind === 'oauth' || candidate.kind === 'mcp') && !usagePermits(candidate.usage, packageName)
+}
 
 export type CredentialClientInfo = {
 	name: string
@@ -85,18 +90,21 @@ export function resolveCredentials(input: ResolveCredentialInput): CredentialCli
 			} else if (candidate.name !== input.key) {
 				return false
 			}
-			if (candidate.kind === 'oauth' && candidate.status !== 'connected') return false
+			if (candidate.kind === 'oauth' && candidate.status !== 'connected' && candidate.flow !== 'client_credentials') {
+				return false
+			}
 			if (candidate.kind === 'mcp' && !candidate.enabled) return false
 			return true
 		})
 		.sort((a, b) => kindOrder[a.kind] - kindOrder[b.kind] || a.name.localeCompare(b.name))
-	for (const candidate of matches) {
-		if ((candidate.kind === 'oauth' || candidate.kind === 'mcp') && !usagePermits(candidate.usage, input.packageName)) {
-			throw new KodyError('credential_denied', `Credential "${candidate.name}" is locked to other packages.`, {
-				status: 403,
-			})
-		}
+	const locked = matches.find((candidate) => isLocked(candidate, input.packageName))
+	const permitted = matches.filter((candidate) => !isLocked(candidate, input.packageName))
+	if (locked && permitted.length === 0) {
+		throw new KodyError('credential_denied', `Credential "${locked.name}" is locked to other packages.`, {
+			status: 403,
+		})
 	}
+	matches.splice(0, matches.length, ...permitted)
 	if (matches.length === 0) {
 		const createUrl = `${input.publicUrl.replace(/\/$/, '')}/account/secrets`
 		throw new KodyError('credential_unbound', `No credential matches "${target}". Create one at ${createUrl}.`, {
