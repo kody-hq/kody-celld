@@ -6,7 +6,16 @@ export const runTriageMaxNoteLength = 2000
 export const runTriageBulkMaxLimit = 100
 
 /** Single source for run `kind` (kody's surface). */
-export const runKinds = ['execute', 'package', 'job', 'webhook', 'subscription', 'secret-provider', 'app'] as const
+export const runKinds = [
+	'execute',
+	'package',
+	'job',
+	'workflow',
+	'webhook',
+	'subscription',
+	'secret-provider',
+	'app',
+] as const
 export type RunKind = (typeof runKinds)[number]
 
 /** Soft triage values stored on error runs (`null` = open). */

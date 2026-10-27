@@ -44,7 +44,7 @@ async function seal() {
 	const { user, token, mcp } = await bootstrapUser('rekey')
 	const secretValue = `rekey-${randomBytes(16).toString('hex')}`
 	const expectedHeaderHash = sha256(`Bearer ${secretValue}`)
-	await mcp.call('secretSave', { name: 'rekey-token', value: secretValue })
+	await mcp.call('secretSet', { name: 'rekey-token', value: secretValue })
 	const echoHost = process.env.SMOKE_ECHO_HOST ?? '127.0.0.1'
 	const approved = await admin.approveHost(user.id, echoHost)
 	assert(approved.status === 201, 'host approval failed', approved)

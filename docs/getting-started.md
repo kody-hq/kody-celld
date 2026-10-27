@@ -263,7 +263,7 @@ the storage layer changes.
 A from-zero run of this path on a clean checkout (Docker 24, x86_64): `docker
 compose up -d` → `/health` ok → `kody.env` generated → user + token via the
 admin API → `search` and `execute` through a stock MCP client
-(`@modelcontextprotocol/inspector --cli`) → `secretSave` + a `{{secret:…}}`
+(`@modelcontextprotocol/inspector --cli`) → `secretSet` + a `{{secret:…}}`
 fetch denied with `secret_host_not_approved`, approved, then delivered over
 https → `docker compose down && docker compose up -d` with the user, token,
 secret and approval intact → sign-in with the API token and `/account`,

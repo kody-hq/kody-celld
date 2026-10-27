@@ -36,7 +36,7 @@ import { kody } from 'kody:runtime'
 export default async function main(params) {
   return await kody.<capabilityId>({ ...args })
 }
-Capability ids are the \`id\` values below (e.g. kody.secretSave). Saved package exports: import fn from 'kody:<package>/<export>'.`
+Capability ids are the \`id\` values below (e.g. kody.secretSet). Saved package exports: import fn from 'kody:<package>/<export>'.`
 
 const guides: Array<Omit<Indexed, 'haystack'>> = [
 	{
@@ -53,11 +53,11 @@ const guides: Array<Omit<Indexed, 'haystack'>> = [
 		entity: 'guide',
 		title: 'Secrets and host approval',
 		summary:
-			'Save values with kody.secretSave, reference them as {{secret:name}} in fetch URLs/headers/bodies; the gateway injects them only for admin-approved https hosts.',
+			'Save values with kody.secretSet, reference them as {{secret:name}} in fetch URLs/headers/bodies; the gateway injects them only for admin-approved https hosts.',
 		domain: 'secrets',
 		exactNames: ['secret', 'placeholder', 'approval'],
 		detail: {
-			text: `1. await kody.secretSave({ name: 'github', value: '<token>' })
+			text: `1. await kody.secretSet({ name: 'github', value: '<token>' })
 2. In code: await fetch('https://api.github.com/user', { headers: { authorization: 'Bearer {{secret:github}}' } })
 3. If the response is 403 secret_host_not_approved, stop and ask an account admin to approve the host via POST /admin/users/<userId>/secret-hosts { "host": "api.github.com" }.
 Secret values never appear in results, logs, or run records. Basic auth: authorization: '{{secret-basic:username=u,password=p}}'.`,
@@ -141,6 +141,7 @@ async function buildIndex(ctx: CapabilityContext, includeHidden: boolean): Promi
 		const detail: Record<string, unknown> = {
 			inputSchema: cap.inputSchema,
 			readOnly: cap.readOnly ?? false,
+			aliases: cap.aliases ?? [],
 		}
 		if (cap.outputSchema) detail.outputSchema = cap.outputSchema
 		if (cap.example) detail.example = cap.example
@@ -150,9 +151,14 @@ async function buildIndex(ctx: CapabilityContext, includeHidden: boolean): Promi
 			title: `kody.${cap.name}`,
 			summary: cap.description,
 			domain: cap.domain,
-			exactNames: [cap.name, `kody.${cap.name}`, ...cap.keywords],
+			exactNames: [
+				cap.name,
+				`kody.${cap.name}`,
+				...(cap.aliases ?? []).flatMap((alias) => [alias, `kody.${alias}`]),
+				...cap.keywords,
+			],
 			haystack: tokens(
-				`${cap.name} ${cap.domain} ${cap.description} ${cap.tags.join(' ')} ${cap.keywords.join(' ')} ${Object.keys(cap.inputSchema.properties ?? {}).join(' ')}`,
+				`${cap.name} ${(cap.aliases ?? []).join(' ')} ${cap.domain} ${cap.description} ${cap.tags.join(' ')} ${cap.keywords.join(' ')} ${Object.keys(cap.inputSchema.properties ?? {}).join(' ')}`,
 			).join(' '),
 			detail,
 		})

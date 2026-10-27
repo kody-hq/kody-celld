@@ -231,7 +231,7 @@ what the smoke suite installs. See [docs/packages.md](./docs/packages.md).
 
 ```ts
 import { kody } from 'kody:runtime'
-await kody.secretSave({ name: 'github', value: '...' }) // value is never echoed back
+await kody.secretSet({ name: 'github', value: '...' }) // value is never echoed back
 await fetch('https://api.github.com/user', {
   headers: { authorization: 'Bearer {{secret:github}}' },
 })

@@ -57,8 +57,8 @@ export async function smokeWebhooks({ mcp, user, token }) {
 
 	const githubSecret = randomBytes(24).toString('hex')
 	const stripeSecret = `whsec_${randomBytes(24).toString('base64url')}`
-	await mcp.call('secretSave', { name: 'githubWebhookSecret', value: githubSecret })
-	await mcp.call('secretSave', { name: 'stripeWebhookSecret', value: stripeSecret })
+	await mcp.call('secretSet', { name: 'githubWebhookSecret', value: githubSecret })
+	await mcp.call('secretSet', { name: 'stripeWebhookSecret', value: stripeSecret })
 
 	// 1. mint: from a run it must be refused (runtime code can't mint credentials); directly it works.
 	const fromRuntime = await mcp.execute(

@@ -1,6 +1,6 @@
 # Provider-backed secrets (`{{secret/<provider>:<ref>}}`)
 
-Ordinary secrets are pasted into Kody once (`secretSave`). Provider-backed
+Ordinary secrets are pasted into Kody once (`secretSet`). Provider-backed
 secrets stay in an external vault — 1Password Connect, HashiCorp Vault,
 Bitwarden, your own service — and are fetched on demand by a **provider
 package** you install and bind. The fetched value is injected into the
@@ -18,7 +18,7 @@ await fetch('https://api.stripe.com/v1/charges', {
 | Piece                | What it is                                                                                                                                                                                        |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Provider package** | A saved package with `"kody": { "secretProvider": { "id": "1password" } }` and a `"./secretProvider"` export. Examples: `examples/packages/onepassword-connect`, `examples/packages/smoke-vault`. |
-| **Door secret**      | The vault credential (Connect token, Vault token…), stored with `secretSave` as a user secret. The provider reaches the vault with `{{secret:<door>}}` like any package.                          |
+| **Door secret**      | The vault credential (Connect token, Vault token…), stored with `secretSet` as a user secret. The provider reaches the vault with `{{secret:<door>}}` like any package.                           |
 | **Binding**          | `secretProviderBind({ providerId, packageName, doorSecretName, config, locked })` — connects the id in the placeholder to the package and its non-secret config.                                  |
 | **Grant**            | On a `locked` binding, `secretProviderGrant({ providerId, packageName, ref })` allows one package to resolve one item.                                                                            |
 
@@ -71,7 +71,7 @@ Rules the runtime enforces on the package:
 
 ```ts
 import { kody } from 'kody:runtime'
-await kody.secretSave({ name: 'op-connect-token', value: '<connect token>' })
+await kody.secretSet({ name: 'op-connect-token', value: '<connect token>' })
 await kody.secretProviderBind({
   providerId: '1password',
   packageName: '@kody-examples/onepassword-connect',

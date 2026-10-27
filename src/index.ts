@@ -18,7 +18,7 @@ import { capabilities, domains, runCapability } from './capabilities/registry.ts
 import { KODY_CELLD_VERSION, type Env } from './env.ts'
 import { getUserCell } from './execute/engine.ts'
 import { handleOAuthConnect } from './integrations/connect.ts'
-import { dispatchDueJobs } from './jobs/dispatcher.ts'
+import { dispatchDueJobs, dispatchDueWorkflows } from './jobs/dispatcher.ts'
 import { recordAudit } from './lib/audit.ts'
 import { errorStatus, errorToJson, KodyError } from './lib/errors.ts'
 import { limitsFromEnv, parseQuotaOverride, quotasFromEnv } from './lib/limits.ts'
@@ -381,6 +381,7 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext, url:
 			domains,
 			capabilities: capabilities.map((c) => ({
 				name: c.name,
+				aliases: c.aliases ?? [],
 				domain: c.domain,
 				description: c.description,
 				inputSchema: c.inputSchema,
@@ -550,7 +551,11 @@ export default {
 	},
 
 	async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
-		const summary = await dispatchDueJobs(env, ctx.exports)
-		if (summary.ran.length > 0) console.log('[kody-celld] jobs dispatched', JSON.stringify(summary))
+		const [jobs, workflows] = await Promise.all([
+			dispatchDueJobs(env, ctx.exports),
+			dispatchDueWorkflows(env, ctx.exports),
+		])
+		if (jobs.ran.length > 0) console.log('[kody-celld] jobs dispatched', JSON.stringify(jobs))
+		if (workflows.ran.length > 0) console.log('[kody-celld] workflows dispatched', JSON.stringify(workflows))
 	},
 } satisfies ExportedHandler<Env>

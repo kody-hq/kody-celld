@@ -78,6 +78,16 @@ import {
 	triageFieldsFromRow,
 } from '../runs/triage-store.ts'
 import { signatureMatches } from '../webhooks/verify.ts'
+import {
+	workflowAttemptFinishState,
+	workflowAttemptStaleAfterMs,
+	workflowCancelState,
+	workflowClaimableRows,
+	workflowLostAttemptFailureState,
+	type WorkflowRecord,
+	type WorkflowSourceType,
+	type WorkflowStatus,
+} from '../jobs/workflow-types.ts'
 
 export type SecretMetadata = {
 	name: string
@@ -146,6 +156,24 @@ export type RunRecord = {
 	warnings: Array<string>
 	gateway: Array<GatewayEvent>
 } & RunTriageFields
+
+type WorkflowSqlRow = {
+	id: string
+	source_type: WorkflowSourceType
+	package_id: string | null
+	workflow_name: string
+	export_name: string | null
+	code: string | null
+	params_json: string
+	idempotency_key: string | null
+	run_at: string
+	status: WorkflowStatus
+	attempts: number
+	last_error: string | null
+	created_at: string
+	updated_at: string
+	completed_at: string | null
+}
 
 export type GatewayEvent = {
 	at: string
@@ -327,6 +355,22 @@ const secretNamePattern = /^[a-zA-Z0-9._-]+$/
 const webhookPreviousSecretGraceMs = 24 * 60 * 60 * 1000
 const emailDestinationCodeTtlMs = 30 * 60 * 1000
 
+type SecretSaveInput = {
+	name: string
+	value?: string | undefined
+	description?: string | undefined
+	scope?: SecretScope | undefined
+	packageName?: string | undefined
+}
+
+type PreparedSecretSave = {
+	name: string
+	value: string | undefined
+	description: string | undefined
+	scope: Exclude<SecretScope, 'session'>
+	packageName: string
+}
+
 function nowIso() {
 	return new Date().toISOString()
 }
@@ -417,6 +461,25 @@ export class UserCell extends DurableObject<Env> {
 			);
 			CREATE UNIQUE INDEX IF NOT EXISTS runs_idempotency ON runs(idempotency_key) WHERE idempotency_key IS NOT NULL;
 			CREATE INDEX IF NOT EXISTS runs_created ON runs(created_at DESC);
+			CREATE TABLE IF NOT EXISTS workflows (
+				id TEXT PRIMARY KEY,
+				source_type TEXT NOT NULL,
+				package_id TEXT,
+				workflow_name TEXT NOT NULL,
+				export_name TEXT,
+				code TEXT,
+				params_json TEXT NOT NULL,
+				idempotency_key TEXT,
+				run_at TEXT NOT NULL,
+				status TEXT NOT NULL,
+				attempts INTEGER NOT NULL DEFAULT 0,
+				last_error TEXT,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				completed_at TEXT
+			);
+			CREATE INDEX IF NOT EXISTS workflows_due ON workflows(status, run_at);
+			CREATE INDEX IF NOT EXISTS workflows_recent ON workflows(created_at DESC, id DESC);
 			CREATE TABLE IF NOT EXISTS usage_daily (
 				day TEXT PRIMARY KEY,
 				runs INTEGER NOT NULL DEFAULT 0,
@@ -726,56 +789,149 @@ export class UserCell extends DurableObject<Env> {
 
 	// ---------------------------------------------------------------- secrets
 
-	async secretSave(input: {
-		name: string
-		value: string
-		description?: string | undefined
-		scope?: SecretScope | undefined
-		packageName?: string | undefined
-	}): Promise<SecretMetadata> {
+	private prepareSecretSave(input: SecretSaveInput, requireValue: boolean): PreparedSecretSave {
 		const name = input.name?.trim()
 		if (!name || !secretNamePattern.test(name)) {
 			throw new KodyError('invalid_secret_name', 'Secret names may contain letters, digits, ".", "_", and "-".')
 		}
-		if (typeof input.value !== 'string' || input.value.length === 0) {
+		if (requireValue && (typeof input.value !== 'string' || input.value.length === 0)) {
 			throw new KodyError('invalid_secret_value', 'Secret value must be a non-empty string.')
 		}
-		if (input.value.length > 64 * 1024) {
+		if (input.value !== undefined && (typeof input.value !== 'string' || input.value.length === 0)) {
+			throw new KodyError('invalid_secret_value', 'Secret value must be a non-empty string.')
+		}
+		if (input.value !== undefined && input.value.length > 64 * 1024) {
 			throw new KodyError('invalid_secret_value', 'Secret value must be at most 64 KiB.')
 		}
 		const scope: SecretScope = input.scope ?? 'user'
+		if (scope === 'session') {
+			throw new KodyError(
+				'invalid_secret_scope',
+				'Session-scoped secrets are not available on celld. Use user or package scope.',
+			)
+		}
 		const packageName = scope === 'package' ? (input.packageName ?? '') : ''
 		if (scope === 'package' && !packageName) {
 			throw new KodyError('invalid_secret_scope', 'Package-scoped secrets need a package name.')
 		}
-		const exists =
-			this.ctx.storage.sql
-				.exec('SELECT 1 FROM secrets WHERE name = ? AND scope = ? AND package_name = ?', name, scope, packageName)
-				.toArray().length > 0
-		if (!exists) this.assertQuota('secrets', this.count('secrets'), 'Secret')
-		const { current } = await this.keyring()
-		const encrypted = await encryptSecretValue(current.key, this.userId, input.value)
-		const now = nowIso()
+		return { name, value: input.value, description: input.description, scope, packageName }
+	}
+
+	private assertSecretSaveQuota(inputs: Array<PreparedSecretSave>) {
+		const newRows = new Set<string>()
+		for (const input of inputs) {
+			const exists =
+				this.ctx.storage.sql
+					.exec(
+						'SELECT 1 FROM secrets WHERE name = ? AND scope = ? AND package_name = ?',
+						input.name,
+						input.scope,
+						input.packageName,
+					)
+					.toArray().length > 0
+			if (!exists) newRows.add(JSON.stringify([input.name, input.scope, input.packageName]))
+		}
+		if (newRows.size > 0) {
+			this.assertQuota('secrets', this.count('secrets') + newRows.size - 1, 'Secret')
+		}
+	}
+
+	private insertSecret(
+		input: PreparedSecretSave & { value: string },
+		encrypted: { iv: string; ciphertext: string },
+		keyId: string,
+		now: string,
+	): SecretMetadata {
 		this.ctx.storage.sql.exec(
 			`INSERT INTO secrets (name, scope, package_name, description, iv, ciphertext, key_id, created_at, updated_at)
 			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 			 ON CONFLICT(name, scope, package_name) DO UPDATE SET
 			   description = COALESCE(excluded.description, secrets.description),
 			   iv = excluded.iv, ciphertext = excluded.ciphertext, key_id = excluded.key_id, updated_at = excluded.updated_at`,
-			name,
-			scope,
-			packageName,
+			input.name,
+			input.scope,
+			input.packageName,
 			input.description ?? null,
 			encrypted.iv,
 			encrypted.ciphertext,
-			current.id,
+			keyId,
 			now,
 			now,
 		)
-		const saved = (await this.secretList()).find(
-			(s) => s.name === name && s.scope === scope && (s.packageName ?? '') === packageName,
-		)
+		const saved = this.ctx.storage.sql
+			.exec<{
+				name: string
+				scope: SecretScope
+				package_name: string
+				description: string | null
+				created_at: string
+				updated_at: string
+			}>(
+				`SELECT name, scope, package_name, description, created_at, updated_at
+				 FROM secrets WHERE name = ? AND scope = ? AND package_name = ?`,
+				input.name,
+				input.scope,
+				input.packageName,
+			)
+			.toArray()[0]
 		if (!saved) throw new KodyError('internal_error', 'Secret save failed.', { status: 500 })
+		return {
+			name: saved.name,
+			scope: saved.scope,
+			packageName: saved.package_name || null,
+			description: saved.description,
+			createdAt: saved.created_at,
+			updatedAt: saved.updated_at,
+		}
+	}
+
+	async secretSave(input: SecretSaveInput): Promise<SecretMetadata> {
+		const prepared = this.prepareSecretSave(input, true)
+		this.assertSecretSaveQuota([prepared])
+		const { current } = await this.keyring()
+		const encrypted = await encryptSecretValue(current.key, this.userId, prepared.value as string)
+		let saved: SecretMetadata | undefined
+		this.ctx.storage.transactionSync(() => {
+			this.assertSecretSaveQuota([prepared])
+			saved = this.insertSecret(prepared as PreparedSecretSave & { value: string }, encrypted, current.id, nowIso())
+		})
+		if (!saved) throw new KodyError('internal_error', 'Secret save failed.', { status: 500 })
+		return saved
+	}
+
+	async secretValidateMany(inputs: Array<SecretSaveInput>) {
+		if (inputs.length === 0) throw new KodyError('invalid_args', 'At least one secret is required.')
+		const prepared = inputs.map((input) => this.prepareSecretSave(input, false))
+		this.assertSecretSaveQuota(prepared)
+		return prepared.map((input) => ({
+			name: input.name,
+			scope: input.scope,
+			packageName: input.packageName || null,
+			description: input.description ?? null,
+		}))
+	}
+
+	async secretSaveMany(inputs: Array<SecretSaveInput>): Promise<Array<SecretMetadata>> {
+		if (inputs.length === 0) throw new KodyError('invalid_args', 'At least one secret is required.')
+		const prepared = inputs.map((input) => this.prepareSecretSave(input, true))
+		this.assertSecretSaveQuota(prepared)
+		const { current } = await this.keyring()
+		const encrypted = await Promise.all(
+			prepared.map(async (input) => {
+				if (input.value === undefined) {
+					throw new KodyError('invalid_secret_value', 'Secret value must be a non-empty string.')
+				}
+				return encryptSecretValue(current.key, this.userId, input.value)
+			}),
+		)
+		const now = nowIso()
+		let saved: Array<SecretMetadata> = []
+		this.ctx.storage.transactionSync(() => {
+			this.assertSecretSaveQuota(prepared)
+			saved = prepared.map((input, index) =>
+				this.insertSecret(input as PreparedSecretSave & { value: string }, encrypted[index]!, current.id, now),
+			)
+		})
 		return saved
 	}
 
@@ -1376,7 +1532,7 @@ export class UserCell extends DurableObject<Env> {
 		if (!door) {
 			throw new KodyError(
 				'secret_not_found',
-				`Door secret "${input.doorSecretName}" was not found; save it with secretSave first (scope user, or scope package for "${input.packageName}").`,
+				`Door secret "${input.doorSecretName}" was not found; save it with secretSet first (scope user, or scope package for "${input.packageName}").`,
 				{ status: 404 },
 			)
 		}
@@ -1612,6 +1768,197 @@ export class UserCell extends DurableObject<Env> {
 			)
 		}
 		return due
+	}
+
+	private workflowFromRow(row: WorkflowSqlRow): WorkflowRecord {
+		return {
+			id: row.id,
+			sourceType: row.source_type,
+			packageId: row.package_id,
+			workflowName: row.workflow_name,
+			exportName: row.export_name,
+			code: row.code,
+			paramsJson: row.params_json,
+			idempotencyKey: row.idempotency_key,
+			runAt: row.run_at,
+			status: row.status,
+			attempts: row.attempts,
+			lastError: row.last_error,
+			createdAt: row.created_at,
+			updatedAt: row.updated_at,
+			completedAt: row.completed_at,
+		}
+	}
+
+	private workflowRow(id: string): WorkflowRecord | null {
+		const row = this.ctx.storage.sql.exec<WorkflowSqlRow>('SELECT * FROM workflows WHERE id = ?', id).toArray()[0]
+		return row ? this.workflowFromRow(row) : null
+	}
+
+	workflowCreate(input: {
+		id: string
+		sourceType: WorkflowSourceType
+		packageId: string | null
+		workflowName: string
+		exportName: string | null
+		code: string | null
+		paramsJson: string
+		idempotencyKey: string | null
+		runAt: string
+		maxConcurrent: number
+	}): WorkflowRecord {
+		return this.ctx.storage.transactionSync(() => {
+			const existing = this.workflowRow(input.id)
+			if (existing) return existing
+			const count =
+				this.ctx.storage.sql
+					.exec<{ count: number }>(`SELECT COUNT(*) AS count FROM workflows WHERE status IN ('queued', 'running')`)
+					.toArray()[0]?.count ?? 0
+			if (count >= input.maxConcurrent) {
+				throw new KodyError('quota_exceeded', `Concurrent workflow quota reached (${count}/${input.maxConcurrent}).`, {
+					status: 429,
+					details: { quota: 'concurrent_workflows', limit: input.maxConcurrent, used: count },
+				})
+			}
+			const now = nowIso()
+			this.ctx.storage.sql.exec(
+				`INSERT INTO workflows
+					(id, source_type, package_id, workflow_name, export_name, code, params_json, idempotency_key, run_at, status, attempts, created_at, updated_at)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?)`,
+				input.id,
+				input.sourceType,
+				input.packageId,
+				input.workflowName,
+				input.exportName,
+				input.code,
+				input.paramsJson,
+				input.idempotencyKey,
+				input.runAt,
+				now,
+				now,
+			)
+			const created = this.workflowRow(input.id)
+			if (!created) throw new KodyError('internal_error', 'Workflow insert failed.', { status: 500 })
+			return created
+		})
+	}
+
+	workflowGet(id: string) {
+		return this.workflowRow(id)
+	}
+
+	workflowsClaimDue(now: string, limit = 25): Array<WorkflowRecord> {
+		return this.ctx.storage.transactionSync(() => {
+			const staleBefore = new Date(Date.parse(now) - workflowAttemptStaleAfterMs).toISOString()
+			const staleRows = this.ctx.storage.sql
+				.exec<WorkflowSqlRow>(`SELECT * FROM workflows WHERE status = 'running' AND updated_at < ?`, staleBefore)
+				.toArray()
+			for (const staleRow of staleRows) {
+				const staleWorkflow = this.workflowFromRow(staleRow)
+				const failure = workflowLostAttemptFailureState(staleWorkflow, now)
+				if (!failure) continue
+				this.ctx.storage.sql.exec(
+					`UPDATE workflows SET status = ?, run_at = ?, last_error = ?, completed_at = ?, updated_at = ?
+					 WHERE id = ? AND status = 'running'`,
+					failure.status,
+					failure.runAt,
+					failure.lastError,
+					failure.completedAt,
+					now,
+					staleWorkflow.id,
+				)
+			}
+			const due = workflowClaimableRows(
+				this.ctx.storage.sql
+					.exec<WorkflowSqlRow>(`SELECT * FROM workflows WHERE status = 'queued'`)
+					.toArray()
+					.map((row) => this.workflowFromRow(row)),
+				now,
+				limit,
+			)
+			const claimed: Array<WorkflowRecord> = []
+			for (const row of due) {
+				this.ctx.storage.sql.exec(
+					`UPDATE workflows SET status = 'running', attempts = attempts + 1, updated_at = ?
+					 WHERE id = ? AND status = 'queued'`,
+					now,
+					row.id,
+				)
+				const workflow = this.workflowRow(row.id)
+				if (workflow?.status === 'running' && workflow.attempts === row.attempts + 1) claimed.push(workflow)
+			}
+			return claimed
+		})
+	}
+
+	workflowAttemptFinish(input: { id: string; attempt: number; ok: boolean; error: string | null; now: string }) {
+		return this.ctx.storage.transactionSync(() => {
+			const workflow = this.workflowRow(input.id)
+			if (!workflow) return null
+			const next = workflowAttemptFinishState({
+				status: workflow.status,
+				attempts: workflow.attempts,
+				attempt: input.attempt,
+				ok: input.ok,
+				error: input.error,
+				now: input.now,
+			})
+			if (!next) return workflow
+			if (next.status === 'complete') {
+				this.ctx.storage.sql.exec(
+					`UPDATE workflows SET status = ?, last_error = ?, completed_at = ?, updated_at = ?
+					 WHERE id = ? AND status = 'running' AND attempts = ?`,
+					next.status,
+					next.lastError,
+					next.completedAt,
+					input.now,
+					input.id,
+					input.attempt,
+				)
+			} else {
+				this.ctx.storage.sql.exec(
+					`UPDATE workflows SET status = ?, run_at = ?, last_error = ?, completed_at = ?, updated_at = ?
+					 WHERE id = ? AND status = 'running' AND attempts = ?`,
+					next.status,
+					next.runAt,
+					next.lastError,
+					next.completedAt,
+					input.now,
+					input.id,
+					input.attempt,
+				)
+			}
+			return this.workflowRow(input.id)
+		})
+	}
+
+	workflowCancel(id: string) {
+		return this.ctx.storage.transactionSync(() => {
+			const workflow = this.workflowRow(id)
+			if (!workflow) return null
+			const state = workflowCancelState(workflow.status)
+			if (state.alreadyTerminal) {
+				return { workflow, ...state }
+			}
+			const now = nowIso()
+			this.ctx.storage.sql.exec(
+				`UPDATE workflows SET status = 'cancelled', completed_at = ?, updated_at = ?
+				 WHERE id = ? AND status IN ('queued', 'running')`,
+				now,
+				now,
+				id,
+			)
+			const cancelled = this.workflowRow(id)
+			return cancelled ? { workflow: cancelled, ...state } : null
+		})
+	}
+
+	workflowsList(limit = 25): Array<WorkflowRecord> {
+		const bounded = Math.min(Math.max(Math.trunc(limit), 1), 100)
+		return this.ctx.storage.sql
+			.exec<WorkflowSqlRow>('SELECT * FROM workflows ORDER BY created_at DESC, id DESC LIMIT ?', bounded)
+			.toArray()
+			.map((row) => this.workflowFromRow(row))
 	}
 
 	async jobRunStart(input: { jobId: string; trigger: string }): Promise<string> {
@@ -1967,7 +2314,10 @@ export class UserCell extends DurableObject<Env> {
 	}
 
 	async runList(
-		filter: { limit?: number | undefined; errorTriage?: ErrorTriageFilter | undefined } = {},
+		filter: {
+			limit?: number | undefined
+			errorTriage?: ErrorTriageFilter | undefined
+		} = {},
 	): Promise<Array<Omit<RunRecord, 'resultJson' | 'logsJson' | 'gateway'>>> {
 		const limit = Math.min(Math.max(filter.limit ?? 20, 1), 200)
 		return (
