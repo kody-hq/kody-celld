@@ -41,4 +41,5 @@ four total attempts with 30-second exponential backoff. Cron precision is
 approximately one minute.
 
 Celld accepts package `sourceRevision: 'latest'`; pinned revisions are not
-supported. The account Workflows page is not included in this backend change.
+supported. The account Workflows page at `/account/workflows` lists workflows and
+cancels active ones.

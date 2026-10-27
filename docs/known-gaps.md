@@ -92,7 +92,8 @@ roadmap is now shipped; the roadmap below is kept as the change log.
   one-minute cron, so run times have approximately one-minute precision.
   Pinned source revisions are unsupported. Cancelling a running workflow does
   not interrupt its attempt; its result is discarded and it is not retried.
-  The account Workflows page is not included.
+  The account Workflows page lists the newest 100 runs, with no search or
+  status filter yet.
 - **Quotas** default to unlimited; a shared node should set
   `KODY_QUOTA_RUNS_PER_DAY` and friends. The daily execute-time budget is
   checked before a run starts, so the final run of the day may overshoot it.
@@ -174,6 +175,12 @@ roadmap is now shipped; the roadmap below is kept as the change log.
 
 ## celld-specific caveats
 
+- User-scope secrets can be locked to packages. `secretLock` only reports
+  approval status and a website link; only the owner can add or remove grants
+  on `/account/secrets`. Ad hoc runs without a package name remain allowed.
+  Removing the final grant restores `mode: 'any'`. Unlike hosted, celld's
+  `package_id` is the installed package name, and package-scope secrets cannot
+  be locked. Secret host approvals remain per-account, not per-secret.
 - Hosted capability names are available for secrets: `secretSave` aliases
   `secretSet`, and `secretSetMany` is supported. Hosted fields are rejected
   with `unsupported_secret_field` unless they match celld defaults:
@@ -187,6 +194,12 @@ roadmap is now shipped; the roadmap below is kept as the change log.
   lists. Celld does not support credential `inject` or `sign()`. Declared
   `url`, `login`, and `signing` slots fail with `credential_unsupported`.
   Imported package code resolves credentials as the package being run.
+- **Hosted HTTP API.** celld serves `/v1` at the origin of `KODY_PUBLIC_URL`,
+  not on a separate `api.` host. `/openapi.json` lists that origin in its
+  `servers` array. Memories and secrets routes, token routes,
+  `/v1/search/tool`, capability proxy and local-execute, repos, webhooks,
+  email, integrations, MCP servers, community, and storage routes are deferred
+  to follow-up PRs.
 - **Package subscriptions.** Celld emits only `email.message.received`,
   `email.message.quarantined`, `email.message.delivery.updated`,
   `integration.auth.succeeded`, and `integration.auth.failed`. Other platform

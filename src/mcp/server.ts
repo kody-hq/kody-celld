@@ -3,29 +3,14 @@ import { KODY_CELLD_VERSION, type Env } from '../env.ts'
 import { defaultResponseLimitBytes, executeRun, runRecordMaxIdempotencyKeyLength } from '../execute/engine.ts'
 import { errorToJson, KodyError } from '../lib/errors.ts'
 import { search, type SearchInput } from './search.ts'
+import { searchToolSchema } from './tool-schemas.ts'
+
+export { searchToolSchema } from './tool-schemas.ts'
 
 type JsonRpcId = string | number | null
 type JsonRpcRequest = { jsonrpc: '2.0'; id?: JsonRpcId; method: string; params?: unknown }
 
 const PROTOCOL_VERSION = '2025-06-18'
-
-const searchToolSchema = {
-	type: 'object',
-	properties: {
-		query: { type: 'string', description: 'Free-text query. Empty lists everything.' },
-		entity: {
-			type: 'string',
-			enum: ['capability', 'domain', 'package', 'job', 'guide', 'mcp-server'],
-			description: 'Restrict to one entity kind.',
-		},
-		domain: { type: 'string', description: 'Restrict to one domain (system, secrets, packages, jobs, storage, runs).' },
-		limit: { type: 'integer', minimum: 1, maximum: 50, default: 10 },
-		maxResponseSize: { type: 'integer', minimum: 1000, default: 20000 },
-		conversationId: { type: 'string', description: 'Accepted for Kody compatibility; unused.' },
-		memoryContext: { type: 'string', description: 'Accepted for Kody compatibility; unused.' },
-		includeHiddenPackages: { type: 'boolean', default: false },
-	},
-}
 
 const executeToolSchema = {
 	type: 'object',
@@ -88,32 +73,43 @@ function toolResult(payload: unknown, isError = false) {
 	}
 }
 
-async function callTool(name: string, args: Record<string, unknown>, ctx: CapabilityContext) {
-	if (name === 'search') {
-		return toolResult(await search(args as SearchInput, ctx))
-	}
-	if (name === 'execute') {
+export async function runExecuteTool(args: Record<string, unknown>, ctx: CapabilityContext) {
+	let entry: { kind: 'adhoc'; code: string } | { kind: 'package'; packageName: string; exportName: string }
+	if (args.invoke !== undefined) {
+		if (args.code !== undefined) throw new KodyError('invalid_input', 'Provide exactly one of "code" or "invoke".')
+		const match = typeof args.invoke === 'string' ? /^kody:(@[^/]+\/[^/]+)\/(.+)$/.exec(args.invoke.trim()) : null
+		if (!match) {
+			throw new KodyError('invalid_input', '"invoke" must be in the form kody:@scope/package/export.')
+		}
+		entry = { kind: 'package', packageName: match[1]!, exportName: match[2]! }
+	} else {
 		if (typeof args.code !== 'string' || !args.code.trim()) {
 			throw new KodyError('invalid_args', 'execute requires a non-empty `code` string.')
 		}
-		const result = await executeRun(ctx.env, ctx.exports, {
-			kind: 'execute',
-			user: ctx.user,
-			entry: { kind: 'adhoc', code: args.code },
-			params: args.params ?? {},
-			responseLimit: typeof args.responseLimit === 'number' ? args.responseLimit : undefined,
-			idempotencyKey: typeof args.idempotencyKey === 'string' ? args.idempotencyKey : undefined,
-		})
-		if (result.mcpContent) {
-			const { mcpContent, ...structured } = result
-			return {
-				content: [...mcpContent, { type: 'text', text: JSON.stringify(structured) }],
-				structuredContent: structured,
-				isError: false,
-			}
-		}
-		return toolResult(result, !result.ok)
+		entry = { kind: 'adhoc', code: args.code }
 	}
+	const result = await executeRun(ctx.env, ctx.exports, {
+		kind: 'execute',
+		user: ctx.user,
+		entry,
+		params: args.params ?? {},
+		responseLimit: typeof args.responseLimit === 'number' ? args.responseLimit : undefined,
+		idempotencyKey: typeof args.idempotencyKey === 'string' ? args.idempotencyKey : undefined,
+	})
+	if (result.mcpContent) {
+		const { mcpContent, ...structured } = result
+		return {
+			content: [...mcpContent, { type: 'text', text: JSON.stringify(structured) }],
+			structuredContent: structured,
+			isError: false,
+		}
+	}
+	return toolResult(result, !result.ok)
+}
+
+async function callTool(name: string, args: Record<string, unknown>, ctx: CapabilityContext) {
+	if (name === 'search') return toolResult(await search(args as SearchInput, ctx))
+	if (name === 'execute') return runExecuteTool(args, ctx)
 	throw new KodyError('unknown_tool', `Unknown tool "${name}".`, { status: 404 })
 }
 

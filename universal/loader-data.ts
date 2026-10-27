@@ -51,6 +51,7 @@ export type SecretView = {
 	packageName: string | null
 	description: string | null
 	updatedAt: string
+	allowedPackages: Array<string>
 }
 
 export type SecretHostView = {
@@ -82,6 +83,20 @@ export type JobView = {
 	nextRunAt: string | null
 	lastRunAt: string | null
 	lastStatus: string | null
+	lastError: string | null
+}
+
+export type WorkflowView = {
+	id: string
+	sourceType: 'inline' | 'package'
+	packageId: string | null
+	workflowName: string
+	exportName: string | null
+	idempotencyKey: string | null
+	status: 'queued' | 'running' | 'complete' | 'errored' | 'cancelled'
+	attempts: number
+	runAt: string
+	updatedAt: string
 	lastError: string | null
 }
 
@@ -431,6 +446,14 @@ export type AppLoaderData =
 			hosts: Array<SecretHostView>
 	  }
 	| {
+			page: 'accountSecretApprove'
+			csrf: string
+			name: string
+			packageName: string
+			allowedPackages: Array<string>
+			alreadyGranted: boolean
+	  }
+	| {
 			page: 'accountPackages'
 			csrf: string
 			packages: Array<PackageView>
@@ -475,6 +498,7 @@ export type AppLoaderData =
 			files: PackageFilesLoaderData
 	  }
 	| { page: 'accountJobs'; csrf: string; jobs: Array<JobView> }
+	| { page: 'accountWorkflows'; csrf: string; workflows: Array<WorkflowView> }
 	| {
 			page: 'accountJobDetail'
 			csrf: string
@@ -649,7 +673,9 @@ export function pageHasAccountRail(page: AppPage): boolean {
 		case 'account':
 		case 'accountMcpOauthClients':
 		case 'accountApiTokens':
+		case 'accountWorkflows':
 		case 'accountSecrets':
+		case 'accountSecretApprove':
 		case 'accountPackages':
 		case 'accountJobs':
 		case 'accountJobDetail':

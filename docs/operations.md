@@ -265,6 +265,7 @@ curl -s -X POST $BASE/admin/users/$USER/signout -H "authorization: Bearer $ADMIN
 Audit actions: `signin`, `signin.failed`, `signin.magic_link`,
 `signin.invite_accepted`, `password.set`, `password.reset`, `session.revoke`,
 `token.issue`, `token.revoke`, `user.invite`, `user.signout_everywhere`,
+`secret.grant`, `secret.grant.remove`,
 `mcp_client.register`, `mcp_client.authorize`, `mcp_client.deny`,
 `mcp_client.revoke`, `mcp_client.revoke_all`, `console.signin`,
 `console.signin_failed`. Details never include submitted passwords, tokens or

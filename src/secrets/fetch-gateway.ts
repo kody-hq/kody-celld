@@ -6,6 +6,7 @@ import type { RuntimeProps } from '../execute/runtime-host.ts'
 import { integrationEventPayload, type IntegrationRecord } from '../integrations/store.ts'
 import { dispatchTopic } from '../packages/subscriptions.ts'
 import { privateHostsFromEnv } from '../lib/private-hosts-env.ts'
+import { secretApprovalUrl } from './usage.ts'
 import { isCredentialTransportAllowed, isHostApproved, requestHost } from './host-policy.ts'
 import {
 	collectPlaceholders,
@@ -210,7 +211,18 @@ export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 					{ name: b.password, scope: b.scope },
 				]),
 			]
-			const resolved = await userCell.secretResolveValues({ names: refs, packageName })
+			const resolved = await userCell.secretResolveValues({ names: refs, packageName, enforceUsageLock: true })
+			if (resolved.locked.length > 0) {
+				const locked = resolved.locked[0]!
+				const approvalUrl = secretApprovalUrl(this.env.KODY_PUBLIC_URL, locked.name, packageName ?? '')
+				return denied({
+					status: 403,
+					code: 'secret_locked',
+					message: `Secret "${locked.name}" is locked to approved packages. Ask the account owner to approve this package at ${approvalUrl}.`,
+					details: { host, name: locked.name, allowedPackages: locked.allowedPackages, approvalUrl },
+					secrets,
+				})
+			}
 			if (resolved.missing.length > 0) {
 				return denied({
 					status: 404,

@@ -4,7 +4,7 @@ import { handleAppOrigin } from './apps/handler.ts'
 import { handleAppsOpen, isAppsOpenRoute } from './apps/open.ts'
 import { warnSharedRegistrableDomainOnce } from './apps/shared-registrable-domain.ts'
 import { aiConfigFromEnv, describeAiConfig } from './ai/config.ts'
-import { authenticateBearer, bearer, mcpUnauthorized, type Principal } from './auth/authenticate.ts'
+import { authenticateBearer, bearer, mcpUnauthorized } from './auth/authenticate.ts'
 import { blobConfigFromEnv, describeBlobConfig } from './blobs/config.ts'
 import { verifyBlobUrlSignature } from './blobs/keys.ts'
 import { BlobService, normalizeMetadata } from './blobs/service.ts'
@@ -13,6 +13,7 @@ import { describeNpmConfig, npmConfigFromEnv } from './execute/npm-config.ts'
 import { describeEmailConfig } from './email/config.ts'
 import { handleEmailEvents, handleEmailInbound, loadEmailConfig } from './email/service.ts'
 import type { CapabilityContext } from './capabilities/define.ts'
+import { capabilityContext } from './capabilities/context.ts'
 import { getMemoryCell } from './capabilities/memory.ts'
 import { capabilities, domains, runCapability } from './capabilities/registry.ts'
 import { KODY_CELLD_VERSION, type Env } from './env.ts'
@@ -23,6 +24,7 @@ import { recordAudit } from './lib/audit.ts'
 import { errorStatus, errorToJson, KodyError } from './lib/errors.ts'
 import { limitsFromEnv, parseQuotaOverride, quotasFromEnv } from './lib/limits.ts'
 import { handleMcpRequest } from './mcp/server.ts'
+import { handleApiRequest } from './api/http-handler.ts'
 import { handleOAuth, isOAuthRoute } from './oauth/routes.ts'
 import { handleAccount, isAccountRoute } from './web/account.ts'
 import { handleBrandGuide, isBrandGuideRoute } from './web/brand-guide.ts'
@@ -121,19 +123,6 @@ function mcpPreflight() {
 			'access-control-max-age': '86400',
 		},
 	})
-}
-
-function capabilityContext(env: Env, ctx: ExecutionContext, auth: Principal): CapabilityContext {
-	return {
-		env,
-		exports: ctx.exports,
-		user: { id: auth.user.id, email: auth.user.email },
-		userCell: auth.userCell,
-		packageName: null,
-		runId: null,
-		baseUrl: env.KODY_PUBLIC_URL,
-		fromRuntime: false,
-	}
 }
 
 async function readJson(request: Request): Promise<Record<string, unknown>> {
@@ -543,6 +532,9 @@ export default {
 				return await handleAdmin(request, env, ctx, url)
 			}
 			if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return await handleApi(request, env, ctx, url)
+			if (url.pathname === '/openapi.json' || url.pathname === '/v1' || url.pathname.startsWith('/v1/')) {
+				return await handleApiRequest(request, env, ctx)
+			}
 			return json({ error: 'not_found', message: `No route for ${url.pathname}.` }, 404)
 		} catch (error) {
 			if (isWebRoute(url.pathname) && wantsHtml(request)) return await errorPage(error, request, env)

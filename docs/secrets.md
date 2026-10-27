@@ -21,7 +21,7 @@ await kody.secretSetMany({
     { name: 'api-password', value: '...' },
   ],
 })
-await kody.secretList() // names, scopes, timestamps — never values
+await kody.secretList() // names, scopes, timestamps, never values
 await kody.secretDelete({ name: 'github' })
 ```
 
@@ -46,6 +46,21 @@ bearer header injection `{ kind: 'header', name: 'Authorization', format:
 `{ headers: true, query: true, path: true, body: true }` placement for
 injection anywhere. Other values fail with `unsupported_secret_field` before
 any write, including in `secretSetMany` and `assertOnly` calls.
+
+## Locking a secret to packages
+
+Package code can call `secretLock({ name, package_id })` to check whether the
+owner needs to approve access to a user-scope secret. It returns an
+`approval_url` and a status, but never grants access. The owner reviews the
+request on `/account/secrets/approve`; allowed packages and remove controls are
+also shown on `/account/secrets`.
+
+The first approval changes a user secret from `mode: 'any'` to an explicit
+package allowlist. Later approvals add to that list. Removing the last package
+grant restores `mode: 'any'`, so all packages are allowed again. Ad hoc
+execution without a package name remains allowed even while the secret has a
+package allowlist. Updating a secret with `secretSet` preserves existing
+package grants.
 
 Values are AES-256-GCM encrypted with a fresh 12-byte IV under a per-user key:
 `HKDF(master = KODY_MASTER_KEY, salt = "kody-celld:<userId>", info = "kody-celld-secret-values")`.
@@ -107,6 +122,7 @@ Every outbound `fetch` from an isolate is routed through `FetchGateway`
 admin surface?          → 403 admin_surface_blocked
 not https (and host not in KODY_PRIVATE_HOSTS)? → 403 insecure_scheme
 {{secret:…}} and host not approved? → 403 secret_host_not_approved  { approvalUrl }
+user secret locked to another package? → 403 secret_locked { approvalUrl }
 secret missing?         → 404 secret_not_found          { missing }
 {{integration-token:…}} → integration checks (allowedHosts, usage, refresh) — integrations.md
 {{secret/…}}            → provider checks (binding, grant, sealed run, item hosts) — secret-providers.md

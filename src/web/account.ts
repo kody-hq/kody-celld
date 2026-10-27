@@ -40,11 +40,13 @@ import { routes } from '#universal/routes.ts'
 import { accountAliasLocation } from './account-aliases.ts'
 import { emailMessageDetailView, readEmailBodyView, readEmailMessageId } from './account-email.ts'
 import { matchAccountDetailPath } from './account-detail-paths.ts'
+import { approveSecretPackage, secretPackageApprovalDetails } from './secret-package-approval.ts'
 import { appSessionOf, readForm, redirect } from './http.ts'
 import { summarizeJobSchedule } from './job-schedule-summary.ts'
 import { assertCsrf, readWebSession, type WebSession } from './session.ts'
 import { passwordFormView } from './signin.ts'
 import { matchesSearchQuery } from './search-filter.ts'
+import { workflowView } from './workflow-view.ts'
 
 const registry = (env: Env) => env.REGISTRY.getByName('registry')
 
@@ -64,6 +66,11 @@ const flashes: Record<string, PageFlash> = {
 	run_reopened: { kind: 'ok', text: 'Run reopened.' },
 	mcp_auth_success: { kind: 'ok', text: 'Authorized. The MCP server is connected.' },
 	mcp_auth_error: { kind: 'error', text: 'Authorization did not finish; see the server status below.' },
+	secret_approved: { kind: 'ok', text: 'Package approved for this secret.' },
+	secret_grant_removed: {
+		kind: 'ok',
+		text: 'Package grant removed. When the last grant is removed, all packages are allowed again.',
+	},
 	mcp_oauth_client_error: {
 		kind: 'error',
 		text: 'Could not save or remove the OAuth client. Check the client id and secret, then try again.',
@@ -546,6 +553,33 @@ export async function handleAccount(request: Request, env: Env, ctx: ExecutionCo
 		}
 
 		case 'secrets': {
+			if (segments[1] === 'approve') {
+				if (post && form.action !== 'allow') return redirect(routes.accountSecrets.href())
+				const name = (post ? form.name : url.searchParams.get('name'))?.trim() ?? ''
+				const packageName = (post ? form.packageName : url.searchParams.get('package'))?.trim() ?? ''
+				if (!name || !packageName) {
+					throw new KodyError('invalid_args', 'A secret name and package are required for approval.')
+				}
+				if (post) {
+					await approveSecretPackage(userCell, { name, packageName })
+					await audit('secret.grant', name, { packageName, via: 'web' })
+					return redirect(hrefWithFlash(routes.accountSecrets.href(), 'secret_approved'))
+				}
+				const details = await secretPackageApprovalDetails(userCell, { name, packageName })
+				return view(session, {
+					title: 'Approve package access',
+					current: routes.accountSecretsApprove.href(),
+					flash,
+					data: {
+						page: 'accountSecretApprove',
+						csrf: session.csrf,
+						name,
+						packageName,
+						allowedPackages: details.secret.allowedPackages,
+						alreadyGranted: details.secret.allowedPackages.includes(packageName),
+					},
+				})
+			}
 			if (post) {
 				if (form.action === 'save') {
 					if (!form.name || !form.value) throw new KodyError('invalid_args', 'Name and value are required.')
@@ -565,6 +599,11 @@ export async function handleAccount(request: Request, env: Env, ctx: ExecutionCo
 					await audit('secret.delete', form.name, { via: 'web' })
 					return redirect('/account/secrets?flash=deleted')
 				}
+				if (form.action === 'remove_grant' && form.name && form.packageName) {
+					await userCell.secretUsageRemove({ name: form.name, packageName: form.packageName })
+					await audit('secret.grant.remove', form.name, { packageName: form.packageName, via: 'web' })
+					return redirect(hrefWithFlash(routes.accountSecrets.href(), 'secret_grant_removed'))
+				}
 				return redirect('/account/secrets')
 			}
 			const [secrets, hosts] = await Promise.all([userCell.secretList(), userCell.secretHostList()])
@@ -581,6 +620,7 @@ export async function handleAccount(request: Request, env: Env, ctx: ExecutionCo
 						packageName: secret.packageName ?? null,
 						description: secret.description ?? null,
 						updatedAt: secret.updatedAt,
+						allowedPackages: secret.allowedPackages,
 					})),
 					hosts: hosts.map((host) => ({ host: host.host, approvedAt: host.approvedAt, approvedBy: host.approvedBy })),
 				},
@@ -735,6 +775,30 @@ export async function handleAccount(request: Request, env: Env, ctx: ExecutionCo
 						lastStatus: job.lastStatus,
 						lastError: job.lastError,
 					})),
+				},
+			})
+		}
+
+		case 'workflows': {
+			if (post) {
+				if (form.action === 'cancel' && form.id) {
+					const result = await userCell.workflowCancel(form.id)
+					if (result?.cancelled) {
+						await audit('workflow.cancel', form.id, { via: 'web' })
+						return redirect('/account/workflows?flash=saved')
+					}
+				}
+				return redirect('/account/workflows')
+			}
+			const workflows = await userCell.workflowsList(100)
+			return view(session, {
+				title: 'Workflows',
+				current: '/account/workflows',
+				flash,
+				data: {
+					page: 'accountWorkflows',
+					csrf: session.csrf,
+					workflows: workflows.map(workflowView),
 				},
 			})
 		}

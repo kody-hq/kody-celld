@@ -2,14 +2,15 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { CapabilityContext } from './define.ts'
 import { createCapabilityRegistry } from './lookup.ts'
-import { secretSet, secretSetMany } from './secrets.ts'
+import { secretLock, secretSet, secretSetMany } from './secrets.ts'
 import { KodyError } from '../lib/errors.ts'
 
-const runSecretCapability = createCapabilityRegistry([secretSet, secretSetMany]).runCapability
+const runSecretCapability = createCapabilityRegistry([secretSet, secretSetMany, secretLock]).runCapability
 
 function context(userCell: Record<string, unknown>): CapabilityContext {
 	return {
 		env: {
+			KODY_PUBLIC_URL: 'https://kody.example',
 			REGISTRY: {
 				getByName: () => ({ auditAppend: async (entry: unknown) => entry }),
 			},
@@ -235,4 +236,103 @@ test('secretSetMany returns saved metadata in input order and audits every secre
 		],
 	)
 	assert.equal(audited.length, 2)
+})
+
+test('secretLock reports when owner approval is needed without granting access', async () => {
+	let grants = 0
+	const ctx = context({
+		secretList: async () => [
+			{
+				name: 'api-key',
+				scope: 'user',
+				packageName: null,
+				description: null,
+				createdAt: '2026-01-01T00:00:00.000Z',
+				updatedAt: '2026-01-01T00:00:00.000Z',
+				allowedPackages: [],
+			},
+		],
+		packageGet: async (name: string) => ({ name }),
+		secretUsageGrant: async () => {
+			grants++
+		},
+	})
+	const result = (await runSecretCapability('secretLock', { name: 'api-key', package_id: '@example/app' }, ctx)) as {
+		status: string
+		allowed_packages: Array<string>
+		usage_url: string
+		approval_url: string
+	}
+	assert.equal(result.status, 'approval_required')
+	assert.deepEqual(result.allowed_packages, [])
+	assert.equal(result.usage_url, 'https://kody.example/account/secrets')
+	assert.equal(
+		result.approval_url,
+		'https://kody.example/account/secrets/approve?name=api-key&package=%40example%2Fapp',
+	)
+	assert.equal(grants, 0)
+})
+
+test('secretLock reports an explicit existing grant', async () => {
+	const ctx = context({
+		secretList: async () => [
+			{
+				name: 'api-key',
+				scope: 'user',
+				packageName: null,
+				description: null,
+				createdAt: '2026-01-01T00:00:00.000Z',
+				updatedAt: '2026-01-01T00:00:00.000Z',
+				allowedPackages: ['@example/app'],
+			},
+		],
+		packageGet: async (name: string) => ({ name }),
+	})
+	const result = (await runSecretCapability('secretLock', { name: 'api-key', package_id: '@example/app' }, ctx)) as {
+		status: string
+		allowed_packages: Array<string>
+	}
+	assert.equal(result.status, 'already_granted')
+	assert.deepEqual(result.allowed_packages, ['@example/app'])
+})
+
+test('secretLock distinguishes unknown secrets, packages, and package-scope secrets', async () => {
+	const missingSecret = context({
+		secretList: async () => [],
+		packageGet: async () => ({ name: '@example/app' }),
+	})
+	await assert.rejects(
+		runSecretCapability('secretLock', { name: 'missing', package_id: '@example/app' }, missingSecret),
+		(error: unknown) => error instanceof KodyError && error.code === 'secret_not_found',
+	)
+	const missingPackage = context({
+		secretList: async () => [
+			{
+				name: 'api-key',
+				scope: 'user',
+				packageName: null,
+				allowedPackages: [],
+			},
+		],
+		packageGet: async () => null,
+	})
+	await assert.rejects(
+		runSecretCapability('secretLock', { name: 'api-key', package_id: '@example/app' }, missingPackage),
+		(error: unknown) => error instanceof KodyError && error.code === 'package_not_found',
+	)
+	const packageSecret = context({
+		secretList: async () => [
+			{
+				name: 'api-key',
+				scope: 'package',
+				packageName: '@example/app',
+				allowedPackages: [],
+			},
+		],
+		packageGet: async (name: string) => ({ name }),
+	})
+	await assert.rejects(
+		runSecretCapability('secretLock', { name: 'api-key', package_id: '@example/app' }, packageSecret),
+		(error: unknown) => error instanceof KodyError && error.code === 'invalid_secret_scope',
+	)
 })

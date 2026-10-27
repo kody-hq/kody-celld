@@ -41,7 +41,15 @@ import {
 	replacePackageFiles,
 	userPackagesTableDdl,
 } from '../packages/package-files-store.ts'
-import type { IntegrationConfig, IntegrationUsage } from '../integrations/oauth.ts'
+import { type IntegrationConfig, type IntegrationUsage } from '../integrations/oauth.ts'
+import {
+	addSecretPackageGrant,
+	allowedPackagesForSecretUsage,
+	removeSecretPackageGrant,
+	secretUsageFromJson,
+	secretUsagePermitsPackage,
+} from '../secrets/usage.ts'
+import { secretUpsertSql } from '../secrets/storage-sql.ts'
 import type { OAuthDiscoveryState } from '@modelcontextprotocol/sdk/client/auth.js'
 import type { OAuthClientInformationMixed, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js'
 import { oauthPolicyFetch } from '../mcp-client/client.ts'
@@ -96,6 +104,7 @@ export type SecretMetadata = {
 	description: string | null
 	createdAt: string
 	updatedAt: string
+	allowedPackages: Array<string>
 }
 
 export type SecretHostApproval = { host: string; approvedAt: string; approvedBy: string }
@@ -404,6 +413,7 @@ export class UserCell extends DurableObject<Env> {
 				description TEXT,
 				iv TEXT NOT NULL,
 				ciphertext TEXT NOT NULL,
+				usage_json TEXT NOT NULL DEFAULT '{"mode":"any"}',
 				created_at TEXT NOT NULL,
 				updated_at TEXT NOT NULL,
 				PRIMARY KEY (name, scope, package_name)
@@ -642,6 +652,9 @@ export class UserCell extends DurableObject<Env> {
 		if (!secretColumns.includes('key_id')) {
 			this.ctx.storage.sql.exec(`ALTER TABLE secrets ADD COLUMN key_id TEXT NOT NULL DEFAULT ''`)
 		}
+		if (!secretColumns.includes('usage_json')) {
+			this.ctx.storage.sql.exec(`ALTER TABLE secrets ADD COLUMN usage_json TEXT NOT NULL DEFAULT '{"mode":"any"}'`)
+		}
 		const usageColumns = this.ctx.storage.sql
 			.exec<{ name: string }>(`SELECT name FROM pragma_table_info('usage_daily')`)
 			.toArray()
@@ -804,6 +817,9 @@ export class UserCell extends DurableObject<Env> {
 			throw new KodyError('invalid_secret_value', 'Secret value must be at most 64 KiB.')
 		}
 		const scope: SecretScope = input.scope ?? 'user'
+		if (scope !== 'user' && scope !== 'package' && scope !== 'session') {
+			throw new KodyError('invalid_secret_scope', 'scope must be user or package.')
+		}
 		if (scope === 'session') {
 			throw new KodyError(
 				'invalid_secret_scope',
@@ -843,11 +859,7 @@ export class UserCell extends DurableObject<Env> {
 		now: string,
 	): SecretMetadata {
 		this.ctx.storage.sql.exec(
-			`INSERT INTO secrets (name, scope, package_name, description, iv, ciphertext, key_id, created_at, updated_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-			 ON CONFLICT(name, scope, package_name) DO UPDATE SET
-			   description = COALESCE(excluded.description, secrets.description),
-			   iv = excluded.iv, ciphertext = excluded.ciphertext, key_id = excluded.key_id, updated_at = excluded.updated_at`,
+			secretUpsertSql,
 			input.name,
 			input.scope,
 			input.packageName,
@@ -866,8 +878,9 @@ export class UserCell extends DurableObject<Env> {
 				description: string | null
 				created_at: string
 				updated_at: string
+				usage_json: string
 			}>(
-				`SELECT name, scope, package_name, description, created_at, updated_at
+				`SELECT name, scope, package_name, description, created_at, updated_at, usage_json
 				 FROM secrets WHERE name = ? AND scope = ? AND package_name = ?`,
 				input.name,
 				input.scope,
@@ -882,6 +895,7 @@ export class UserCell extends DurableObject<Env> {
 			description: saved.description,
 			createdAt: saved.created_at,
 			updatedAt: saved.updated_at,
+			allowedPackages: allowedPackagesForSecretUsage(secretUsageFromJson(saved.usage_json)),
 		}
 	}
 
@@ -944,7 +958,8 @@ export class UserCell extends DurableObject<Env> {
 				description: string | null
 				created_at: string
 				updated_at: string
-			}>(`SELECT name, scope, package_name, description, created_at, updated_at FROM secrets ORDER BY name`)
+				usage_json: string
+			}>(`SELECT name, scope, package_name, description, created_at, updated_at, usage_json FROM secrets ORDER BY name`)
 			.toArray()
 			.map((row) => ({
 				name: row.name,
@@ -953,7 +968,65 @@ export class UserCell extends DurableObject<Env> {
 				description: row.description,
 				createdAt: row.created_at,
 				updatedAt: row.updated_at,
+				allowedPackages: allowedPackagesForSecretUsage(secretUsageFromJson(row.usage_json)),
 			}))
+	}
+
+	private updateSecretUsage(
+		input: { name: string; packageName: string },
+		update: (usage: IntegrationUsage, packageName: string) => IntegrationUsage,
+	): SecretMetadata {
+		let saved: SecretMetadata | undefined
+		this.ctx.storage.transactionSync(() => {
+			const row = this.ctx.storage.sql
+				.exec<{
+					name: string
+					scope: SecretScope
+					package_name: string
+					description: string | null
+					created_at: string
+					updated_at: string
+					usage_json: string
+				}>(
+					`SELECT name, scope, package_name, description, created_at, updated_at, usage_json
+					 FROM secrets WHERE name = ? AND scope = 'user' AND package_name = ''`,
+					input.name,
+				)
+				.toArray()[0]
+			if (!row) throw new KodyError('secret_not_found', `Unknown user-scope secret "${input.name}".`, { status: 404 })
+			const usage = secretUsageFromJson(row.usage_json)
+			const nextUsage = update(usage, input.packageName)
+			if (JSON.stringify(usage) !== JSON.stringify(nextUsage)) {
+				const updatedAt = nowIso()
+				this.ctx.storage.sql.exec(
+					`UPDATE secrets SET usage_json = ?, updated_at = ?
+					 WHERE name = ? AND scope = 'user' AND package_name = ''`,
+					JSON.stringify(nextUsage),
+					updatedAt,
+					input.name,
+				)
+				row.updated_at = updatedAt
+			}
+			saved = {
+				name: row.name,
+				scope: row.scope,
+				packageName: null,
+				description: row.description,
+				createdAt: row.created_at,
+				updatedAt: row.updated_at,
+				allowedPackages: allowedPackagesForSecretUsage(nextUsage),
+			}
+		})
+		if (!saved) throw new KodyError('internal_error', 'Secret usage update failed.', { status: 500 })
+		return saved
+	}
+
+	async secretUsageGrant(input: { name: string; packageName: string }): Promise<SecretMetadata> {
+		return this.updateSecretUsage(input, addSecretPackageGrant)
+	}
+
+	async secretUsageRemove(input: { name: string; packageName: string }): Promise<SecretMetadata> {
+		return this.updateSecretUsage(input, removeSecretPackageGrant)
 	}
 
 	async secretDelete(input: { name: string; scope?: SecretScope | undefined; packageName?: string | undefined }) {
@@ -976,15 +1049,35 @@ export class UserCell extends DurableObject<Env> {
 	async secretResolveValues(input: {
 		names: Array<{ name: string; scope: SecretScope | null }>
 		packageName: string | null
-	}): Promise<{ values: Record<string, string>; missing: Array<string> }> {
+		enforceUsageLock?: boolean
+	}): Promise<{
+		values: Record<string, string>
+		missing: Array<string>
+		locked: Array<{ name: string; allowedPackages: Array<string> }>
+	}> {
 		const values: Record<string, string> = {}
 		const missing: Array<string> = []
+		const locked: Array<{ name: string; allowedPackages: Array<string> }> = []
+		const matches: Array<{
+			name: string
+			scope: SecretScope
+			package_name: string
+			iv: string
+			ciphertext: string
+			key_id: string
+			usage_json: string
+		}> = []
 		for (const ref of input.names) {
 			const candidates = this.ctx.storage.sql
-				.exec<{ scope: SecretScope; package_name: string; iv: string; ciphertext: string; key_id: string }>(
-					'SELECT scope, package_name, iv, ciphertext, key_id FROM secrets WHERE name = ?',
-					ref.name,
-				)
+				.exec<{
+					name: string
+					scope: SecretScope
+					package_name: string
+					iv: string
+					ciphertext: string
+					key_id: string
+					usage_json: string
+				}>('SELECT name, scope, package_name, iv, ciphertext, key_id, usage_json FROM secrets WHERE name = ?', ref.name)
 				.toArray()
 			const match = candidates.find((row) => {
 				if (ref.scope && row.scope !== ref.scope) return false
@@ -995,13 +1088,28 @@ export class UserCell extends DurableObject<Env> {
 				missing.push(ref.name)
 				continue
 			}
-			values[ref.name] = await decryptWithKeyring(await this.keyring(), this.userId, {
+			if (
+				input.enforceUsageLock &&
+				match.scope === 'user' &&
+				!secretUsagePermitsPackage(secretUsageFromJson(match.usage_json), input.packageName)
+			) {
+				locked.push({
+					name: ref.name,
+					allowedPackages: allowedPackagesForSecretUsage(secretUsageFromJson(match.usage_json)),
+				})
+				continue
+			}
+			matches.push(match)
+		}
+		if (locked.length > 0) return { values, missing, locked }
+		for (const match of matches) {
+			values[match.name] = await decryptWithKeyring(await this.keyring(), this.userId, {
 				iv: match.iv,
 				ciphertext: match.ciphertext,
 				keyId: match.key_id || undefined,
 			})
 		}
-		return { values, missing }
+		return { values, missing, locked }
 	}
 
 	/**
