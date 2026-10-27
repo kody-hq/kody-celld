@@ -107,6 +107,11 @@ function credentialPlaceholder(opened) {
 	return 'Bearer {{integration-token:' + opened.name + '}}'
 }
 
+function credentialRedirected(response) {
+	Object.defineProperty(response, 'redirected', { value: true })
+	return response
+}
+
 function credentialFetch(opened) {
 	return async (input, init) => {
 		const redirectMode = init?.redirect ?? (input instanceof Request ? input.redirect : 'follow')
@@ -119,13 +124,15 @@ function credentialFetch(opened) {
 		for (let hop = 0; ; hop += 1) {
 			const replay = request.body ? request.clone() : request
 			const response = await globalThis.fetch(request)
-			if (![301, 302, 303, 307, 308].includes(response.status) || redirectMode === 'manual') return response
+			if (![301, 302, 303, 307, 308].includes(response.status) || redirectMode === 'manual') {
+				return hop > 0 ? credentialRedirected(response) : response
+			}
 			if (redirectMode === 'error') {
 				await response.body?.cancel()
 				throw new TypeError('The response redirected and redirect is "error".')
 			}
 			const location = response.headers.get('location')
-			if (!location) return response
+			if (!location) return hop > 0 ? credentialRedirected(response) : response
 			if (hop >= 20) {
 				await response.body?.cancel()
 				throw new TypeError('Too many redirects.')

@@ -151,10 +151,12 @@ describe('runtime credential clients', () => {
 		try {
 			const client = await module.credential('api')
 			assert.ok(client.fetch)
-			await client.fetch('https://api.example.com/start')
+			const response = await client.fetch('https://api.example.com/start', { headers: { cookie: 'a=b' } })
 			assert.equal(requests[0]?.headers.get('authorization'), 'Bearer {{secret:api|scope=user}}')
 			assert.equal(requests[1]?.url, 'https://other.example.com/next')
 			assert.equal(requests[1]?.headers.has('authorization'), false)
+			assert.equal(requests[1]?.headers.has('cookie'), false)
+			assert.equal(response.redirected, true)
 		} finally {
 			globalThis.fetch = originalFetch
 		}
