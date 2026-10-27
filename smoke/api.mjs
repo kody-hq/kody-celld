@@ -24,6 +24,13 @@ export async function smokeApi({ token }) {
 	assert(openapi.json.paths?.['/v1/packages'], 'OpenAPI should list package routes', openapi.json)
 	log('openapi', { packageRoutes: Object.keys(openapi.json.paths['/v1/packages']) })
 
+	const etag = (await fetch(`${baseUrl}/openapi.json`, { method: 'HEAD' })).headers.get('etag')
+	const notModified = await fetch(`${baseUrl}/openapi.json`, { headers: { 'if-none-match': etag ?? '' } })
+	assert(etag && notModified.status === 304, 'OpenAPI should return 304 for a matching ETag', {
+		etag,
+		status: notModified.status,
+	})
+
 	const unauthenticated = await request('/v1/packages')
 	assert(
 		unauthenticated.status === 401 && unauthenticated.json?.error?.code === 'unauthorized',

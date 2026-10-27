@@ -9,14 +9,6 @@ import { buildOpenApiDocument } from './document.ts'
 import { apiOperationOptions, getAvailableApiOperations, matchApiRoute } from './operations.ts'
 import { maxApiRequestBodyBytes, mergeApiParams, readJsonBody, readQueryParams } from './request-params.ts'
 
-type ApiHandlerDependencies = {
-	authenticate?: (request: Request, env: Env) => Promise<Principal | null>
-	capabilities?: ReadonlyArray<Pick<CapabilityDefinition, 'name' | 'inputSchema' | 'readOnly'>>
-	runCapability?: (name: string, args: unknown, ctx: CapabilityContext) => Promise<unknown>
-	search?: (input: SearchInput, ctx: CapabilityContext) => Promise<unknown>
-	runExecuteTool?: (args: Record<string, unknown>, ctx: CapabilityContext) => Promise<unknown>
-}
-
 function errorResponse(cause: unknown, pathname: string) {
 	const kodyError = KodyError.fromUnknown(cause)
 	if (kodyError) {
@@ -53,14 +45,14 @@ function etagMatches(header: string | null, etag: string) {
 		.some((value) => value === '*' || value === etag || value.replace(/^W\//, '') === etag)
 }
 
-async function handleOpenApi(request: Request, env: Env, dependencies: ApiHandlerDependencies) {
+async function handleOpenApi(request: Request, env: Env) {
 	if (request.method !== 'GET' && request.method !== 'HEAD') {
 		return Response.json(
 			{ error: { code: 'method_not_allowed', message: `Method ${request.method} is not allowed here.` } },
 			{ status: 405, headers: { Allow: 'GET, HEAD' } },
 		)
 	}
-	const capabilities = dependencies.capabilities ?? (await import('../capabilities/registry.ts')).capabilities
+	const capabilities = (await import('../capabilities/registry.ts')).capabilities
 	const document = JSON.stringify(buildOpenApiDocument(env.KODY_PUBLIC_URL, capabilities))
 	const etag = await openApiEtag(document)
 	const headers = { 'Cache-Control': 'public, max-age=300', ETag: etag }
@@ -157,16 +149,11 @@ function validateExecuteApiInput(params: Record<string, unknown>) {
 	}
 }
 
-export async function handleApiRequest(
-	request: Request,
-	env: Env,
-	execution: ExecutionContext,
-	dependencies: ApiHandlerDependencies = {},
-): Promise<Response> {
+export async function handleApiRequest(request: Request, env: Env, execution: ExecutionContext): Promise<Response> {
 	const url = new URL(request.url)
 	if (url.pathname === '/openapi.json') {
 		try {
-			return await handleOpenApi(request, env, dependencies)
+			return await handleOpenApi(request, env)
 		} catch (caught) {
 			return errorResponse(caught, url.pathname)
 		}
@@ -178,7 +165,7 @@ export async function handleApiRequest(
 		)
 	}
 
-	const registeredCapabilities = dependencies.capabilities ?? (await import('../capabilities/registry.ts')).capabilities
+	const registeredCapabilities = (await import('../capabilities/registry.ts')).capabilities
 	const operations = getAvailableApiOperations(registeredCapabilities.map((capability) => capability.name))
 	const match = matchApiRoute(request.method, url.pathname, operations)
 	if (match.kind === 'not_found') {
@@ -200,7 +187,7 @@ export async function handleApiRequest(
 	}
 
 	try {
-		const authenticate = dependencies.authenticate ?? (await import('../auth/authenticate.ts')).authenticateBearer
+		const authenticate = (await import('../auth/authenticate.ts')).authenticateBearer
 		const auth = await authenticate(request, env)
 		if (!auth) {
 			return new Response(
@@ -226,7 +213,7 @@ export async function handleApiRequest(
 		params = mergeApiParams(renamedPathParams(match.route.pathParams, operationId), params)
 		const capContext: CapabilityContext = context(env, execution, auth)
 		if (operationId === 'search') {
-			const runSearch = dependencies.search ?? (await import('../mcp/search.ts')).search
+			const runSearch = (await import('../mcp/search.ts')).search
 			return Response.json(await runSearch(params as SearchInput, capContext))
 		}
 		if (operationId === 'execute') {
@@ -234,10 +221,10 @@ export async function handleApiRequest(
 				throw error('invalid_input', 'The credentials field is not supported by celld.', 400)
 			}
 			validateExecuteApiInput(params)
-			const runExecute = dependencies.runExecuteTool ?? (await import('../mcp/server.ts')).runExecuteTool
+			const runExecute = (await import('../mcp/server.ts')).runExecuteTool
 			return Response.json(await runExecute(params, capContext))
 		}
-		const runCapability = dependencies.runCapability ?? (await import('../capabilities/registry.ts')).runCapability
+		const runCapability = (await import('../capabilities/registry.ts')).runCapability
 		return Response.json(await runCapability(operationId, params, capContext))
 	} catch (caught) {
 		return errorResponse(caught, url.pathname)
