@@ -33,9 +33,16 @@ export function AccountJobs(handle: Handle<{ data: Data; pathname: string }>) {
 						emptyLabel="No jobs. Jobs come from package manifests."
 						countLabel={`${d.jobs.length} total`}
 						columns={[
-							// Wrap so scope/package/job shows in full beside Actions.
+							// Job takes remaining free width; Schedule is a short
+							// cron/interval so it stays fixed and does not steal
+							// half the leftover track from the name.
 							{ key: 'job', label: 'Job', primary: true, wrap: true },
-							{ key: 'schedule', label: 'Schedule', drop: 3 },
+							{
+								key: 'schedule',
+								label: 'Schedule',
+								drop: 3,
+								width: '8.5rem',
+							},
 							// Account shell content is ~50rem beside the rail.
 							// Shed Last with Schedule at 900px so Next, Status,
 							// and Actions keep their design-system widths.
@@ -47,6 +54,11 @@ export function AccountJobs(handle: Handle<{ data: Data; pathname: string }>) {
 						]}
 						rows={d.jobs.map((job) => {
 							const jobLabel = `${job.packageName}/${job.jobName}`
+							// Soft-wrap at `/` only: non-breaking hyphens keep
+							// `jobs-ui-before` intact; ZWSP after each slash.
+							const jobLabelBreaks = jobLabel
+								.replaceAll('-', '\u2011')
+								.replaceAll('/', '/\u200B')
 							return {
 								id: job.id,
 								cells: {
@@ -57,7 +69,7 @@ export function AccountJobs(handle: Handle<{ data: Data; pathname: string }>) {
 												title={jobLabel}
 												mix={css(primaryLinkCss)}
 											>
-												<strong>{jobLabel}</strong>
+												<strong>{jobLabelBreaks}</strong>
 											</a>
 											{job.description ? (
 												<>

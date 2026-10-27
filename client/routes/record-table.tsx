@@ -382,7 +382,11 @@ const wrapCellCss = {
 	whiteSpace: 'normal' as const,
 	overflow: 'visible' as const,
 	textOverflow: 'clip' as const,
-	overflowWrap: 'anywhere' as const,
+	// Prefer author-supplied soft breaks (e.g. ZWSP after `/`) over
+	// mid-token splits. `break-word` only breaks inside a word when that
+	// single token still overflows the track.
+	overflowWrap: 'break-word' as const,
+	hyphens: 'none' as const,
 }
 
 const rowLinkCss = {

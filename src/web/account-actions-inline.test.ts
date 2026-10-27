@@ -19,6 +19,7 @@ describe('jobs list action row', () => {
 		assert.match(cssSource, /width: 'max-content'/)
 		assert.match(cssSource, /gap: '0\.7rem'/)
 		assert.match(cssSource, /minWidth: '6\.75rem'/)
+		assert.match(cssSource, /@container \(max-width: 620px\)/)
 		assert.doesNotMatch(cssSource, /paddingLeft: '0\.65rem'/)
 	})
 
@@ -28,19 +29,26 @@ describe('jobs list action row', () => {
 		assert.match(detail, /primaryLinkCss/)
 	})
 
-	it('job detail IdValue keeps a compact copy control beside the id', () => {
+	it('job detail IdValue uses a wrapping sm ghost Copy; chip stays one-line', () => {
 		const detail = readFileSync(here('../../client/routes/account-jobs-detail.tsx'), 'utf8')
 		assert.match(detail, /copy="ghost"/)
 		const idValue = readFileSync(here('../../client/routes/account-management-components.tsx'), 'utf8')
-		assert.match(idValue, /variant="chip"/)
+		assert.match(idValue, /const wrap = handle\.props\.copy === 'ghost'/)
+		assert.match(idValue, /variant=\{wrap \? 'ghost' : 'chip'\}/)
+		assert.match(idValue, /size=\{wrap \? 'sm' : undefined\}/)
 		assert.match(idValue, /overflowWrap: 'anywhere'/)
+		assert.match(idValue, /textOverflow: 'ellipsis'/)
 		assert.match(idValue, /borderLeft: `1px solid \$\{colors\.border\}`/)
 		assert.match(idValue, /Wrapper owns the segment chrome/)
+		assert.match(idValue, /main:has\(> \[data-page-flash\]\) > &/)
 	})
 
-	it('jobs list uses primary link styling and wraps the job name', () => {
+	it('jobs list uses primary link styling and wraps the job name at slashes', () => {
 		const jobsList = readFileSync(here('../../client/routes/account-jobs.tsx'), 'utf8')
 		assert.match(jobsList, /primaryLinkCss/)
 		assert.match(jobsList, /wrap: true/)
+		assert.match(jobsList, /width: '8\.5rem'/)
+		assert.match(jobsList, /\\u2011/)
+		assert.match(jobsList, /\\u200B/)
 	})
 })

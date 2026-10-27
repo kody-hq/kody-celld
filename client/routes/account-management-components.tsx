@@ -145,6 +145,12 @@ export const accountActionsInlineCss = {
 		// Fits "Run now" / "Running…" / "Resume" at sm ghost padding.
 		minWidth: '6.75rem',
 	},
+	// Card-mode rows (≤620px) put the label beside the value; two side-by-side
+	// 6.75rem buttons overflow the value track, so stack them.
+	'@container (max-width: 620px)': {
+		gridAutoFlow: 'row' as const,
+		width: '100%',
+	},
 }
 
 /** `.account-more` — quiet green disclosure ("Change email"). */
@@ -232,6 +238,13 @@ export function AccountManagementShell(
 				display: 'grid',
 				gap: spacing.xl,
 				alignItems: 'start',
+				// Flash already adds top rhythm; tighten this shell's own
+				// paddingTop on the same `css()` layer so it beats
+				// `pageBlockPadding.top` (an ancestor `main` rule loses to
+				// this class's cascade sub-layer).
+				'main:has(> [data-page-flash]) > &': {
+					paddingTop: spacing.sm,
+				},
 				// Prototype `.account` layout: 200px rail beside the content
 				// column, 72rem total. The rail is absolutely positioned in a
 				// left track and only exists when the section nav is present —
@@ -610,17 +623,19 @@ export function MetadataGrid(handle: Handle<MetadataGridProps>) {
 
 /**
  * An identifier is a copy target, not a sentence. Value + Copy share one
- * bordered control (input-group): same outer height, compact Copy segment,
- * monospace value that can break so a long job id is not clipped.
+ * bordered control (input-group).
+ *
+ * Default (`copy: 'chip'`, or omitted): one-line ellipsis — table
+ * `primaryAccessory` beside an email/name must stay a single chip.
+ *
+ * `copy: 'ghost'`: wrapping metadata field (job detail) with a normal sm
+ * ghost Copy that fills the segment height.
  *
  * The whole string stays in the DOM — wrapping is CSS, never a truncated
  * substring — so a screen reader still reads the id in full, and `user-select:
  * all` turns one click into a whole-value selection for anyone the clipboard
  * button does not work for. `title` is the mouse-hover convenience on top of
  * that, not the mechanism.
- *
- * `copy` is retained for call-site compatibility; both modes use the compact
- * chip inside the shared chrome (a standalone `sm` ghost overpowered the field).
  */
 export function IdValue(
 	handle: Handle<{
@@ -630,61 +645,100 @@ export function IdValue(
 		copy?: 'chip' | 'ghost'
 	}>,
 ) {
-	return () => (
-		<span
-			mix={css({
-				display: 'flex',
-				alignItems: 'stretch',
-				minWidth: 0,
-				maxWidth: '100%',
-				borderRadius: radius.sm,
-				border: `1px solid ${colors.border}`,
-				backgroundColor: colors.background,
-				overflow: 'hidden',
-			})}
-		>
-			<code
-				title={handle.props.value}
-				mix={css({
-					flex: '1 1 auto',
-					minWidth: 0,
-					display: 'flex',
-					alignItems: 'center',
-					// Prefer breaks at punctuation (/ #) over mid-glyph splits.
-					overflowWrap: 'anywhere',
-					whiteSpace: 'normal',
-					userSelect: 'all',
-					fontFamily: 'monospace',
-					fontSize: typography.fontSize.sm,
-					lineHeight: 1.35,
-					padding: '0.4rem 0.55rem',
-					border: 'none',
-					backgroundColor: 'transparent',
-					color: colors.text,
-				})}
-			>
-				{handle.props.value}
-			</code>
-			{/* Wrapper owns the segment chrome — a child `css()` layer on the
-			    button cannot be overridden from the parent reliably. */}
+	return () => {
+		const wrap = handle.props.copy === 'ghost'
+		return (
 			<span
 				mix={css({
 					display: 'flex',
-					alignItems: 'center',
-					flex: 'none',
-					borderLeft: `1px solid ${colors.border}`,
-					backgroundColor: colors.surface,
-					paddingInline: '0.35rem',
+					alignItems: 'stretch',
+					minWidth: 0,
+					maxWidth: '100%',
+					borderRadius: radius.sm,
+					border: `1px solid ${colors.border}`,
+					backgroundColor: colors.background,
+					overflow: 'hidden',
 				})}
 			>
-				<CopyTextButton
-					value={handle.props.value}
-					variant="chip"
-					ariaLabel={`Copy ${handle.props.label}`}
-				/>
+				<code
+					title={handle.props.value}
+					mix={css(
+						wrap
+							? {
+									flex: '1 1 auto',
+									minWidth: 0,
+									display: 'flex',
+									alignItems: 'center',
+									overflowWrap: 'anywhere',
+									whiteSpace: 'normal' as const,
+									userSelect: 'all' as const,
+									fontFamily: 'monospace',
+									fontSize: typography.fontSize.sm,
+									lineHeight: 1.35,
+									padding: '0.4rem 0.55rem',
+									border: 'none',
+									backgroundColor: 'transparent',
+									color: colors.text,
+								}
+							: {
+									flex: '1 1 auto',
+									minWidth: 0,
+									display: 'block',
+									overflow: 'hidden',
+									textOverflow: 'ellipsis',
+									whiteSpace: 'nowrap' as const,
+									userSelect: 'all' as const,
+									fontFamily: 'monospace',
+									fontSize: typography.fontSize.sm,
+									lineHeight: 1.35,
+									padding: '0.4rem 0.55rem',
+									border: 'none',
+									backgroundColor: 'transparent',
+									color: colors.text,
+								},
+					)}
+				>
+					{handle.props.value}
+				</code>
+				{/* Wrapper owns the segment chrome — a child `css()` layer on the
+				    button cannot be overridden from the parent reliably. */}
+				<span
+					mix={css(
+						wrap
+							? {
+									display: 'flex',
+									alignItems: 'stretch',
+									flex: 'none',
+									borderLeft: `1px solid ${colors.border}`,
+									backgroundColor: colors.surface,
+									'& > button': {
+										height: '100%',
+										alignSelf: 'stretch',
+										borderRadius: 0,
+										boxShadow: 'none',
+										paddingInline: '1.1rem',
+									},
+								}
+							: {
+									display: 'flex',
+									alignItems: 'center',
+									flex: 'none',
+									borderLeft: `1px solid ${colors.border}`,
+									backgroundColor: colors.surface,
+									paddingInline: '0.35rem',
+								},
+					)}
+				>
+					<CopyTextButton
+						value={handle.props.value}
+						variant={wrap ? 'ghost' : 'chip'}
+						size={wrap ? 'sm' : undefined}
+						ariaLabel={`Copy ${handle.props.label}`}
+					/>
+				</span>
 			</span>
-		</span>
-	)
+		)
+	}
 }
 
 /**

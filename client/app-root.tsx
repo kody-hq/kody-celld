@@ -106,11 +106,6 @@ const mainCss = {
 	flex: '1 1 auto',
 	width: '100%',
 	boxSizing: 'border-box' as const,
-	// Flash already adds top rhythm; tighten the shell so banner → title
-	// reads as one intentional stack rather than two padded bands.
-	'&:has(> [data-page-flash]) [data-account-shell]': {
-		paddingTop: spacing.sm,
-	},
 }
 
 const flashWrapCss = {
