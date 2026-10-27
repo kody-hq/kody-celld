@@ -68,13 +68,49 @@ export type CredentialSlot = {
 	description: string
 }
 
-export const subscriptionTopics = [
+export const emittedSubscriptionTopics = [
 	'email.message.received',
 	'email.message.quarantined',
 	'email.message.delivery.updated',
 	'integration.auth.succeeded',
 	'integration.auth.failed',
 ] as const
+
+export const hostedSubscriptionTopics = [
+	'run.error.recorded',
+	'mcp.server.disconnected',
+	'mcp.server.reconnected',
+	'repo.pushed',
+	'repo.created',
+	'repo.deleted',
+	'follow.published',
+	'follow.pushed',
+	'community.fork.upstream_updated',
+	'package.codemod.applied',
+	'package.codemod.reverted',
+	'credential.created',
+	'credential.updated',
+	'credential.deleted',
+	'credential.rotated',
+	'credential.disconnected',
+	'package.created',
+	'package.updated',
+	'package.deleted',
+	'package.published',
+	'job.created',
+	'job.updated',
+	'job.deleted',
+	'trigger.updated',
+	'membership.created',
+	'membership.updated',
+	'membership.deleted',
+	'memory.created',
+	'memory.updated',
+	'memory.deleted',
+] as const
+
+const emittedSubscriptionTopicSet = new Set<string>(emittedSubscriptionTopics)
+const hostedSubscriptionTopicSet = new Set<string>(hostedSubscriptionTopics)
 
 /** Export a package must declare to act as a `{{secret/<id>:<ref>}}` provider. */
 export const secretProviderExportName = 'secretProvider'
@@ -86,7 +122,7 @@ export type SecretProviderDefinition = {
 	description?: string
 }
 
-export type SubscriptionTopic = (typeof subscriptionTopics)[number]
+export type SubscriptionTopic = (typeof emittedSubscriptionTopics)[number]
 
 export const webhookNamePattern = /^[a-z0-9][a-z0-9-]*$/
 export const webhookDefaultRateLimit = 60
@@ -294,16 +330,23 @@ function parseWebhooks(raw: unknown, exports: Record<string, string>): Array<Web
 	return webhooks
 }
 
-function parseSubscriptions(raw: unknown, files: PackageFiles): Array<SubscriptionDefinition> {
+function parseSubscriptions(raw: unknown, files: PackageFiles, warnings: Array<string>): Array<SubscriptionDefinition> {
 	if (raw === undefined) return []
 	if (!isRecord(raw)) throw new KodyError('invalid_manifest', 'kody.subscriptions must be an object keyed by topic.')
 	const subscriptions: Array<SubscriptionDefinition> = []
 	for (const [topic, item] of Object.entries(raw)) {
-		if (!(subscriptionTopics as ReadonlyArray<string>).includes(topic)) {
-			throw new KodyError(
-				'invalid_manifest',
-				`kody.subscriptions["${topic}"]: unknown topic. Supported: ${subscriptionTopics.join(', ')}.`,
-			)
+		if (topic.length === 0) throw new KodyError('invalid_manifest', 'kody.subscriptions topic must not be empty.')
+		if (!emittedSubscriptionTopicSet.has(topic)) {
+			const where = `kody.subscriptions["${topic}"]`
+			if (hostedSubscriptionTopicSet.has(topic)) {
+				warnings.push(`${where}: celld does not emit this topic yet. The handler is saved but will not run.`)
+			} else if (topic.startsWith('@')) {
+				warnings.push(
+					`${where}: package-emitted topics are not supported on celld yet. The handler is saved but will not run.`,
+				)
+			} else {
+				warnings.push(`${where}: unknown topic. The handler is saved but no celld event triggers it.`)
+			}
 		}
 		if (!isRecord(item) || typeof item.handler !== 'string') {
 			throw new KodyError('invalid_manifest', `kody.subscriptions["${topic}"].handler is required.`)
@@ -314,6 +357,15 @@ function parseSubscriptions(raw: unknown, files: PackageFiles): Array<Subscripti
 				'invalid_manifest',
 				`kody.subscriptions["${topic}"].handler "${handler}" is not in the package files.`,
 			)
+		}
+		if (item.filters !== undefined && item.filters !== null) {
+			warnings.push(
+				`kody.subscriptions["${topic}"].filters is not applied on celld; the handler runs for every event on this topic.`,
+			)
+		}
+		for (const key of Object.keys(item)) {
+			if (['handler', 'description', 'filters'].includes(key)) continue
+			warnings.push(`kody.subscriptions["${topic}"].${key} is not supported on celld and was dropped.`)
 		}
 		subscriptions.push({
 			topic,
@@ -497,6 +549,26 @@ export function parsePackageManifest(files: PackageFiles): PackageManifest {
 	}
 	const kody = isRecord(json.kody) ? json.kody : {}
 	const parseWarnings: Array<string> = []
+	const handledKodyKeys = new Set([
+		'description',
+		'jobs',
+		'webhooks',
+		'subscriptions',
+		'secretProvider',
+		'app',
+		'credentials',
+		'hidden',
+		'dependencies',
+	])
+	const hostedOnlyKodyKeys = new Set(['id', 'tags', 'category', 'searchText', 'secretMounts', 'emits', 'retrievers'])
+	for (const key of Object.keys(kody)) {
+		if (handledKodyKeys.has(key)) continue
+		if (hostedOnlyKodyKeys.has(key)) {
+			parseWarnings.push(`kody.${key} is not supported on celld yet and was ignored.`)
+		} else {
+			parseWarnings.push(`kody.${key} is not a known manifest key and was ignored.`)
+		}
+	}
 
 	const exports: Record<string, string> = {}
 	if (typeof json.exports === 'string') {
@@ -574,7 +646,7 @@ export function parsePackageManifest(files: PackageFiles): PackageManifest {
 		exports,
 		jobs,
 		webhooks: parseWebhooks(kody.webhooks, exports),
-		subscriptions: parseSubscriptions(kody.subscriptions, files),
+		subscriptions: parseSubscriptions(kody.subscriptions, files, parseWarnings),
 		secretProvider: parseSecretProvider(kody.secretProvider, exports),
 		app: parseApp(kody.app, files),
 		credentials: parseCredentialSlots(kody.credentials, parseWarnings),
