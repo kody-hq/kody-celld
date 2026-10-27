@@ -101,18 +101,13 @@ export async function dispatchDueWorkflows(env: Env, exports: ExecutionContext['
 	const registry = env.REGISTRY.getByName('registry')
 	const users = await registry.listUsers()
 	const nowIso = now.toISOString()
-	const startedAt = Date.now()
 	const summary: Array<{ userId: string; workflowId: string; status: string; runId: string | null }> = []
 	await Promise.all(
 		users.map(async (user) => {
 			const userCell = getUserCell(env, user.id)
-			for (let claimed = 0; claimed < maxConcurrentWorkflows; claimed++) {
-				const claimAt = new Date(now.getTime() + Date.now() - startedAt).toISOString()
-				const [workflow] = await userCell.workflowsClaimDue(claimAt, 1)
-				if (!workflow) break
-				const outcome = await runWorkflowAttempt(env, exports, user, workflow)
-				summary.push({ userId: user.id, ...outcome })
-			}
+			const workflows = await userCell.workflowsClaimDue(nowIso, maxConcurrentWorkflows)
+			const outcomes = await Promise.all(workflows.map((workflow) => runWorkflowAttempt(env, exports, user, workflow)))
+			for (const outcome of outcomes) summary.push({ userId: user.id, ...outcome })
 		}),
 	)
 	return { at: nowIso, users: users.length, ran: summary }
