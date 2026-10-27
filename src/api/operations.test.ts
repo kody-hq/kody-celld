@@ -30,18 +30,31 @@ test('distinguishes unknown paths and methods', () => {
 	})
 })
 
-test('registers only the native token routes in addition to capabilities', () => {
+test('registers native token routes in addition to capabilities', () => {
 	const operations = getAvailableApiOperations([])
 	assert.deepEqual(
 		operations.filter(([, path]) => path.startsWith('/v1/tokens')),
 		[
 			['POST', '/v1/tokens/device', 'cliLoginDeviceToken'],
+			['GET', '/v1/tokens', 'tokenList'],
+			['POST', '/v1/tokens', 'tokenCreate'],
 			['GET', '/v1/tokens/current', 'tokenGetCurrent'],
 			['POST', '/v1/tokens/current/rotate', 'tokenRotateCurrent'],
 			['DELETE', '/v1/tokens/current', 'tokenRevokeCurrent'],
+			['GET', '/v1/tokens/{token_id}', 'tokenGet'],
+			['POST', '/v1/tokens/{token_id}/rotate', 'tokenRotate'],
+			['DELETE', '/v1/tokens/{token_id}', 'tokenRevoke'],
 		],
 	)
-	assert(!operations.some(([, path]) => String(path) === '/v1/tokens' || path.includes('{token_id}')))
+})
+
+test('static current-token routes take precedence over token-id routes', () => {
+	const getCurrent = matchApiRoute('GET', '/v1/tokens/current')
+	assert.equal(getCurrent.kind, 'match')
+	if (getCurrent.kind === 'match') assert.equal(getCurrent.route.operation[2], 'tokenGetCurrent')
+	const rotateCurrent = matchApiRoute('POST', '/v1/tokens/current/rotate')
+	assert.equal(rotateCurrent.kind, 'match')
+	if (rotateCurrent.kind === 'match') assert.equal(rotateCurrent.route.operation[2], 'tokenRotateCurrent')
 })
 
 test('serves hosted rows only when their capability is registered', () => {

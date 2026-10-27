@@ -113,6 +113,114 @@ describe('ApiTokenStore', () => {
 		await assert.rejects(mint(store, { name: 'x'.repeat(101), lifetime: 'short' }), /at most 100 characters/)
 	})
 
+	it('creates tokens with hosted lifetime forms, normalizes scopes, and caps child lifetime', async () => {
+		const { store } = makeStore()
+		const short = await mint(store, { lifetime: 'short', now: time })
+		const long = await mint(store, { lifetime: 'long', now: time })
+		const explicit = await mint(store, { idleTtlSeconds: 120, maxLifetimeSeconds: 600, now: time })
+		assert.equal(short.idle_ttl_seconds, 3600)
+		assert.equal(short.max_expires_at, '2026-01-02T00:00:00.000Z')
+		assert.equal(long.idle_ttl_seconds, 1209600)
+		assert.equal(long.max_expires_at, '2026-04-01T00:00:00.000Z')
+		assert.equal(explicit.idle_ttl_seconds, 120)
+		assert.equal(explicit.max_expires_at, '2026-01-01T00:10:00.000Z')
+		assert.deepEqual(
+			(await mint(store, { scopes: ['package:execute', 'org:read', 'org:read'], lifetime: 'short', now: time })).scopes,
+			['org:read', 'package:execute'],
+		)
+		await assert.rejects(
+			mint(store, { scopes: ['not-a-scope'], lifetime: 'short', now: time }),
+			/Unknown API token scope\(s\): not-a-scope\./,
+		)
+		await assert.rejects(mint(store, { scopes: [], lifetime: 'short', now: time }), /At least one scope is required/)
+		await assert.rejects(mint(store, { scopes, now: time }), /Token lifetime is required/)
+		await assert.rejects(
+			mint(store, { scopes, lifetime: 'short', idleTtlSeconds: 60, maxLifetimeSeconds: 60, now: time }),
+			/not both forms/,
+		)
+		await assert.rejects(
+			mint(store, { scopes, idleTtlSeconds: 59, maxLifetimeSeconds: 60, now: time }),
+			/integer between 60 and 1209600/,
+		)
+		const child = await mint(store, {
+			scopes: ['org:read'],
+			lifetime: 'long',
+			parent: { scopes: ['org:read'], maxExpiresAt: new Date(time.getTime() + 60_000).toISOString() },
+			now: time,
+		})
+		assert.equal(child.max_expires_at, '2026-01-01T00:01:00.000Z')
+		await assert.rejects(
+			mint(store, {
+				scopes: ['package:execute'],
+				lifetime: 'short',
+				parent: { scopes: ['org:read'], maxExpiresAt: new Date(time.getTime() + 60_000).toISOString() },
+				now: time,
+			}),
+			/A token cannot grant scopes it does not hold: package:execute\./,
+		)
+	})
+
+	it('lists only the caller’s tokens in hosted order and can include inactive entries', async () => {
+		const { store } = makeStore()
+		const revoked = await mint(store, { name: 'revoked', lifetime: 'short', now: new Date(time.getTime() - 1000) })
+		const tiedOne = await mint(store, { name: 'tied one', lifetime: 'short', now: time })
+		const tiedTwo = await mint(store, { name: 'tied two', lifetime: 'short', now: time })
+		const later = await mint(store, { name: 'later', lifetime: 'short', now: new Date(time.getTime() + 1000) })
+		const expired = await mint(store, {
+			name: 'expired',
+			idleTtlSeconds: 60,
+			maxLifetimeSeconds: 60,
+			now: time,
+		})
+		const revokedId = parseApiToken(revoked.token)!.tokenId
+		assert.equal(store.revoke(userId, revokedId, time), true)
+		await mint(store, { userId: 'user_b', name: 'other user', lifetime: 'short', now: time })
+
+		const active = store.list(userId, false, new Date(time.getTime() + 61_000))
+		assert.deepEqual(
+			active.map((token) => token.id),
+			[
+				parseApiToken(later.token)!.tokenId,
+				...[parseApiToken(tiedOne.token)!.tokenId, parseApiToken(tiedTwo.token)!.tokenId].sort(),
+			],
+		)
+		assert(active.every((token) => token.status === 'active'))
+		const inactive = store.list(userId, true, new Date(time.getTime() + 61_000))
+		assert.equal(inactive.find((token) => token.id === revokedId)?.status, 'revoked')
+		assert.equal(inactive.find((token) => token.id === parseApiToken(expired.token)!.tokenId)?.status, 'expired')
+		assert.equal(inactive.length, 5)
+		assert.deepEqual(
+			store.list('user_b', false, time).map((token) => token.name),
+			['other user'],
+		)
+		assert.equal(store.list('missing-user', true, time).length, 0)
+		const view = inactive.find((token) => token.id === parseApiToken(tiedOne.token)!.tokenId)!
+		assert.equal(view.org_id, userId)
+		assert.equal(view.org_binding, 'user')
+		assert.equal(view.profile_name, null)
+		assert.equal(view.created_via, 'cli-login')
+		assert.equal('token' in view, false)
+	})
+
+	it('gets, rotates, and revokes by id without crossing user boundaries', async () => {
+		const { store } = makeStore()
+		const created = await mint(store, { lifetime: 'short', now: time })
+		const id = parseApiToken(created.token)!.tokenId
+		assert.equal(store.get(userId, id, time)?.id, id)
+		assert.equal(store.get('user_b', id, time), null)
+		assert.equal(store.get(userId, 'unknown-id', time), null)
+		assert.equal(await store.rotate('user_b', id, time), null)
+		assert.equal(await store.rotate(userId, 'unknown-id', time), null)
+		assert.equal(store.revoke('user_b', id, time), false)
+		assert.equal(store.revoke(userId, 'unknown-id', time), false)
+		const rotated = await store.rotate(userId, id, time)
+		assert.ok(rotated)
+		assert.equal(await store.resolve(created.token, time), null)
+		assert.equal(store.revoke(userId, id, time), true)
+		assert.equal(await store.resolve(rotated.token, time), null)
+		assert.equal(store.get(userId, id, time)?.status, 'revoked')
+	})
+
 	it('slides expiry but never extends beyond the absolute maximum', async () => {
 		const { store } = makeStore()
 		const created = await mint(store, {

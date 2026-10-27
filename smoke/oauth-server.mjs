@@ -406,7 +406,67 @@ export async function smokeOAuthServer({ user, mcp }) {
 		currentTokenStatus: revokedCurrent.json.status,
 		revokedAt: revokedCurrent.json.revoked_at,
 	})
-	log('access', 'OAuth token mints kody_at_; metadata, /v1 access, rotation, and revocation work')
+	const collectionToken = await json('/v1/tokens', {
+		method: 'POST',
+		headers: { authorization: `Bearer ${tokens.json.access_token}` },
+		body: { name: 'collection smoke', scopes: ['search:read'], lifetime: 'short' },
+	})
+	assert(
+		collectionToken.status === 200 &&
+			collectionToken.json.token?.startsWith('kody_at_') &&
+			collectionToken.json.created_via === 'mcp-api' &&
+			collectionToken.headers.get('cache-control') === 'no-store',
+		'OAuth access token creates a token through the collection route',
+		{ status: collectionToken.status, error: collectionToken.json.error },
+	)
+	const collectionList = await json('/v1/tokens', {
+		headers: { authorization: `Bearer ${tokens.json.access_token}` },
+	})
+	assert(
+		collectionList.status === 200 &&
+			collectionList.json.tokens.some((token) => token.id === collectionToken.json.id) &&
+			collectionList.headers.get('cache-control') === 'no-store',
+		'token list includes the created token without caching',
+		{ status: collectionList.status },
+	)
+	const collectionGet = await json(`/v1/tokens/${collectionToken.json.id}`, {
+		headers: { authorization: `Bearer ${tokens.json.access_token}` },
+	})
+	assert(
+		collectionGet.status === 200 &&
+			collectionGet.json.id === collectionToken.json.id &&
+			collectionGet.headers.get('cache-control') === 'no-store',
+		'token get returns the created token by id',
+		{ status: collectionGet.status },
+	)
+	const collectionAuthorization = { authorization: `Bearer ${collectionToken.json.token}` }
+	const collectionRotate = await json(`/v1/tokens/${collectionToken.json.id}/rotate`, {
+		method: 'POST',
+		headers: { authorization: `Bearer ${tokens.json.access_token}` },
+	})
+	assert(
+		collectionRotate.status === 200 &&
+			collectionRotate.json.token !== collectionToken.json.token &&
+			collectionRotate.headers.get('cache-control') === 'no-store',
+		'token rotate replaces the credential by id',
+	)
+	const collectionOldCredential = await json('/v1/search?query=secret', { headers: collectionAuthorization })
+	assert(collectionOldCredential.status === 401, 'by-id rotation invalidates the old credential')
+	const collectionRevoke = await json(`/v1/tokens/${collectionToken.json.id}`, {
+		method: 'DELETE',
+		headers: { authorization: `Bearer ${tokens.json.access_token}` },
+	})
+	assert(
+		collectionRevoke.status === 200 &&
+			collectionRevoke.json.revoked === true &&
+			collectionRevoke.headers.get('cache-control') === 'no-store',
+		'token revoke works by id without caching',
+	)
+	const collectionRevokedCredential = await json('/v1/search?query=secret', {
+		headers: { authorization: `Bearer ${collectionRotate.json.token}` },
+	})
+	assert(collectionRevokedCredential.status === 401, 'by-id revocation invalidates the rotated credential')
+	log('access', 'OAuth token mints kody_at_; current and by-id metadata, rotation, and revocation work')
 
 	// --- refresh rotation + replay detection ----------------------------------
 	const refreshed = await tokenRequest({

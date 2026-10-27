@@ -287,6 +287,7 @@ export class RegistryCell extends DurableObject<Env> {
 		maxLifetimeSeconds?: number
 		createdVia: string
 		scopes?: ReadonlyArray<string>
+		parent?: { scopes: ReadonlyArray<string>; maxExpiresAt: string }
 	}): Promise<ApiTokenSecretView> {
 		return this.apiTokens.mint({
 			...input,
@@ -320,6 +321,22 @@ export class RegistryCell extends DurableObject<Env> {
 
 	apiTokenRevokeCurrent(userId: string, tokenId: string): boolean {
 		return this.apiTokens.revokeCurrent(userId, tokenId)
+	}
+
+	apiTokenList(userId: string, includeInactive = false): Array<ApiTokenView> {
+		return this.apiTokens.list(userId, includeInactive)
+	}
+
+	apiTokenGet(userId: string, tokenId: string): ApiTokenView | null {
+		return this.apiTokens.get(userId, tokenId)
+	}
+
+	apiTokenRotate(userId: string, tokenId: string): Promise<ApiTokenSecretView | null> {
+		return this.apiTokens.rotate(userId, tokenId)
+	}
+
+	apiTokenRevoke(userId: string, tokenId: string): boolean {
+		return this.apiTokens.revoke(userId, tokenId)
 	}
 
 	async listUsers(): Promise<Array<UserRecord>> {

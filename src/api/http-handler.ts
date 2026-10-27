@@ -11,6 +11,7 @@ import { maxApiRequestBodyBytes, mergeApiParams, readJsonBody, readQueryParams }
 import {
 	requireCliLoginOAuthPrincipal,
 	requireCurrentApiTokenPrincipal,
+	requireTokenManagementPrincipal,
 	tokenApiOperations,
 } from './token-operations.ts'
 import { orgPermissionScopes } from '../auth/api-token-store.ts'
@@ -156,6 +157,95 @@ async function handleTokenOperation(operationId: string, params: Record<string, 
 			scopes: orgPermissionScopes,
 		})
 		return Response.json({ ...token, login_org: null }, { headers: { 'Cache-Control': 'no-store' } })
+	}
+	if (['tokenList', 'tokenCreate', 'tokenGet', 'tokenRotate', 'tokenRevoke'].includes(operationId)) {
+		requireTokenManagementPrincipal(auth)
+		const userId = auth.user.id
+		const invalidParams = () => {
+			throw error('invalid_request', 'Invalid parameters.', 400)
+		}
+		const assertFields = (allowed: ReadonlyArray<string>) => {
+			if (Object.keys(params).some((name) => !allowed.includes(name))) invalidParams()
+		}
+		if (operationId === 'tokenList') {
+			assertFields(['include_inactive'])
+			if (params.include_inactive !== undefined && typeof params.include_inactive !== 'boolean') invalidParams()
+			return Response.json(
+				{ tokens: await registry.apiTokenList(userId, params.include_inactive === true) },
+				{ headers: { 'Cache-Control': 'no-store' } },
+			)
+		}
+		if (operationId === 'tokenCreate') {
+			assertFields(['name', 'scopes', 'lifetime', 'idle_ttl_seconds', 'max_lifetime_seconds'])
+			if (typeof params.name !== 'string' || !Array.isArray(params.scopes)) invalidParams()
+			const name = typeof params.name === 'string' ? params.name : invalidParams()
+			if (params.lifetime !== undefined && typeof params.lifetime !== 'string') invalidParams()
+			const idleTtlSeconds =
+				params.idle_ttl_seconds === undefined
+					? undefined
+					: typeof params.idle_ttl_seconds === 'number'
+						? params.idle_ttl_seconds
+						: Number.NaN
+			const maxLifetimeSeconds =
+				params.max_lifetime_seconds === undefined
+					? undefined
+					: typeof params.max_lifetime_seconds === 'number'
+						? params.max_lifetime_seconds
+						: Number.NaN
+			let parent: { scopes: ReadonlyArray<string>; maxExpiresAt: string } | undefined
+			if (auth.via === 'kody_api_token' && auth.apiTokenId) {
+				const caller = await registry.apiTokenGetCurrent(userId, auth.apiTokenId)
+				if (!caller) throw error('not_found', 'The calling API token was not found.', 404)
+				parent = { scopes: caller.scopes, maxExpiresAt: caller.max_expires_at }
+			}
+			const token = await registry.apiTokenMint({
+				userId,
+				name,
+				scopes: params.scopes as Array<string>,
+				lifetime: params.lifetime as string | undefined,
+				idleTtlSeconds,
+				maxLifetimeSeconds,
+				createdVia: auth.via === 'oauth' ? 'mcp-api' : 'api',
+				parent,
+			})
+			return Response.json(token, { headers: { 'Cache-Control': 'no-store' } })
+		}
+		assertFields(['token_id', 'id'])
+		const tokenId = typeof params.token_id === 'string' && params.token_id ? params.token_id : invalidParams()
+		if (params.id !== undefined && (typeof params.id !== 'string' || params.id !== tokenId)) {
+			throw error('invalid_request', 'token_id and id must match when both are set.', 400)
+		}
+		if (operationId === 'tokenGet') {
+			const token = await registry.apiTokenGet(userId, tokenId)
+			if (!token) throw error('not_found', `API token "${tokenId}" not found.`, 404)
+			return Response.json(token, { headers: { 'Cache-Control': 'no-store' } })
+		}
+		if (operationId === 'tokenRotate') {
+			const callerTokenId = auth.via === 'kody_api_token' ? auth.apiTokenId : undefined
+			if (callerTokenId && callerTokenId !== tokenId) {
+				const caller = await registry.apiTokenGetCurrent(userId, callerTokenId)
+				const target = await registry.apiTokenGet(userId, tokenId)
+				if (caller && target) {
+					const missing = target.scopes.filter((scope) => !caller.scopes.includes(scope))
+					if (missing.length > 0) {
+						throw new KodyError(
+							'insufficient_scope',
+							`This API token cannot rotate a token with scopes it does not hold: ${missing.join(', ')}.`,
+							{ status: 403, details: { missing_scopes: missing } },
+						)
+					}
+					if (Date.parse(target.max_expires_at) > Date.parse(caller.max_expires_at)) {
+						throw error('insufficient_scope', 'This API token cannot rotate a token that outlives it.', 403)
+					}
+				}
+			}
+			const token = await registry.apiTokenRotate(userId, tokenId)
+			if (!token) throw error('not_found', `Active API token "${tokenId}" not found.`, 404)
+			return Response.json(token, { headers: { 'Cache-Control': 'no-store' } })
+		}
+		const revoked = await registry.apiTokenRevoke(userId, tokenId)
+		if (!revoked) throw error('not_found', `Active API token "${tokenId}" not found.`, 404)
+		return Response.json({ id: tokenId, revoked: true }, { headers: { 'Cache-Control': 'no-store' } })
 	}
 	const tokenId = requireCurrentApiTokenPrincipal(auth)
 	if (operationId === 'tokenGetCurrent') {

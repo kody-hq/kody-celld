@@ -206,12 +206,12 @@ roadmap is now shipped; the roadmap below is kept as the change log.
   `servers` array. Routes for memories, MCP server instructions, secrets,
   webhooks, email, integrations, MCP servers, community, and storage are
   present and appear when their capabilities are registered.
-  `/v1/tokens/device` and the current-token get, rotate, and revoke routes are
-  native operations. Token scopes are stored and returned but are not enforced
-  per route. Token list/create and by-id routes are pending, hosted `kody login`
-  also needs its CLI OAuth client follow-up, and bootstrap routes are not
-  ported. `/v1/search/tool`, capability proxy and local-execute, and repos are
-  not ported yet. Some capabilities with no `/v1` route yet (for example
+  `/v1/tokens/device`, token list/create and by-id routes, and the current-token
+  get, rotate, and revoke routes are native operations. Token scopes are stored
+  and returned but are not enforced per route. Hosted `kody login` also needs
+  its CLI OAuth client follow-up, and bootstrap routes are not ported.
+  `/v1/search/tool`, capability proxy and local-execute, and repos are not
+  ported yet. Some capabilities with no `/v1` route yet (for example
   `packageRun`, `packageInstall`, `webhookDelete`, and email inbox claims) are
   still reachable over HTTP only through the deprecated `/api/call`, which is
   slated for removal in v0.3.0.

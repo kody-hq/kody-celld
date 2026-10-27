@@ -46,6 +46,7 @@ export const orgPermissionScopes = [
 	'token:read',
 	'token:delete',
 ] as const
+const orgPermissionScopeSet = new Set<string>(orgPermissionScopes)
 
 export const apiTokenSchema = `
 	CREATE TABLE IF NOT EXISTS api_tokens (
@@ -188,6 +189,14 @@ function view(record: ApiTokenRecord, now: Date): ApiTokenView {
 	}
 }
 
+function normalizeScopes(values: ReadonlyArray<unknown>) {
+	const unknown = values.filter((value) => typeof value !== 'string' || !orgPermissionScopeSet.has(value))
+	if (unknown.length > 0) {
+		throw new KodyError('invalid_request', `Unknown API token scope(s): ${unknown.map(String).join(', ')}.`)
+	}
+	return [...new Set(values as ReadonlyArray<string>)].sort()
+}
+
 function slidingExpiry(now: Date, idleTtlSeconds: number, maxExpiresAt: string) {
 	return new Date(Math.min(now.getTime() + idleTtlSeconds * 1000, Date.parse(maxExpiresAt))).toISOString()
 }
@@ -216,6 +225,7 @@ export class ApiTokenStore {
 		lifetime?: string | null
 		idleTtlSeconds?: number
 		maxLifetimeSeconds?: number
+		parent?: { scopes: ReadonlyArray<string>; maxExpiresAt: string }
 		now?: Date
 	}): Promise<ApiTokenSecretView> {
 		const now = input.now ?? new Date()
@@ -224,10 +234,17 @@ export class ApiTokenStore {
 		if (name.length > apiTokenPolicy.maxNameLength) {
 			throw new KodyError('invalid_request', `Token name must be at most ${apiTokenPolicy.maxNameLength} characters.`)
 		}
-		if (input.scopes.length === 0) {
+		const scopes = normalizeScopes(input.scopes)
+		if (scopes.length === 0) {
 			throw new KodyError('invalid_request', 'At least one scope is required.')
 		}
 		const lifetime = resolveApiTokenLifetime(input)
+		if (input.parent) {
+			const missing = scopes.filter((scope) => !input.parent!.scopes.includes(scope))
+			if (missing.length > 0) {
+				throw new KodyError('invalid_request', `A token cannot grant scopes it does not hold: ${missing.join(', ')}.`)
+			}
+		}
 		const nowIso = now.toISOString()
 		const active =
 			this.sql
@@ -245,13 +262,21 @@ export class ApiTokenStore {
 		}
 		const id = generateApiTokenId()
 		const secret = generateApiTokenSecret()
-		const maxExpiresAt = new Date(now.getTime() + lifetime.maxLifetimeSeconds * 1000).toISOString()
+		let maxExpiresAtMs = now.getTime() + lifetime.maxLifetimeSeconds * 1000
+		if (input.parent) maxExpiresAtMs = Math.min(maxExpiresAtMs, Date.parse(input.parent.maxExpiresAt))
+		if (maxExpiresAtMs <= now.getTime()) {
+			throw new KodyError(
+				'invalid_request',
+				'The resulting API token would already be expired (absolute max expiry is not in the future).',
+			)
+		}
+		const maxExpiresAt = new Date(maxExpiresAtMs).toISOString()
 		const record: ApiTokenRecord = {
 			id,
 			user_id: input.userId,
 			name,
 			token_hash: await sha256Hex(secret),
-			scopes: [...input.scopes],
+			scopes,
 			idle_ttl_seconds: lifetime.idleTtlSeconds,
 			expires_at: slidingExpiry(now, lifetime.idleTtlSeconds, maxExpiresAt),
 			max_expires_at: maxExpiresAt,
@@ -318,7 +343,23 @@ export class ApiTokenStore {
 		return row ? view(mapRow(row), now) : null
 	}
 
-	async rotateCurrent(userId: string, tokenId: string, now = new Date()): Promise<ApiTokenSecretView | null> {
+	list(userId: string, includeInactive = false, now = new Date()): Array<ApiTokenView> {
+		return this.sql
+			.exec<ApiTokenSqlRow>('SELECT * FROM api_tokens WHERE user_id = ? ORDER BY created_at DESC, id ASC', userId)
+			.toArray()
+			.map(mapRow)
+			.filter((record) => includeInactive || status(record, now) === 'active')
+			.map((record) => view(record, now))
+	}
+
+	get(userId: string, tokenId: string, now = new Date()): ApiTokenView | null {
+		const row = this.sql
+			.exec<ApiTokenSqlRow>('SELECT * FROM api_tokens WHERE id = ? AND user_id = ? LIMIT 1', tokenId, userId)
+			.toArray()[0]
+		return row ? view(mapRow(row), now) : null
+	}
+
+	async rotate(userId: string, tokenId: string, now = new Date()): Promise<ApiTokenSecretView | null> {
 		const row = this.sql
 			.exec<ApiTokenSqlRow>('SELECT * FROM api_tokens WHERE id = ? AND user_id = ? LIMIT 1', tokenId, userId)
 			.toArray()[0]
@@ -349,7 +390,11 @@ export class ApiTokenStore {
 		}
 	}
 
-	revokeCurrent(userId: string, tokenId: string, now = new Date()) {
+	async rotateCurrent(userId: string, tokenId: string, now = new Date()): Promise<ApiTokenSecretView | null> {
+		return this.rotate(userId, tokenId, now)
+	}
+
+	revoke(userId: string, tokenId: string, now = new Date()) {
 		const nowIso = now.toISOString()
 		return (
 			this.sql.exec(
@@ -361,5 +406,9 @@ export class ApiTokenStore {
 				userId,
 			).rowsWritten > 0
 		)
+	}
+
+	revokeCurrent(userId: string, tokenId: string, now = new Date()) {
+		return this.revoke(userId, tokenId, now)
 	}
 }

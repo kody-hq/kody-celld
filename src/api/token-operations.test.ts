@@ -6,6 +6,7 @@ import {
 	currentApiTokenMessage,
 	requireCliLoginOAuthPrincipal,
 	requireCurrentApiTokenPrincipal,
+	requireTokenManagementPrincipal,
 } from './token-operations.ts'
 
 const principal = (via: Principal['via'], apiTokenId?: string) => ({ via, apiTokenId }) as Principal
@@ -43,4 +44,11 @@ test('current-token operations reject non-kody_at_ principals', () => {
 		(error: Error) => error.message === currentApiTokenMessage,
 	)
 	assert.equal(requireCurrentApiTokenPrincipal(principal('kody_api_token', 'id-1')), 'id-1')
+})
+
+test('collection and by-id token operations allow OAuth, kc_, and kody_at_ callers', () => {
+	for (const via of ['oauth', 'api_token', 'kody_api_token'] as const) {
+		assert.doesNotThrow(() => requireTokenManagementPrincipal(principal(via, 'token-id')))
+	}
+	assert.throws(() => requireTokenManagementPrincipal(principal('kody_api_token')))
 })
