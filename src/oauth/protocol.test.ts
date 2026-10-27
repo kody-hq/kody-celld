@@ -184,6 +184,42 @@ describe('parseAuthorizeRequest', () => {
 		assert.equal(defaulted.scope, '')
 	})
 
+	it('can require an exact redirect URI for the official fixed loopback callback', async () => {
+		const officialClient = {
+			clientId: 'https://kody.example/oauth/cli-client-metadata.json',
+			redirectUris: ['http://127.0.0.1:43742/callback'],
+		}
+		const exact = await good({
+			client_id: officialClient.clientId,
+			redirect_uri: 'http://127.0.0.1:43742/callback',
+		})
+		assert.equal(
+			parseAuthorizeRequest(exact, officialClient, issuer, { exactRedirectUri: true }).redirectUri,
+			'http://127.0.0.1:43742/callback',
+		)
+		const alternatePort = await good({
+			client_id: officialClient.clientId,
+			redirect_uri: 'http://127.0.0.1:43743/callback',
+		})
+		assert.throws(
+			() => parseAuthorizeRequest(alternatePort, officialClient, issuer, { exactRedirectUri: true }),
+			/redirect_uri does not match/,
+		)
+		const missingRedirect = await good({
+			client_id: officialClient.clientId,
+			redirect_uri: null,
+		})
+		assert.throws(
+			() => parseAuthorizeRequest(missingRedirect, officialClient, issuer, { exactRedirectUri: true }),
+			/redirect_uri does not match/,
+		)
+		assert.equal(
+			parseAuthorizeRequest(alternatePort, officialClient, issuer).redirectUri,
+			'http://127.0.0.1:43743/callback',
+			'regular public clients retain loopback port flexibility',
+		)
+	})
+
 	it('refuses unknown clients, foreign redirects, implicit flow, missing/plain PKCE, wrong resources', async () => {
 		const code = (params: URLSearchParams, c: typeof client | null = client) => {
 			try {

@@ -3,6 +3,7 @@ import { orgPermissionScopes } from '../auth/api-token-store.ts'
 import type { Env } from '../env.ts'
 import { recordAudit } from '../lib/audit.ts'
 import { KodyError } from '../lib/errors.ts'
+import { cliClientId } from '../oauth/cli-client-metadata.ts'
 import { requireCliLoginOAuthPrincipal, requireCurrentApiTokenPrincipal } from './token-operations.ts'
 
 function error(code: string, message: string, status: number) {
@@ -17,7 +18,7 @@ export async function handleTokenOperation(
 ) {
 	const registry = env.REGISTRY.getByName('registry')
 	if (operationId === 'cliLoginDeviceToken') {
-		requireCliLoginOAuthPrincipal(auth)
+		requireCliLoginOAuthPrincipal(auth, cliClientId(env.KODY_PUBLIC_URL))
 		if (params.name !== undefined && typeof params.name !== 'string') {
 			throw error('invalid_request', 'Invalid parameters.', 400)
 		}

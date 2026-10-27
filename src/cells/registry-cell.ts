@@ -114,7 +114,7 @@ export class RegistryCell extends DurableObject<Env> {
 		this.auditRetentionCount = limitsFromEnv(env).auditRetentionCount
 		this.accounts = new AccountStore(this.ctx.storage.sql)
 		this.apiTokens = new ApiTokenStore(this.ctx.storage.sql)
-		this.oauth = new OAuthServerStore(this.ctx.storage.sql, () => this.keyring())
+		this.oauth = new OAuthServerStore(this.ctx.storage.sql, () => this.keyring(), env.KODY_PUBLIC_URL)
 	}
 
 	private readonly auditRetentionCount: number
