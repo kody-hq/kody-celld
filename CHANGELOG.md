@@ -6,7 +6,35 @@ tag, and a short index of past ones.
 
 ## [Unreleased]
 
-Nothing yet.
+## [0.2.3] - 2026-10-27
+
+### Secret injection and redirects
+
+The fetch gateway now follows redirects itself instead of letting `fetch` do
+it. Every redirect target is re-checked against the whole gateway decision
+(transport, approved hosts, integration and provider host lists, the admin
+surface) and recorded in the run's `gateway[]` with `redirect: n`. A target
+that fails the check gets no secret: headers that carried a placeholder are
+dropped, and a hop that would still need one in its URL or body is denied.
+Redirects stop after 20 hops, and the sandbox sees the real `res.url` and
+`res.redirected`. Upgrading is recommended for every install that injects
+secrets.
+
+### Safer value encoding
+
+Values injected into a JSON request body are JSON-string-escaped. A value that
+is not a valid header value (for example one with a newline) is refused with a
+clean `400 secret_invalid_header_value` instead of a runtime error.
+
+## [0.2.2] - 2026-10-25
+
+### Email HTML preview links
+
+Links in a message's HTML body open in a normal new tab, with no opener and no
+referrer. The preview iframe allows popups (and lets them escape the sandbox)
+but still blocks scripts, forms, and same-origin access. Link normalization is
+hardened against comment and RAWTEXT bypasses so crafted markup cannot keep an
+opener-granting `rel` on a real link.
 
 ## [0.2.1] - 2026-10-23
 
@@ -78,6 +106,8 @@ Kody. HTML renders the way hosted does: scripts stripped, then a sandboxed
 
 ## Past releases
 
+- [v0.2.3](https://github.com/kody-hq/kody-celld/releases/tag/v0.2.3): the fetch gateway follows redirects itself and re-checks every hop; JSON body values escaped; invalid header values refused cleanly
+- [v0.2.2](https://github.com/kody-hq/kody-celld/releases/tag/v0.2.2): email preview links open in a new tab; link normalization hardened against comment and RAWTEXT bypasses
 - [v0.2.1](https://github.com/kody-hq/kody-celld/releases/tag/v0.2.1): resolve hostnames for package sources and browser URLs, Email message view, single-mode Docker fixes
 - [v0.2.0](https://github.com/kody-hq/kody-celld/releases/tag/v0.2.0) — external MCP servers, package apps, one private-host allowlist
 - [v0.1.1](https://github.com/kody-hq/kody-celld/releases/tag/v0.1.1) — keep dev email defaults out of single-node Docker

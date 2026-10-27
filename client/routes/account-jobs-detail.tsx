@@ -1,6 +1,7 @@
-import { type Handle } from 'remix/component'
+import { css, type Handle } from 'remix/component'
 import { type AppLoaderData } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
+import { primaryLinkCss } from '#universal/styles/style-primitives.ts'
 import {
 	AccountManagementPanel,
 	AccountManagementShell,
@@ -37,8 +38,20 @@ export function AccountJobDetail(
 						job.description ?? 'Scheduled work declared by a package.'
 					}
 					currentHref={pathname}
+					belowDescription={
+						<a href={routes.accountJobs.href()} mix={css(primaryLinkCss)}>
+							Back to jobs
+						</a>
+					}
 					actions={
 						<Actions>
+							<ActionForm
+								action={detailHref}
+								csrf={data.csrf}
+								fields={{ action: 'run', id: job.id }}
+								label="Run now"
+								pendingLabel="Running…"
+							/>
 							<ActionForm
 								action={detailHref}
 								csrf={data.csrf}
@@ -52,13 +65,15 @@ export function AccountJobDetail(
 						</Actions>
 					}
 				/>
-				<a href={routes.accountJobs.href()}>Back to jobs</a>
 				<AccountManagementPanel ariaLabel="Job details">
 					<MetadataGrid
 						items={[
 							{
 								label: 'Job id',
-								value: <IdValue value={job.id} label="job id" />,
+								// Full row so scope/package#job stays on one line
+								// at 1280 instead of a third-column stub.
+								wide: true,
+								value: <IdValue value={job.id} label="job id" copy="ghost" />,
 							},
 							{
 								label: 'Package',
@@ -67,6 +82,7 @@ export function AccountJobDetail(
 										href={routes.accountPackageDetail.href({
 											name: job.packageName,
 										})}
+										mix={css(primaryLinkCss)}
 									>
 										{job.packageName}
 									</a>
@@ -119,11 +135,23 @@ export function AccountJobDetail(
 						ariaLabel="Recent job runs"
 						emptyLabel="No runs recorded yet."
 						columns={[
-							{ key: 'trigger', label: 'Trigger', primary: true },
-							{ key: 'started', label: 'Started' },
-							{ key: 'duration', label: 'Duration' },
-							{ key: 'status', label: 'Status' },
-							{ key: 'error', label: 'Error' },
+							{
+								key: 'trigger',
+								label: 'Trigger',
+								primary: true,
+								width: '6rem',
+							},
+							// Full locale timestamp at 1280 and mid (~850).
+							{ key: 'started', label: 'Started', width: '12.5rem' },
+							{ key: 'duration', label: 'Duration', width: '6.5rem' },
+							{
+								key: 'status',
+								label: 'Status',
+								width: '7rem',
+								// Badges must not ellipsize inside the cell.
+								wrap: true,
+							},
+							{ key: 'error', label: 'Error', drop: 2 },
 						]}
 						rows={data.runs.map((run) => ({
 							id: run.id,

@@ -1,3 +1,5 @@
+import { LANDING_REDIRECTED_HEADER, LANDING_URL_HEADER } from '../secrets/gateway-landing.ts'
+
 const prelude = `
 const RUN_HEADER = 'x-kody-run'
 const __originalFetch = globalThis.fetch
@@ -13,16 +15,36 @@ function __safe(value) {
 	}
 }
 
+// The gateway follows redirects itself and reports where it landed.
+function __landed(response) {
+	const url = response.headers.get(${JSON.stringify(LANDING_URL_HEADER)})
+	if (url === null) return response
+	const headers = new Headers(response.headers)
+	headers.delete(${JSON.stringify(LANDING_URL_HEADER)})
+	headers.delete(${JSON.stringify(LANDING_REDIRECTED_HEADER)})
+	const landing = { url, redirected: response.headers.get(${JSON.stringify(LANDING_REDIRECTED_HEADER)}) === '1' }
+	return __withLanding(new Response(response.body, { status: response.status, statusText: response.statusText, headers }), landing)
+}
+
+function __withLanding(response, landing) {
+	const clone = response.clone.bind(response)
+	return Object.defineProperties(response, {
+		url: { value: landing.url },
+		redirected: { value: landing.redirected },
+		clone: { value: () => __withLanding(clone(), landing) },
+	})
+}
+
 function __patchGlobals() {
 	if (__patched) return
 	__patched = true
-	globalThis.fetch = (input, init) => {
+	globalThis.fetch = async (input, init) => {
 		const store = __current()
-		if (!store) return __originalFetch(input, init)
+		if (!store) return __landed(await __originalFetch(input, init))
 		const request = new Request(input, init)
 		const headers = new Headers(request.headers)
 		headers.set(RUN_HEADER, store.runId)
-		return __originalFetch(new Request(request, { headers }))
+		return __landed(await __originalFetch(new Request(request, { headers })))
 	}
 	const levels = ['log', 'info', 'warn', 'error', 'debug']
 	const proxy = {}

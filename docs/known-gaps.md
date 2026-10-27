@@ -176,6 +176,8 @@ roadmap is now shipped; the roadmap below is kept as the change log.
   Authorization bearer header (`kind: header`, `name: Authorization`,
   `format: Bearer {value}`); `placement` omitted, null, or all-true. Null
   hosts use the account's approved secret hosts.
+- **Package credential slots.** Celld parses and stores `kody.credentials`,
+  but `credential()` is not available yet.
 - `/connect/secret-set` does not support `expiresAt` or `allowedPackages`.
   `allowedPackages` waits on the secretLock grants PR. Hosts in a setup link
   are approved in the account-wide host list, so they apply to every secret.

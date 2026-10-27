@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { manifestWarnings, parseKodyPackageSpecifier, parsePackageManifest, resolvePackageExport } from './manifest.ts'
+import {
+	manifestWarnings,
+	normalizeStoredManifest,
+	parseKodyPackageSpecifier,
+	parsePackageManifest,
+	resolvePackageExport,
+} from './manifest.ts'
 
 const baseFiles = {
 	'README.md': '# pkg',
@@ -52,6 +58,62 @@ describe('parsePackageManifest', () => {
 			/invalid_manifest/,
 		)
 		assert.throws(() => parsePackageManifest({ 'README.md': 'x' }), /package\.json is required/)
+	})
+
+	it('parses credential slots, rejects invalid slot definitions, and defaults stored credentials', () => {
+		const parsed = parsePackageManifest(
+			manifest({
+				kody: {
+					credentials: {
+						github: { provider: ' github ', kind: 'oauth', multiple: true, description: ' Read issues ' },
+					},
+				},
+			}),
+		)
+		assert.deepEqual(parsed.credentials, {
+			github: { provider: 'github', kind: 'oauth', multiple: true, description: 'Read issues' },
+		})
+		assert.deepEqual(normalizeStoredManifest({ name: '@scope/pkg', version: '1.0.0' }).credentials, {})
+		for (const credentials of [
+			{ '1bad': { description: 'Slot' } },
+			{ github: {} },
+			{ github: { description: 'Slot', kind: 'unknown' } },
+		]) {
+			assert.throws(
+				() => parsePackageManifest(manifest({ kody: { credentials } })),
+				(error: unknown) => (error as { code?: string }).code === 'invalid_manifest',
+			)
+		}
+	})
+
+	it('warns and drops unknown credential slot keys, placement, and owner visitor credentials', () => {
+		const parsed = parsePackageManifest(
+			manifest({
+				kody: {
+					credentials: {
+						github: {
+							description: 'Read issues',
+							unknown: 'ignored',
+							placement: { headers: true },
+							ownerCredentialForVisitors: true,
+						},
+					},
+				},
+			}),
+		)
+		assert.deepEqual(parsed.credentials, { github: { description: 'Read issues' } })
+		assert.deepEqual(manifestWarnings(parsed), [
+			'kody.credentials.github.unknown is not supported on celld yet and was dropped.',
+			'kody.credentials.github.placement is not supported on celld yet and was dropped.',
+			'kody.credentials.github.ownerCredentialForVisitors is not supported on celld yet and was dropped.',
+		])
+	})
+
+	it('warns when a valid hosted kind has no celld storage', () => {
+		const parsed = parsePackageManifest(
+			manifest({ kody: { credentials: { signing: { kind: 'signing', description: 'Sign tokens' } } } }),
+		)
+		assert.match(manifestWarnings(parsed)[0] ?? '', /credential_unsupported/)
 	})
 })
 

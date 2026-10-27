@@ -1,8 +1,8 @@
 {
   "kodyRepo": "kody-hq/kody",
   "kodyCommit": "0bf31fb32793eedadd13b63aaf442408a37debec",
-  "updatedAt": "2026-10-10T23:54:09Z",
-  "notes": "Verbatim files must match upstream bytes at kodyCommit. Adapted files share a path with hosted Kody but are intentionally different; sync:kody reports their diffs and does not overwrite them.",
+  "updatedAt": "2026-10-25T03:59:45.130Z",
+  "notes": "Verbatim files must match upstream bytes at kodyCommit (or at the file entry's own kodyCommit when it has one). Adapted files share a path with hosted Kody but are intentionally different; sync:kody reports their diffs and does not overwrite them.",
   "files": [
     {
       "path": "client/clipboard.ts",
@@ -31,8 +31,9 @@
     {
       "path": "client/email-html-preview.ts",
       "source": "packages/worker/client/email-html-preview.ts",
-      "sha256": "9ad8eda5e637ac1b27a6e2549e7dda53287be07a534e026dae990fdde8276227",
-      "kind": "ui"
+      "sha256": "b655714e00a9986bdf3bbe975f800decd59cc2566a7b499e996ef6faa0d3f877",
+      "kind": "ui",
+      "kodyCommit": "3d8f002d8eac12e0c80afd42f222583586855e59"
     },
     {
       "path": "client/event-mixin.ts",

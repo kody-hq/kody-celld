@@ -177,6 +177,131 @@ export async function smokeSecrets({ mcp, user }) {
 		)
 		log('basic-auth placeholder injected')
 
+		// Redirects: the gateway follows them itself and re-checks every hop.
+		const { placeholder } = saved
+		const sameHost = await mcp.run(
+			`export default async function main({ url, placeholder }) {
+  const res = await fetch(url + '/redirect?status=307&to=/landed-same', {
+    method: 'POST', headers: { authorization: 'Bearer ' + placeholder }, body: 'no secret here',
+  })
+  return { status: res.status, redirected: res.redirected, url: res.url, received: await res.json() }
+}`,
+			{ url: echo.url, placeholder },
+		)
+		assert(
+			sameHost.status === 200 && sameHost.redirected === true && sameHost.url === `${echo.url}/landed-same`,
+			'followed redirect reports its final url and redirected: true',
+			sameHost,
+		)
+		assert(
+			sameHost.received.method === 'POST' && sameHost.received.authorizationSha256 === expectedHeaderHash,
+			'a 307 to the same approved origin is re-checked and re-injected',
+			sameHost.received,
+		)
+		log('307 to the same approved host re-injected after a fresh check')
+
+		const beforeCross = echo.seen.length
+		const crossHost = await mcp.execute(
+			`export default async function main({ url, placeholder }) {
+  const res = await fetch(url + '/redirect?status=307&alt=1&to=/landed-other', {
+    method: 'POST',
+    headers: { authorization: 'Bearer ' + placeholder, 'x-smoke-key': placeholder, 'content-type': 'text/plain' },
+    body: 'no secret here',
+  })
+  return { status: res.status, redirected: res.redirected, url: res.url, received: await res.json() }
+}`,
+			{ url: echo.url, placeholder },
+		)
+		assert(crossHost.ok, 'cross-host redirect run should succeed', crossHost)
+		const crossSeen = echo.seen.slice(beforeCross)
+		const landedOther = crossSeen.filter((r) => r.url === '/landed-other')
+		assert(
+			landedOther.length === 1 && landedOther[0].authorizationSha256 === null && landedOther[0].keySha256 === null,
+			'an approved host redirecting to an unapproved one must not pass the secret along',
+			crossSeen,
+		)
+		assert(
+			crossHost.result.redirected === true && crossHost.result.url.endsWith('/landed-other'),
+			'cross-host redirect reports where it landed',
+			crossHost.result,
+		)
+		assert(
+			crossHost.gateway.some(
+				(event) =>
+					event.redirect === 1 &&
+					event.outcome === 'forwarded' &&
+					event.reason?.startsWith('placeholder_headers_dropped:'),
+			),
+			'gateway records the redirect hop and the dropped headers',
+			crossHost.gateway,
+		)
+		log('307 to an unapproved host: placeholder headers dropped, hop recorded', {
+			hops: crossHost.gateway.map((e) => [e.redirect ?? 0, e.outcome]),
+		})
+
+		const bodyCross = await mcp.execute(
+			`export default async function main({ url, placeholder }) {
+  const res = await fetch(url + '/redirect?status=307&alt=1&to=/landed-body', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: placeholder }),
+  })
+  return { status: res.status, redirected: res.redirected, body: await res.json() }
+}`,
+			{ url: echo.url, placeholder },
+		)
+		assert(
+			bodyCross.ok &&
+				bodyCross.result.status === 403 &&
+				['secret_host_not_approved', 'secret_requires_https'].includes(bodyCross.result.body.error) &&
+				bodyCross.result.redirected === true,
+			'a 307 that would replay a secret body to an unapproved host is denied',
+			bodyCross,
+		)
+		assert(!echo.seen.some((r) => r.url === '/landed-body'), 'denied redirect hop never reaches the network', echo.seen)
+		assert(
+			bodyCross.gateway.some((event) => event.redirect === 1 && event.outcome === 'denied'),
+			'gateway records the denied redirect hop',
+			bodyCross.gateway,
+		)
+		log('307 replaying a secret body to an unapproved host denied', bodyCross.result.body.error)
+
+		// A value with a quote, backslash and inner newline: JSON bodies get it escaped,
+		// headers refuse it with a clean denial.
+		const trickyValue = `${secretValue}"\\\n-end`
+		const tricky = await mcp.call('secretSave', { name: 'smoke-tricky', value: trickyValue, description: 'smoke only' })
+		const trickyJson = await mcp.run(
+			`export default async function main({ url, placeholder }) {
+  const res = await fetch(url + '/json-escape', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: placeholder }),
+  })
+  return await res.json()
+}`,
+			{ url: echo.url, placeholder: tricky.placeholder },
+		)
+		assert(
+			trickyJson.bodySha256 === sha256(JSON.stringify({ token: trickyValue })),
+			'JSON body replacement must be JSON-escaped',
+			trickyJson,
+		)
+		const beforeHeader = echo.seen.length
+		const trickyHeader = await mcp.execute(
+			`export default async function main({ url, placeholder }) {
+  const res = await fetch(url + '/bad-header', { headers: { 'x-smoke-key': placeholder } })
+  return { status: res.status, body: await res.json() }
+}`,
+			{ url: echo.url, placeholder: tricky.placeholder },
+		)
+		assert(
+			trickyHeader.ok &&
+				trickyHeader.result.status === 400 &&
+				trickyHeader.result.body.error === 'secret_invalid_header_value' &&
+				echo.seen.length === beforeHeader,
+			'a header value with a newline is refused cleanly before the network',
+			trickyHeader,
+		)
+		assert(!JSON.stringify(trickyHeader).includes(secretValue), 'header refusal must not echo the value')
+		await mcp.call('secretDelete', { name: 'smoke-tricky' })
+		log('JSON body values escaped; newline header value refused cleanly')
+
 		// Plain HTTP to a non-loopback host must be refused even if approved.
 		await admin.approveHost(user.id, 'example.com')
 		const insecure = await mcp.run(

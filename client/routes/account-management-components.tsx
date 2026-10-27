@@ -120,6 +120,39 @@ export const accountActionsCss = {
 	gap: '0.7rem',
 }
 
+/**
+ * Single-line actions for a table cell: equal-width design-system `sm`
+ * ghost buttons on one row. Grid columns share one track size so "Run now"
+ * / "Pause" / "Resume" / "Running…" stay the same width; `max-content`
+ * keeps the group from stretching into a starved cell and crushing pad —
+ * pair with an Actions column width that fits both labels (see jobs list).
+ */
+export const accountActionsInlineCss = {
+	display: 'grid',
+	gridAutoFlow: 'column' as const,
+	gridAutoColumns: '1fr',
+	alignItems: 'center' as const,
+	gap: '0.7rem',
+	width: 'max-content',
+	maxWidth: '100%',
+	'& > form': {
+		margin: 0,
+		minWidth: 0,
+	},
+	'& > form > button': {
+		width: '100%',
+		boxSizing: 'border-box' as const,
+		// Fits "Run now" / "Running…" / "Resume" at sm ghost padding.
+		minWidth: '6.75rem',
+	},
+	// Card-mode rows (≤620px) put the label beside the value; two side-by-side
+	// 6.75rem buttons overflow the value track, so stack them.
+	'@container (max-width: 620px)': {
+		gridAutoFlow: 'row' as const,
+		width: '100%',
+	},
+}
+
 /** `.account-more` — quiet green disclosure ("Change email"). */
 export const accountDisclosureCss = {
 	'& > summary': {
@@ -205,6 +238,13 @@ export function AccountManagementShell(
 				display: 'grid',
 				gap: spacing.xl,
 				alignItems: 'start',
+				// Flash already adds top rhythm; tighten this shell's own
+				// paddingTop on the same `css()` layer so it beats
+				// `pageBlockPadding.top` (an ancestor `main` rule loses to
+				// this class's cascade sub-layer).
+				'main:has(> [data-page-flash]) > &': {
+					paddingTop: spacing.sm,
+				},
 				// Prototype `.account` layout: 200px rail beside the content
 				// column, 72rem total. The rail is absolutely positioned in a
 				// left track and only exists when the section nav is present —
@@ -252,6 +292,8 @@ type AccountManagementHeaderProps = {
 	title: string
 	description: string
 	actions?: AccountManagementSlot
+	/** Sits under the description (e.g. "Back to jobs") before page chrome. */
+	belowDescription?: AccountManagementSlot
 }
 
 export function AccountManagementHeader(
@@ -267,7 +309,7 @@ export function AccountManagementHeader(
 				flexWrap: 'wrap',
 			})}
 		>
-			<div mix={css({ display: 'grid', gap: '0.6rem' })}>
+			<div mix={css({ display: 'grid', gap: '0.55rem' })}>
 				<h1
 					mix={css({
 						fontSize: 'clamp(2rem, 4vw, 2.7rem)',
@@ -283,6 +325,11 @@ export function AccountManagementHeader(
 				<p mix={css({ color: colors.textMuted, margin: 0 })}>
 					{handle.props.description}
 				</p>
+				{handle.props.belowDescription ? (
+					<div mix={css({ marginTop: '0.15rem' })}>
+						{handle.props.belowDescription}
+					</div>
+				) : null}
 			</div>
 			{handle.props.actions ? (
 				<div
@@ -375,6 +422,7 @@ type AccountPageHeaderProps = {
 	description: string
 	currentHref: string
 	actions?: AccountManagementSlot
+	belowDescription?: AccountManagementSlot
 }
 
 /**
@@ -393,6 +441,7 @@ export function AccountPageHeader(handle: Handle<AccountPageHeaderProps>) {
 					title={handle.props.title}
 					description={handle.props.description}
 					actions={handle.props.actions}
+					belowDescription={handle.props.belowDescription}
 				/>
 				<AccountManagementLinkNav
 					label="Account sections"
@@ -530,6 +579,11 @@ type MetadataGridProps = {
 	items: Array<{
 		label: string
 		value: AccountManagementSlot
+		/**
+		 * Span the full grid row. Use for a long id control that must stay on
+		 * one line at desktop widths (job detail Job id).
+		 */
+		wide?: boolean
 	}>
 }
 
@@ -546,20 +600,31 @@ export function MetadataGrid(handle: Handle<MetadataGridProps>) {
 				// without a breakpoint having to guess the container's width.
 				// The `min()` keeps the floor from overflowing a container
 				// narrower than the floor itself.
-				gridTemplateColumns: 'repeat(auto-fit, minmax(min(14rem, 100%), 1fr))',
+				// 16rem fits a typical job id + Copy on one or two lines
+				// without squeezing the field into a stub beside the button.
+				gridTemplateColumns: 'repeat(auto-fit, minmax(min(16rem, 100%), 1fr))',
 				gap: spacing.md,
 				margin: 0,
 			})}
 		>
 			{handle.props.items.map((item) => (
-				<div key={item.label} mix={css({ minWidth: 0 })}>
+				<div
+					key={item.label}
+					mix={css({
+						minWidth: 0,
+						...(item.wide ? { gridColumn: '1 / -1' } : null),
+					})}
+				>
 					<dt mix={css(accountFieldLabelCss)}>{item.label}</dt>
 					<dd
 						mix={css({
 							margin: 0,
 							color: colors.text,
 							minWidth: 0,
-							overflowWrap: 'anywhere',
+							// Let children (IdValue, Code, …) choose their own
+							// wrap; `anywhere` here forced mid-token breaks in
+							// the job-id control.
+							overflowWrap: 'break-word',
 						})}
 					>
 						{item.value}
@@ -571,11 +636,16 @@ export function MetadataGrid(handle: Handle<MetadataGridProps>) {
 }
 
 /**
- * An identifier is a copy target, not a sentence. The value stays on one line
- * and clips, so a 36-character UUID can no longer break a metadata column into
- * five lines of hex.
+ * An identifier is a copy target, not a sentence. Value + Copy share one
+ * bordered control (input-group).
  *
- * The whole string stays in the DOM — clipping is CSS, never a truncated
+ * Default (`copy: 'chip'`, or omitted): one-line ellipsis — table
+ * `primaryAccessory` beside an email/name must stay a single chip.
+ *
+ * `copy: 'ghost'`: wrapping metadata field (job detail) with a normal sm
+ * ghost Copy that fills the segment height.
+ *
+ * The whole string stays in the DOM — wrapping is CSS, never a truncated
  * substring — so a screen reader still reads the id in full, and `user-select:
  * all` turns one click into a whole-value selection for anyone the clipboard
  * button does not work for. `title` is the mouse-hover convenience on top of
@@ -586,43 +656,108 @@ export function IdValue(
 		value: string
 		/** Field name, so the copy button says which id it takes. */
 		label: string
+		copy?: 'chip' | 'ghost'
 	}>,
 ) {
-	return () => (
-		<span
-			mix={css({
-				display: 'flex',
-				alignItems: 'center',
-				gap: '0.35rem',
-				minWidth: 0,
-			})}
-		>
-			<code
-				title={handle.props.value}
+	return () => {
+		const wrap = handle.props.copy === 'ghost'
+		// Soft-wrap at `/` and `#` only when the field is allowed to wrap.
+		const displayValue = wrap
+			? handle.props.value
+					.replaceAll('-', '\u2011')
+					.replaceAll('/', '/\u200B')
+					.replaceAll('#', '#\u200B')
+			: handle.props.value
+		return (
+			<span
 				mix={css({
-					minWidth: 0,
-					overflow: 'hidden',
-					textOverflow: 'ellipsis',
-					whiteSpace: 'nowrap',
-					userSelect: 'all',
-					fontFamily: 'monospace',
-					fontSize: typography.fontSize.sm,
-					padding: '0.2rem 0.42rem',
+					display: 'flex',
+					alignItems: 'stretch',
+					minWidth: wrap ? 0 : '8rem',
+					maxWidth: wrap ? '100%' : '12rem',
+					flex: wrap ? undefined : '0 1 12rem',
 					borderRadius: radius.sm,
 					border: `1px solid ${colors.border}`,
 					backgroundColor: colors.background,
-					color: colors.text,
+					overflow: 'hidden',
 				})}
 			>
-				{handle.props.value}
-			</code>
-			<CopyTextButton
-				value={handle.props.value}
-				variant="chip"
-				ariaLabel={`Copy ${handle.props.label}`}
-			/>
-		</span>
-	)
+				<code
+					title={handle.props.value}
+					mix={css(
+						wrap
+							? {
+									flex: '1 1 auto',
+									minWidth: 0,
+									display: 'flex',
+									alignItems: 'center',
+									overflowWrap: 'break-word',
+									hyphens: 'none',
+									whiteSpace: 'normal' as const,
+									userSelect: 'all' as const,
+									fontFamily: 'monospace',
+									fontSize: typography.fontSize.sm,
+									lineHeight: 1.35,
+									// Extra end pad so `#` / last glyph clear the
+									// Copy segment divider.
+									padding: '0.55rem 0.9rem 0.55rem 0.65rem',
+									border: 'none',
+									backgroundColor: 'transparent',
+									color: colors.text,
+								}
+							: {
+									flex: '1 1 auto',
+									minWidth: 0,
+									display: 'block',
+									overflow: 'hidden',
+									textOverflow: 'ellipsis',
+									whiteSpace: 'nowrap' as const,
+									userSelect: 'all' as const,
+									fontFamily: 'monospace',
+									fontSize: typography.fontSize.sm,
+									lineHeight: 1.35,
+									padding: '0.4rem 0.55rem',
+									border: 'none',
+									backgroundColor: 'transparent',
+									color: colors.text,
+								},
+					)}
+				>
+					{displayValue}
+				</code>
+				{/* Wrapper owns the segment chrome; `embedded` on the button
+				    owns fill/radius on the button's own css() layer. */}
+				<span
+					mix={css(
+						wrap
+							? {
+									display: 'flex',
+									alignItems: 'stretch',
+									flex: 'none',
+									borderLeft: `1px solid ${colors.border}`,
+									backgroundColor: colors.surface,
+								}
+							: {
+									display: 'flex',
+									alignItems: 'center',
+									flex: 'none',
+									borderLeft: `1px solid ${colors.border}`,
+									backgroundColor: colors.surface,
+									paddingInline: '0.35rem',
+								},
+					)}
+				>
+					<CopyTextButton
+						value={handle.props.value}
+						variant={wrap ? 'ghost' : 'chip'}
+						size={wrap ? 'sm' : undefined}
+						embedded={wrap || undefined}
+						ariaLabel={`Copy ${handle.props.label}`}
+					/>
+				</span>
+			</span>
+		)
+	}
 }
 
 /**
@@ -633,19 +768,23 @@ export function IdValue(
 export function TimestampValue(
 	handle: Handle<{ value: string | null; fallback?: string }>,
 ) {
-	return () => (
-		<span
-			mix={css({
-				whiteSpace: 'nowrap',
-				fontVariantNumeric: 'tabular-nums',
-			})}
-		>
-			{formatNullableTimestamp(
-				handle.props.value,
-				handle.props.fallback ?? '—',
-			)}
-		</span>
-	)
+	return () => {
+		const label = formatNullableTimestamp(
+			handle.props.value,
+			handle.props.fallback ?? '—',
+		)
+		return (
+			<span
+				title={label}
+				mix={css({
+					whiteSpace: 'nowrap',
+					fontVariantNumeric: 'tabular-nums',
+				})}
+			>
+				{label}
+			</span>
+		)
+	}
 }
 
 /**
