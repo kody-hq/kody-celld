@@ -232,13 +232,21 @@ export function parseAuthorizeRequest(
 	params: URLSearchParams,
 	client: { clientId: string; redirectUris: Array<string> } | null,
 	issuer: string,
+	options: { exactRedirectUri?: boolean } = {},
 ): AuthorizeRequest {
 	const clientId = params.get('client_id')
 	if (!clientId) throw new OAuthProtocolError('invalid_request', 'client_id is required.')
 	if (!client)
 		throw new OAuthProtocolError('invalid_client', 'Unknown client_id. Register with /oauth/register first.', 400)
-	const redirectUri = params.get('redirect_uri') ?? (client.redirectUris.length === 1 ? client.redirectUris[0]! : null)
-	if (!redirectUri || !redirectUriMatches(redirectUri, client.redirectUris)) {
+	const impliedRedirectUri =
+		!options.exactRedirectUri && client.redirectUris.length === 1 ? client.redirectUris[0]! : null
+	const redirectUri = params.get('redirect_uri') ?? impliedRedirectUri
+	const redirectMatches = redirectUri
+		? options.exactRedirectUri
+			? client.redirectUris.includes(redirectUri)
+			: redirectUriMatches(redirectUri, client.redirectUris)
+		: false
+	if (!redirectUri || !redirectMatches) {
 		throw new OAuthProtocolError('invalid_request', 'redirect_uri does not match the registered redirect URIs.')
 	}
 	if (params.get('response_type') !== 'code') {

@@ -4,6 +4,7 @@ import { constantTimeEqualString } from '../auth/password.ts'
 import type { Env } from '../env.ts'
 import { recordAudit } from '../lib/audit.ts'
 import { mcpClientMetadataPath } from '../mcp-client/oauth.ts'
+import { cliClientId, cliClientMetadataPath, cliClientMetadataResponse } from './cli-client-metadata.ts'
 import { renderPage } from '#app/render.tsx'
 import { clientMetadataResponse } from './client-metadata.ts'
 import { appSessionOf, readForm, redirect } from '../web/http.ts'
@@ -59,7 +60,8 @@ export function isOAuthRoute(pathname: string) {
 
 /** MCP authorization server: discovery, DCR, consent, token, revoke, userinfo. */
 export async function handleOAuth(request: Request, env: Env, url: URL): Promise<Response> {
-	const issuer = env.KODY_PUBLIC_URL
+	const issuer = new URL(env.KODY_PUBLIC_URL).origin
+	if (url.pathname === cliClientMetadataPath) return cliClientMetadataResponse(request, issuer)
 	if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders })
 
 	if (isWellKnown(url.pathname)) {
@@ -150,7 +152,10 @@ function authorizeErrorPage(error: unknown) {
 async function loadAuthorizeRequest(env: Env, params: URLSearchParams) {
 	const clientId = params.get('client_id')
 	const client = clientId ? await registry(env).oauthClientGet(clientId) : null
-	const authorize = parseAuthorizeRequest(params, client, env.KODY_PUBLIC_URL)
+	const issuer = new URL(env.KODY_PUBLIC_URL).origin
+	const authorize = parseAuthorizeRequest(params, client, issuer, {
+		exactRedirectUri: clientId === cliClientId(issuer),
+	})
 	return { client: client!, authorize }
 }
 
@@ -237,7 +242,13 @@ async function handleAuthorize(request: Request, env: Env, url: URL) {
 		target: client.clientId,
 		details: { clientName: client.clientName, redirectHost: new URL(authorize.redirectUri).host },
 	})
-	return redirect(redirectWithParams(authorize.redirectUri, { code, state: authorize.state, iss: env.KODY_PUBLIC_URL }))
+	return redirect(
+		redirectWithParams(authorize.redirectUri, {
+			code,
+			state: authorize.state,
+			iss: new URL(env.KODY_PUBLIC_URL).origin,
+		}),
+	)
 }
 
 // ------------------------------------------------------------------- token

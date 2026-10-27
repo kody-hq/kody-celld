@@ -14,6 +14,8 @@ export type Principal = {
 	clientName: string | null
 	/** Present when the caller authenticated with a kody_at_ token. */
 	apiTokenId?: string
+	/** Present when the caller authenticated with an OAuth access token. */
+	oauthClientId?: string
 }
 
 export function bearer(request: Request) {
@@ -38,7 +40,13 @@ export async function authenticateBearer(request: Request, env: Env): Promise<Pr
 		if (!resolved) return null
 		const userCell = getUserCell(env, resolved.user.id)
 		await userCell.init(resolved.user.id)
-		return { user: resolved.user, userCell, via: 'oauth', clientName: resolved.clientName }
+		return {
+			user: resolved.user,
+			userCell,
+			via: 'oauth',
+			clientName: resolved.clientName,
+			oauthClientId: resolved.clientId,
+		}
 	}
 	if (token.startsWith(apiTokenPrefix)) {
 		const resolved = await registry.apiTokenResolve(token)

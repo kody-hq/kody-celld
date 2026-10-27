@@ -208,8 +208,7 @@ roadmap is now shipped; the roadmap below is kept as the change log.
   present and appear when their capabilities are registered.
   `/v1/tokens/device`, token list/create and by-id routes, and the current-token
   get, rotate, and revoke routes are native operations. Token scopes are stored
-  and returned but are not enforced per route. Hosted `kody login` also needs
-  its CLI OAuth client follow-up, and bootstrap routes are not ported.
+  and returned but are not enforced per route. Bootstrap routes are not ported.
   `/v1/search/tool`, capability proxy and local-execute, and repos are not
   ported yet. Some capabilities with no `/v1` route yet (for example
   `packageRun`, `packageInstall`, `webhookDelete`, and email inbox claims) are

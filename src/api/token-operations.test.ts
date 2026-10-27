@@ -9,24 +9,32 @@ import {
 	requireTokenManagementPrincipal,
 } from './token-operations.ts'
 
-const principal = (via: Principal['via'], apiTokenId?: string) => ({ via, apiTokenId }) as Principal
+const officialClientId = 'https://celld.example/oauth/cli-client-metadata.json'
+const principal = (via: Principal['via'], apiTokenId?: string, oauthClientId?: string) =>
+	({ via, apiTokenId, oauthClientId }) as Principal
 
-test('device token operation rejects kc_ and kody_at_ principals', () => {
+test('device token operation accepts only the official CLI OAuth principal', () => {
 	assert.throws(
-		() => requireCliLoginOAuthPrincipal(principal('api_token')),
+		() => requireCliLoginOAuthPrincipal(principal('api_token'), officialClientId),
 		(error: Error) => {
 			assert.equal(error.message, cliLoginDeviceTokenMessage)
 			return true
 		},
 	)
 	assert.throws(
-		() => requireCliLoginOAuthPrincipal(principal('kody_api_token', 'token-id')),
+		() => requireCliLoginOAuthPrincipal(principal('kody_api_token', 'token-id'), officialClientId),
 		(error: Error) => {
 			assert.equal(error.message, cliLoginDeviceTokenMessage)
 			return true
 		},
 	)
-	assert.doesNotThrow(() => requireCliLoginOAuthPrincipal(principal('oauth')))
+	assert.throws(
+		() => requireCliLoginOAuthPrincipal(principal('oauth', undefined, 'mcpc_other'), officialClientId),
+		(error: Error) => error.message === cliLoginDeviceTokenMessage,
+	)
+	assert.doesNotThrow(() =>
+		requireCliLoginOAuthPrincipal(principal('oauth', undefined, officialClientId), officialClientId),
+	)
 })
 
 test('current-token operations reject non-kody_at_ principals', () => {

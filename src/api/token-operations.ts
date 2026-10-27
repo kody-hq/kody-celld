@@ -114,7 +114,7 @@ export const tokenApiOperations: Record<
 > = {
 	cliLoginDeviceToken: {
 		summary: 'Create a CLI login token',
-		description: `Mint a user-bound API token from an OAuth access token. The default name is kody-cli. Non-OAuth callers receive invalid_request: ${cliLoginDeviceTokenMessage}`,
+		description: `Mint a user-bound API token from the official CLI OAuth client. The default name is kody-cli. Other callers receive invalid_request: ${cliLoginDeviceTokenMessage}`,
 		inputSchema: deviceInputSchema,
 		outputSchema: deviceTokenViewSchema,
 		inputKind: 'json',
@@ -199,8 +199,8 @@ export const tokenApiOperations: Record<
 	},
 }
 
-export function requireCliLoginOAuthPrincipal(principal: Principal) {
-	if (principal.via !== 'oauth') {
+export function requireCliLoginOAuthPrincipal(principal: Principal, officialClientId: string) {
+	if (principal.via !== 'oauth' || principal.oauthClientId !== officialClientId) {
 		throw new KodyError('invalid_request', cliLoginDeviceTokenMessage)
 	}
 }

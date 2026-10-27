@@ -19,6 +19,7 @@ import {
 	type TokenEndpointAuthMethod,
 } from './protocol.ts'
 import { constantTimeEqualString } from '../auth/password.ts'
+import { buildCliClientIdMetadataDocument, cliClientId } from './cli-client-metadata.ts'
 
 export type OAuthClient = ClientRegistration & {
 	clientId: string
@@ -140,10 +141,40 @@ type TokenRow = {
 export class OAuthServerStore {
 	private readonly sql: SqlStorage
 	private readonly keyring: () => Promise<MasterKeyring>
+	private readonly cliClientId: string | null
 
-	constructor(sql: SqlStorage, keyring: () => Promise<MasterKeyring>) {
+	constructor(sql: SqlStorage, keyring: () => Promise<MasterKeyring>, publicUrl?: string) {
 		this.sql = sql
 		this.keyring = keyring
+		this.cliClientId = publicUrl ? cliClientId(publicUrl) : null
+		if (publicUrl) this.ensureCliClient(publicUrl)
+	}
+
+	private ensureCliClient(publicUrl: string) {
+		const metadata = buildCliClientIdMetadataDocument(publicUrl)
+		this.sql.exec(
+			`INSERT INTO oauth_clients (
+				client_id, client_secret_hash, client_name, redirect_uris_json, token_endpoint_auth_method,
+				grant_types_json, client_uri, logo_uri, software_id, software_version, created_at, last_used_at
+			) VALUES (?, NULL, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, NULL)
+			ON CONFLICT(client_id) DO UPDATE SET
+				client_secret_hash = NULL,
+				client_name = excluded.client_name,
+				redirect_uris_json = excluded.redirect_uris_json,
+				token_endpoint_auth_method = excluded.token_endpoint_auth_method,
+				grant_types_json = excluded.grant_types_json,
+				client_uri = excluded.client_uri,
+				logo_uri = NULL,
+				software_id = NULL,
+				software_version = NULL`,
+			metadata.client_id,
+			metadata.client_name,
+			JSON.stringify(metadata.redirect_uris),
+			metadata.token_endpoint_auth_method,
+			JSON.stringify(metadata.grant_types),
+			metadata.client_uri,
+			new Date().toISOString(),
+		)
 	}
 
 	// ------------------------------------------------------------------ clients
@@ -206,6 +237,14 @@ export class OAuthServerStore {
 		method: TokenEndpointAuthMethod
 	}): Promise<OAuthClient> {
 		if (!input.clientId) throw new OAuthProtocolError('invalid_client', 'client_id is required.', 401)
+		if (input.clientId === this.cliClientId) {
+			if (input.clientSecret !== null || input.method !== 'none') {
+				throw new OAuthProtocolError('invalid_client', 'This public client must not send client credentials.', 401)
+			}
+			const client = this.clientGet(input.clientId)
+			if (!client) throw new OAuthProtocolError('invalid_client', 'Unknown client.', 401)
+			return client
+		}
 		const row = this.sql.exec<ClientRow>('SELECT * FROM oauth_clients WHERE client_id = ?', input.clientId).toArray()[0]
 		if (!row) throw new OAuthProtocolError('invalid_client', 'Unknown client.', 401)
 		if (row.client_secret_hash) {
@@ -527,11 +566,20 @@ export class OAuthServerStore {
 			'UPDATE oauth_tokens SET replay_json = NULL WHERE replay_json IS NOT NULL AND replaced_at <= ?',
 			new Date(now - refreshReplayGraceMs).toISOString(),
 		)
-		this.sql.exec(
-			`DELETE FROM oauth_clients WHERE last_used_at IS NULL AND created_at <= ?
-			 AND client_id NOT IN (SELECT client_id FROM oauth_grants)`,
-			new Date(now - unusedClientTtlMs).toISOString(),
-		)
+		if (this.cliClientId) {
+			this.sql.exec(
+				`DELETE FROM oauth_clients WHERE last_used_at IS NULL AND created_at <= ?
+				 AND client_id NOT IN (SELECT client_id FROM oauth_grants) AND client_id != ?`,
+				new Date(now - unusedClientTtlMs).toISOString(),
+				this.cliClientId,
+			)
+		} else {
+			this.sql.exec(
+				`DELETE FROM oauth_clients WHERE last_used_at IS NULL AND created_at <= ?
+				 AND client_id NOT IN (SELECT client_id FROM oauth_grants)`,
+				new Date(now - unusedClientTtlMs).toISOString(),
+			)
+		}
 	}
 }
 

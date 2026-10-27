@@ -21,6 +21,19 @@ rotate, or revoke the calling `kody_at_` token. Token credentials are returned
 only when minting or rotating. These routes are native operations, not MCP
 capabilities.
 
+## Hosted CLI login
+
+The hosted CLI can log in to celld through its official OAuth client. Set the
+MCP URL to celld's `/mcp` endpoint and the API URL to the same celld origin:
+
+```sh
+KODY_MCP_URL=http://127.0.0.1:8790/mcp \
+KODY_API_URL=http://127.0.0.1:8790 \
+kody login
+```
+
+The CLI also accepts `--mcp-url` and `--api-url` to override these values.
+
 The route table includes packages, runs, jobs, memories, MCP server
 instructions, secrets, webhooks, email, integrations, MCP servers, community,
 and storage. Routes appear in OpenAPI only when their capability is registered
