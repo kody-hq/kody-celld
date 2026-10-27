@@ -11,7 +11,7 @@ import {
 	getSurfaceCardCss,
 	hoverMq,
 } from '#universal/styles/style-primitives.ts'
-import { collapsedColumnMaxWidth } from '#universal/record-table-columns.ts'
+import { droppedColumnCollapseMaxWidth } from '#universal/record-table-columns.ts'
 import { visuallyHiddenCss } from './record-table-controls.tsx'
 
 export {
@@ -467,11 +467,8 @@ export function RecordTable(handle: Handle<RecordTableProps>) {
 		const table = (
 			<table aria-label={handle.props.ariaLabel} mix={css(tableCss)}>
 				<colgroup>
-					{columns.map((column, index) => {
-						const maxWidth = collapsedColumnMaxWidth(
-							columns,
-							columns.length - 1 - index,
-						)
+					{columns.map((column) => {
+						const maxWidth = droppedColumnCollapseMaxWidth(column)
 						const widthCss = column.width
 							? css({ width: column.width })
 							: undefined
