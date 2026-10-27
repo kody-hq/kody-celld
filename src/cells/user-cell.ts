@@ -770,6 +770,9 @@ export class UserCell extends DurableObject<Env> {
 			throw new KodyError('invalid_secret_value', 'Secret value must be at most 64 KiB.')
 		}
 		const scope: SecretScope = input.scope ?? 'user'
+		if (scope !== 'user' && scope !== 'package' && scope !== 'session') {
+			throw new KodyError('invalid_secret_scope', 'scope must be user or package.')
+		}
 		if (scope === 'session') {
 			throw new KodyError(
 				'invalid_secret_scope',
