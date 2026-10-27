@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import { DatabaseSync } from 'node:sqlite'
 import { describe, it } from 'node:test'
 import { pkceChallenge } from '../integrations/oauth.ts'
-import { buildMasterKeyring } from '../lib/crypto.ts'
+import { buildMasterKeyring, randomToken } from '../lib/crypto.ts'
+import { cliClientId, cliOAuthCallbackUrl } from './cli-client-metadata.ts'
 import { OAuthProtocolError, refreshReplayGraceMs, verifyPkce, type ClientRegistration } from './protocol.ts'
 import { OAuthServerStore, oauthServerSchema } from './server-store.ts'
 
@@ -27,10 +28,10 @@ function memorySql() {
 
 const keyring = buildMasterKeyring('unit-test-master-key')
 
-function store() {
+function store(publicUrl?: string) {
 	const { db, sql } = memorySql()
 	sql.exec(oauthServerSchema)
-	return { db, store: new OAuthServerStore(sql, () => keyring) }
+	return { db, store: new OAuthServerStore(sql, () => keyring, publicUrl) }
 }
 
 const registration = (over: Partial<ClientRegistration> = {}): ClientRegistration => ({
@@ -120,6 +121,66 @@ describe('OAuthServerStore clients', () => {
 			'invalid_client',
 			'public clients have no secret',
 		)
+	})
+
+	it('recognizes only the official metadata client and exchanges a PKCE code without credentials', async () => {
+		const publicUrl = 'https://kody.example/'
+		const officialClientId = cliClientId(publicUrl)
+		const { db, store: s } = store(publicUrl)
+		const client = s.clientGet(officialClientId)!
+		assert.equal(client.clientName, '@kodycodes/cli')
+		assert.deepEqual(client.redirectUris, [cliOAuthCallbackUrl])
+		assert.equal(client.tokenEndpointAuthMethod, 'none')
+		assert.deepEqual(client.grantTypes, ['authorization_code', 'refresh_token'])
+		assert.equal(client.clientUri, 'https://github.com/kody-hq/kody')
+		assert.equal('clientSecret' in client, false)
+		assert.equal(s.clientGet('https://other.example/oauth/cli-client-metadata.json'), null)
+		assert.equal(
+			await oauthCode(() => s.clientAuthenticate({ clientId: officialClientId, clientSecret: null, method: 'none' })),
+			null,
+		)
+		assert.equal(
+			await oauthCode(() =>
+				s.clientAuthenticate({
+					clientId: officialClientId,
+					clientSecret: randomToken('mcps', 32),
+					method: 'client_secret_post',
+				}),
+			),
+			'invalid_client',
+		)
+		assert.equal(
+			(
+				db.prepare('SELECT client_secret_hash FROM oauth_clients WHERE client_id = ?').get(officialClientId) as {
+					client_secret_hash: string | null
+				}
+			).client_secret_hash,
+			null,
+		)
+
+		const challenge = await pkceChallenge(verifier)
+		const code = await s.codeIssue({
+			clientId: officialClientId,
+			userId: 'user_cli',
+			redirectUri: cliOAuthCallbackUrl,
+			codeChallenge: challenge,
+			scope: 'openid profile email',
+			resource,
+		})
+		const consumed = await s.codeConsume(code)
+		assert.equal(consumed?.redirectUri, cliOAuthCallbackUrl)
+		assert.equal(await verifyPkce(verifier, consumed!.codeChallenge), true)
+		const grantId = s.grantEnsure({
+			userId: 'user_cli',
+			clientId: officialClientId,
+			scope: consumed!.scope,
+		})
+		const tokens = await s.tokensIssue({ grantId, clientId: officialClientId, scope: consumed!.scope })
+		assert.equal((await s.accessTokenResolve(tokens.access_token))?.clientId, officialClientId)
+		const refreshed = await s.tokensRefresh({ refreshToken: tokens.refresh_token, clientId: officialClientId })
+		assert.ok(refreshed.access_token.startsWith('mcpat_'))
+		assert.equal((await s.accessTokenResolve(refreshed.access_token))?.clientId, officialClientId)
+		assert.equal(s.grantList('user_cli')[0]?.clientName, '@kodycodes/cli')
 	})
 })
 

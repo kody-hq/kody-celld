@@ -13,10 +13,26 @@ capability and package catalog. `POST /v1/execute` accepts exactly one of
 are accepted but unused; `credentials` is not supported:
 
 `POST /v1/tokens/device` exchanges an OAuth access token for a user-bound
-`kody_at_` credential. `GET /v1/tokens/current` describes the calling token,
-`POST /v1/tokens/current/rotate` replaces its value, and
-`DELETE /v1/tokens/current` revokes it. The token value is returned only when
-minting or rotating. These routes are native operations, not MCP capabilities.
+`kody_at_` credential. `GET /v1/tokens` lists tokens and `POST /v1/tokens`
+creates one. `GET /v1/tokens/{token_id}`,
+`POST /v1/tokens/{token_id}/rotate`, and `DELETE /v1/tokens/{token_id}` inspect,
+rotate, and revoke a token by id. The `/v1/tokens/current` routes describe,
+rotate, or revoke the calling `kody_at_` token. Token credentials are returned
+only when minting or rotating. These routes are native operations, not MCP
+capabilities.
+
+## Hosted CLI login
+
+The hosted CLI can log in to celld through its official OAuth client. Set the
+MCP URL to celld's `/mcp` endpoint and the API URL to the same celld origin:
+
+```sh
+KODY_MCP_URL=http://127.0.0.1:8790/mcp \
+KODY_API_URL=http://127.0.0.1:8790 \
+kody login
+```
+
+The CLI also accepts `--mcp-url` and `--api-url` to override these values.
 
 The route table includes packages, runs, jobs, memories, MCP server
 instructions, secrets, webhooks, email, integrations, MCP servers, community,

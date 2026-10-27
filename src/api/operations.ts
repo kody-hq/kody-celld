@@ -103,9 +103,14 @@ export const apiOperations = [
 	['PATCH', '/v1/community/profile', 'communityProfileUpdate'],
 	['POST', '/v1/execute', 'execute'],
 	['POST', '/v1/tokens/device', 'cliLoginDeviceToken'],
+	['GET', '/v1/tokens', 'tokenList'],
+	['POST', '/v1/tokens', 'tokenCreate'],
 	['GET', '/v1/tokens/current', 'tokenGetCurrent'],
 	['POST', '/v1/tokens/current/rotate', 'tokenRotateCurrent'],
 	['DELETE', '/v1/tokens/current', 'tokenRevokeCurrent'],
+	['GET', '/v1/tokens/{token_id}', 'tokenGet'],
+	['POST', '/v1/tokens/{token_id}/rotate', 'tokenRotate'],
+	['DELETE', '/v1/tokens/{token_id}', 'tokenRevoke'],
 ] as const
 
 export type ApiMethod = (typeof apiOperations)[number][0]
@@ -151,6 +156,11 @@ const nativeOperations = new Set<ApiOperationId>([
 	'search',
 	'execute',
 	'cliLoginDeviceToken',
+	'tokenList',
+	'tokenCreate',
+	'tokenGet',
+	'tokenRotate',
+	'tokenRevoke',
 	'tokenGetCurrent',
 	'tokenRotateCurrent',
 	'tokenRevokeCurrent',

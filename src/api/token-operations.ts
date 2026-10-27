@@ -70,6 +70,37 @@ const deviceInputSchema: JsonSchema = {
 	},
 }
 
+const tokenListInputSchema: JsonSchema = {
+	type: 'object',
+	properties: {
+		include_inactive: { type: 'boolean', description: 'Include expired and revoked tokens.' },
+	},
+	additionalProperties: false,
+}
+
+const tokenCreateInputSchema: JsonSchema = {
+	type: 'object',
+	properties: {
+		name: { type: 'string', minLength: 1, maxLength: 100 },
+		scopes: { type: 'array', minItems: 1, items: { type: 'string', enum: [...orgPermissionScopes] } },
+		lifetime: { type: 'string', enum: ['short', 'long'] },
+		idle_ttl_seconds: { type: 'integer', minimum: 60, maximum: 1209600 },
+		max_lifetime_seconds: { type: 'integer', minimum: 60, maximum: 7776000 },
+	},
+	required: ['name', 'scopes'],
+	additionalProperties: false,
+}
+
+const tokenIdInputSchema: JsonSchema = {
+	type: 'object',
+	properties: {
+		token_id: { type: 'string', minLength: 1 },
+		id: { type: 'string', minLength: 1 },
+	},
+	required: ['token_id'],
+	additionalProperties: false,
+}
+
 export const tokenApiOperations: Record<
 	string,
 	{
@@ -83,10 +114,59 @@ export const tokenApiOperations: Record<
 > = {
 	cliLoginDeviceToken: {
 		summary: 'Create a CLI login token',
-		description: `Mint a user-bound API token from an OAuth access token. The default name is kody-cli. Non-OAuth callers receive invalid_request: ${cliLoginDeviceTokenMessage}`,
+		description: `Mint a user-bound API token from the official CLI OAuth client. The default name is kody-cli. Other callers receive invalid_request: ${cliLoginDeviceTokenMessage}`,
 		inputSchema: deviceInputSchema,
 		outputSchema: deviceTokenViewSchema,
 		inputKind: 'json',
+		readOnly: false,
+	},
+	tokenList: {
+		summary: 'List API tokens',
+		description:
+			'List this user’s kody_at_ API tokens. Expired and revoked tokens are omitted unless include_inactive is true.',
+		inputSchema: tokenListInputSchema,
+		outputSchema: {
+			type: 'object',
+			properties: { tokens: { type: 'array', items: tokenViewSchema } },
+			required: ['tokens'],
+		},
+		inputKind: 'none',
+		readOnly: true,
+	},
+	tokenCreate: {
+		summary: 'Create an API token',
+		description: 'Create a user-bound kody_at_ API token. Its value is returned once.',
+		inputSchema: tokenCreateInputSchema,
+		outputSchema: tokenSecretViewSchema,
+		inputKind: 'json',
+		readOnly: false,
+	},
+	tokenGet: {
+		summary: 'Get an API token',
+		description: 'Return one API token by id, including its status and metadata.',
+		inputSchema: tokenIdInputSchema,
+		outputSchema: tokenViewSchema,
+		inputKind: 'none',
+		readOnly: true,
+	},
+	tokenRotate: {
+		summary: 'Rotate an API token',
+		description: 'Replace an active token value. The old credential stops working immediately.',
+		inputSchema: tokenIdInputSchema,
+		outputSchema: tokenSecretViewSchema,
+		inputKind: 'none',
+		readOnly: false,
+	},
+	tokenRevoke: {
+		summary: 'Revoke an API token',
+		description: 'Revoke an API token immediately.',
+		inputSchema: tokenIdInputSchema,
+		outputSchema: {
+			type: 'object',
+			properties: { id: { type: 'string' }, revoked: { type: 'boolean', enum: [true] } },
+			required: ['id', 'revoked'],
+		},
+		inputKind: 'none',
 		readOnly: false,
 	},
 	tokenGetCurrent: {
@@ -119,8 +199,8 @@ export const tokenApiOperations: Record<
 	},
 }
 
-export function requireCliLoginOAuthPrincipal(principal: Principal) {
-	if (principal.via !== 'oauth') {
+export function requireCliLoginOAuthPrincipal(principal: Principal, officialClientId: string) {
+	if (principal.via !== 'oauth' || principal.oauthClientId !== officialClientId) {
 		throw new KodyError('invalid_request', cliLoginDeviceTokenMessage)
 	}
 }
@@ -130,4 +210,13 @@ export function requireCurrentApiTokenPrincipal(principal: Principal) {
 		throw new KodyError('invalid_request', currentApiTokenMessage)
 	}
 	return principal.apiTokenId
+}
+
+export function requireTokenManagementPrincipal(principal: Principal) {
+	if (principal.via !== 'oauth' && principal.via !== 'api_token' && principal.via !== 'kody_api_token') {
+		throw new KodyError('invalid_request', 'Authentication required.')
+	}
+	if (principal.via === 'kody_api_token' && !principal.apiTokenId) {
+		throw new KodyError('invalid_request', 'API token principal is missing its token id.')
+	}
 }

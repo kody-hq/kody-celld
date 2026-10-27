@@ -7,6 +7,7 @@
 // refresh rotation with replay detection, RFC 7009 revocation, and user-side
 // grant revocation from the account UI. Token values only ever live in this
 // process and are never printed.
+import { spawnSync } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
 import { admin, assert, baseUrl, Browser, hiddenInputs, log, McpClient } from './lib.mjs'
 
@@ -88,6 +89,7 @@ export async function smokeOAuthServer({ user, mcp }) {
 	// --- discovery + challenge -------------------------------------------------
 	const as = await json('/.well-known/oauth-authorization-server')
 	assert(as.status === 200 && as.json.issuer === baseUrl, 'AS metadata served with issuer', as.json)
+	assert(as.json.issuer === new URL(`${baseUrl}/mcp`).origin, 'discovery issuer matches the MCP URL origin')
 	assert(as.json.authorization_endpoint === `${baseUrl}/oauth/authorize`, 'authorization_endpoint', as.json)
 	assert(as.json.token_endpoint === `${baseUrl}/oauth/token`, 'token_endpoint', as.json)
 	assert(as.json.registration_endpoint === `${baseUrl}/oauth/register`, 'registration_endpoint', as.json)
@@ -99,6 +101,24 @@ export async function smokeOAuthServer({ user, mcp }) {
 	assert(pr.json.authorization_servers?.[0] === baseUrl, 'protected-resource points at this AS', pr.json)
 	const prPath = await json('/.well-known/oauth-protected-resource/mcp')
 	assert(prPath.status === 200 && prPath.json.resource === `${baseUrl}/mcp`, 'path-suffixed PRM also served')
+	const cliMetadataResponse = await fetch(`${baseUrl}/oauth/cli-client-metadata.json`)
+	const cliMetadata = await cliMetadataResponse.json()
+	assert(
+		cliMetadataResponse.status === 200 &&
+			cliMetadataResponse.headers.get('cache-control') === 'public, max-age=3600' &&
+			cliMetadata.client_id === `${baseUrl}/oauth/cli-client-metadata.json` &&
+			cliMetadata.client_name === '@kodycodes/cli' &&
+			cliMetadata.redirect_uris?.[0] === 'http://127.0.0.1:43742/callback' &&
+			cliMetadata.scope === 'openid profile email',
+		'official CLI metadata is served with the expected document and cache policy',
+	)
+	const cliMetadataHead = await fetch(`${baseUrl}/oauth/cli-client-metadata.json`, { method: 'HEAD' })
+	assert(
+		cliMetadataHead.status === 200 && cliMetadataHead.headers.get('cache-control') === 'public, max-age=3600',
+		'official CLI metadata supports HEAD',
+	)
+	const cliMetadataOptions = await fetch(`${baseUrl}/oauth/cli-client-metadata.json`, { method: 'OPTIONS' })
+	assert(cliMetadataOptions.status === 204, 'official CLI metadata supports OPTIONS')
 	const anon = await mcpStatus(null)
 	assert(anon.status === 401, 'unauthenticated /mcp is 401', anon)
 	assert(
@@ -225,6 +245,16 @@ export async function smokeOAuthServer({ user, mcp }) {
 		`/oauth/authorize?${new URLSearchParams({ ...authParams, client_id: 'mcpc_nope' })}`,
 	)
 	assert(unknownClient.status === 400 && unknownClient.text.includes('invalid_client'), 'unknown client -> error page')
+	const arbitraryMetadataClient = await browser.get(
+		`/oauth/authorize?${new URLSearchParams({
+			...authParams,
+			client_id: 'https://arbitrary.example/client-metadata.json',
+		})}`,
+	)
+	assert(
+		arbitraryMetadataClient.status === 400 && arbitraryMetadataClient.text.includes('invalid_client'),
+		'arbitrary URL-based client metadata is not fetched or accepted',
+	)
 
 	const denied = await authorize(browser, authParams, 'deny')
 	assert(
@@ -363,9 +393,78 @@ export async function smokeOAuthServer({ user, mcp }) {
 		headers: { authorization: `Bearer ${tokens.json.access_token}` },
 	})
 	assert(restApi.status === 200, 'OAuth token also authenticates /v1', restApi.status)
-	const deviceToken = await json('/v1/tokens/device', {
+	const nonCliDeviceToken = await json('/v1/tokens/device', {
 		method: 'POST',
 		headers: { authorization: `Bearer ${tokens.json.access_token}` },
+		body: { lifetime: 'short' },
+	})
+	assert(
+		nonCliDeviceToken.status === 400 &&
+			nonCliDeviceToken.json.error?.code === 'invalid_request' &&
+			nonCliDeviceToken.json.error?.message ===
+				'POST /v1/tokens/device accepts the official CLI login OAuth access token. Send that bearer once; store the returned kody_at_ token.',
+		'other OAuth clients cannot mint device tokens',
+		nonCliDeviceToken.json.error,
+	)
+	const officialCliClientId = `${baseUrl}/oauth/cli-client-metadata.json`
+	const officialCliPkce = pkce()
+	const officialCliAuth = {
+		response_type: 'code',
+		client_id: officialCliClientId,
+		redirect_uri: 'http://127.0.0.1:43742/callback',
+		code_challenge: officialCliPkce.challenge,
+		code_challenge_method: 'S256',
+		scope: 'openid profile email',
+		state: b64url(randomBytes(12)),
+		resource: `${baseUrl}/mcp`,
+	}
+	const alternateCliRedirect = await browser.get(
+		`/oauth/authorize?${new URLSearchParams({
+			...officialCliAuth,
+			redirect_uri: 'http://127.0.0.1:43743/callback',
+		})}`,
+	)
+	assert(
+		alternateCliRedirect.status === 400 && alternateCliRedirect.text.includes('redirect_uri'),
+		'official CLI client rejects an alternate loopback callback',
+		alternateCliRedirect.status,
+	)
+	const officialCliConsent = await browser.get(`/oauth/authorize?${new URLSearchParams(officialCliAuth)}`)
+	assert(
+		officialCliConsent.status === 200 && officialCliConsent.text.includes('@kodycodes/cli'),
+		'consent page names the official CLI client',
+	)
+	const officialCliApproved = await authorize(browser, officialCliAuth)
+	assert(officialCliApproved.params.code, 'official CLI authorization returns a code')
+	const officialCliTokens = await tokenRequest({
+		grant_type: 'authorization_code',
+		client_id: officialCliClientId,
+		code: officialCliApproved.params.code,
+		code_verifier: officialCliPkce.verifier,
+		redirect_uri: officialCliAuth.redirect_uri,
+		resource: `${baseUrl}/mcp`,
+	})
+	assert(
+		officialCliTokens.status === 200 && officialCliTokens.json.access_token?.startsWith('mcpat_'),
+		'official CLI exchanges a PKCE code without a client credential',
+		officialCliTokens.info,
+	)
+	const officialCliRefresh = await tokenRequest({
+		grant_type: 'refresh_token',
+		client_id: officialCliClientId,
+		refresh_token: officialCliTokens.json.refresh_token,
+	})
+	assert(
+		officialCliRefresh.status === 200 &&
+			officialCliRefresh.json.access_token?.startsWith('mcpat_') &&
+			(await mcpStatus(officialCliTokens.json.access_token)).status === 401 &&
+			(await mcpStatus(officialCliRefresh.json.access_token)).status === 200,
+		'official CLI refresh rotates its OAuth tokens',
+		officialCliRefresh.info,
+	)
+	const deviceToken = await json('/v1/tokens/device', {
+		method: 'POST',
+		headers: { authorization: `Bearer ${officialCliRefresh.json.access_token}` },
 		body: { lifetime: 'short' },
 	})
 	assert(
@@ -376,6 +475,23 @@ export async function smokeOAuthServer({ user, mcp }) {
 		'OAuth access token mints a CLI token',
 		{ status: deviceToken.status, error: deviceToken.json.error },
 	)
+	if (process.env.KODY_CLI_BIN) {
+		const cli = spawnSync(process.execPath, [process.env.KODY_CLI_BIN, 'whoami', '--json'], {
+			encoding: 'utf8',
+			env: {
+				...process.env,
+				KODY_API_TOKEN: deviceToken.json.token,
+				KODY_API_URL: baseUrl,
+				KODY_MCP_URL: `${baseUrl}/mcp`,
+			},
+		})
+		assert(cli.status === 0, 'hosted CLI reads the minted token in headless mode', {
+			status: cli.status,
+			signal: cli.signal,
+		})
+		assert(!cli.stdout.includes(deviceToken.json.token), 'hosted CLI does not print the token value')
+		log('hosted CLI', 'whoami with KODY_API_TOKEN')
+	}
 	const apiAuthorization = { authorization: `Bearer ${deviceToken.json.token}` }
 	const currentToken = await json('/v1/tokens/current', { headers: apiAuthorization })
 	assert(
@@ -406,7 +522,67 @@ export async function smokeOAuthServer({ user, mcp }) {
 		currentTokenStatus: revokedCurrent.json.status,
 		revokedAt: revokedCurrent.json.revoked_at,
 	})
-	log('access', 'OAuth token mints kody_at_; metadata, /v1 access, rotation, and revocation work')
+	const collectionToken = await json('/v1/tokens', {
+		method: 'POST',
+		headers: { authorization: `Bearer ${tokens.json.access_token}` },
+		body: { name: 'collection smoke', scopes: ['search:read'], lifetime: 'short' },
+	})
+	assert(
+		collectionToken.status === 200 &&
+			collectionToken.json.token?.startsWith('kody_at_') &&
+			collectionToken.json.created_via === 'mcp-api' &&
+			collectionToken.headers.get('cache-control') === 'no-store',
+		'OAuth access token creates a token through the collection route',
+		{ status: collectionToken.status, error: collectionToken.json.error },
+	)
+	const collectionList = await json('/v1/tokens', {
+		headers: { authorization: `Bearer ${tokens.json.access_token}` },
+	})
+	assert(
+		collectionList.status === 200 &&
+			collectionList.json.tokens.some((token) => token.id === collectionToken.json.id) &&
+			collectionList.headers.get('cache-control') === 'no-store',
+		'token list includes the created token without caching',
+		{ status: collectionList.status },
+	)
+	const collectionGet = await json(`/v1/tokens/${collectionToken.json.id}`, {
+		headers: { authorization: `Bearer ${tokens.json.access_token}` },
+	})
+	assert(
+		collectionGet.status === 200 &&
+			collectionGet.json.id === collectionToken.json.id &&
+			collectionGet.headers.get('cache-control') === 'no-store',
+		'token get returns the created token by id',
+		{ status: collectionGet.status },
+	)
+	const collectionAuthorization = { authorization: `Bearer ${collectionToken.json.token}` }
+	const collectionRotate = await json(`/v1/tokens/${collectionToken.json.id}/rotate`, {
+		method: 'POST',
+		headers: { authorization: `Bearer ${tokens.json.access_token}` },
+	})
+	assert(
+		collectionRotate.status === 200 &&
+			collectionRotate.json.token !== collectionToken.json.token &&
+			collectionRotate.headers.get('cache-control') === 'no-store',
+		'token rotate replaces the credential by id',
+	)
+	const collectionOldCredential = await json('/v1/search?query=secret', { headers: collectionAuthorization })
+	assert(collectionOldCredential.status === 401, 'by-id rotation invalidates the old credential')
+	const collectionRevoke = await json(`/v1/tokens/${collectionToken.json.id}`, {
+		method: 'DELETE',
+		headers: { authorization: `Bearer ${tokens.json.access_token}` },
+	})
+	assert(
+		collectionRevoke.status === 200 &&
+			collectionRevoke.json.revoked === true &&
+			collectionRevoke.headers.get('cache-control') === 'no-store',
+		'token revoke works by id without caching',
+	)
+	const collectionRevokedCredential = await json('/v1/search?query=secret', {
+		headers: { authorization: `Bearer ${collectionRotate.json.token}` },
+	})
+	assert(collectionRevokedCredential.status === 401, 'by-id revocation invalidates the rotated credential')
+	log('access', 'official CLI OAuth token mints kody_at_; current and by-id lifecycle works')
 
 	// --- refresh rotation + replay detection ----------------------------------
 	const refreshed = await tokenRequest({

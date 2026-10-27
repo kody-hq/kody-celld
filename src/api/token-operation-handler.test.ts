@@ -4,6 +4,7 @@ import test from 'node:test'
 import type { Principal } from '../auth/authenticate.ts'
 import type { AuditEntry } from '../cells/registry-cell.ts'
 import type { Env } from '../env.ts'
+import { cliClientId } from '../oauth/cli-client-metadata.ts'
 import { handleTokenOperation } from './token-operation-handler.ts'
 
 type AuditInput = Omit<AuditEntry, 'id' | 'at'>
@@ -31,12 +32,18 @@ function fixture() {
 			return { ...entry, id: 'audit-id', at: '2026-01-01T00:00:00.000Z' }
 		},
 	}
-	const env = { REGISTRY: { getByName: () => registry } } as unknown as Env
+	const publicUrl = 'https://celld.example'
+	const env = { KODY_PUBLIC_URL: publicUrl, REGISTRY: { getByName: () => registry } } as unknown as Env
 	const oauthPrincipal = {
 		user,
 		userCell: {},
 		via: 'oauth',
 		clientName: 'kody-cli',
+		oauthClientId: cliClientId(publicUrl),
+	} as Principal
+	const otherOAuthPrincipal = {
+		...oauthPrincipal,
+		oauthClientId: 'mcpc_other',
 	} as Principal
 	const tokenPrincipal = {
 		user,
@@ -55,6 +62,7 @@ function fixture() {
 		rotatedCredential,
 		tokenHash,
 		oauthPrincipal,
+		otherOAuthPrincipal,
 		tokenPrincipal,
 	}
 }
@@ -111,9 +119,10 @@ test('audits kody_at_ token issue, rotation, and revocation without credential m
 })
 
 test('does not audit failed kody_at_ token operations', async () => {
-	const { env, behavior, auditEntries, tokenPrincipal } = fixture()
+	const { env, behavior, auditEntries, tokenPrincipal, otherOAuthPrincipal } = fixture()
 
 	await assert.rejects(handleTokenOperation('cliLoginDeviceToken', {}, env, tokenPrincipal))
+	await assert.rejects(handleTokenOperation('cliLoginDeviceToken', {}, env, otherOAuthPrincipal))
 
 	behavior.failRotate = true
 	await assert.rejects(handleTokenOperation('tokenRotateCurrent', {}, env, tokenPrincipal))
