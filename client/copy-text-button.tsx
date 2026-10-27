@@ -83,7 +83,9 @@ const smallGhostCopyButtonCss = mergeCss(
 	getSwapLabelCss(),
 )
 
-/** Sm ghost that fills an IdValue segment: square to the divider, full height. */
+/** Sm ghost that fills an IdValue segment: square to the divider, full height,
+ *  width of the "Copy" label plus normal pad — not the wide CTA sm pad, and
+ *  not inflated by the "Copy failed" swap label. */
 const embeddedGhostCopyButtonCss = mergeCss(
 	getGhostButtonCss({ size: 'sm' }),
 	{
@@ -91,7 +93,11 @@ const embeddedGhostCopyButtonCss = mergeCss(
 		alignSelf: 'stretch',
 		borderRadius: 0,
 		boxShadow: 'none',
-		paddingInline: '1.15rem',
+		width: '4.5rem',
+		boxSizing: 'border-box' as const,
+		paddingInline: '0.75rem',
+		paddingBlock: 0,
+		overflow: 'hidden',
 	},
 	getSwapLabelCss(),
 )

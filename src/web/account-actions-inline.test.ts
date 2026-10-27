@@ -32,6 +32,7 @@ describe('jobs list action row', () => {
 	it('job detail IdValue uses a wrapping sm ghost Copy; chip stays one-line', () => {
 		const detail = readFileSync(here('../../client/routes/account-jobs-detail.tsx'), 'utf8')
 		assert.match(detail, /copy="ghost"/)
+		assert.match(detail, /wide: true/)
 		const idValue = readFileSync(here('../../client/routes/account-management-components.tsx'), 'utf8')
 		assert.match(idValue, /const wrap = handle\.props\.copy === 'ghost'/)
 		assert.match(idValue, /variant=\{wrap \? 'ghost' : 'chip'\}/)
@@ -42,9 +43,11 @@ describe('jobs list action row', () => {
 		assert.match(idValue, /borderLeft: `1px solid \$\{colors\.border\}`/)
 		assert.match(idValue, /embedded` on the button/)
 		assert.match(idValue, /main:has\(> \[data-page-flash\]\) > &/)
+		assert.match(idValue, /gridColumn: '1 \/ -1'/)
 		const copyBtn = readFileSync(here('../../client/copy-text-button.tsx'), 'utf8')
 		assert.match(copyBtn, /embedded\?: boolean/)
 		assert.match(copyBtn, /embeddedGhostCopyButtonCss/)
+		assert.match(copyBtn, /width: '4\.5rem'/)
 	})
 
 	it('jobs list uses primary link styling and wraps the job name at slashes', () => {

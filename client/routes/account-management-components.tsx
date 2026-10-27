@@ -579,6 +579,11 @@ type MetadataGridProps = {
 	items: Array<{
 		label: string
 		value: AccountManagementSlot
+		/**
+		 * Span the full grid row. Use for a long id control that must stay on
+		 * one line at desktop widths (job detail Job id).
+		 */
+		wide?: boolean
 	}>
 }
 
@@ -603,7 +608,13 @@ export function MetadataGrid(handle: Handle<MetadataGridProps>) {
 			})}
 		>
 			{handle.props.items.map((item) => (
-				<div key={item.label} mix={css({ minWidth: 0 })}>
+				<div
+					key={item.label}
+					mix={css({
+						minWidth: 0,
+						...(item.wide ? { gridColumn: '1 / -1' } : null),
+					})}
+				>
 					<dt mix={css(accountFieldLabelCss)}>{item.label}</dt>
 					<dd
 						mix={css({
@@ -687,7 +698,9 @@ export function IdValue(
 									fontFamily: 'monospace',
 									fontSize: typography.fontSize.sm,
 									lineHeight: 1.35,
-									padding: '0.55rem 0.65rem',
+									// Extra end pad so `#` / last glyph clear the
+									// Copy segment divider.
+									padding: '0.55rem 0.9rem 0.55rem 0.65rem',
 									border: 'none',
 									backgroundColor: 'transparent',
 									color: colors.text,

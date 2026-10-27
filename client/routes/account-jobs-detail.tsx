@@ -70,6 +70,9 @@ export function AccountJobDetail(
 						items={[
 							{
 								label: 'Job id',
+								// Full row so scope/package#job stays on one line
+								// at 1280 instead of a third-column stub.
+								wide: true,
 								value: <IdValue value={job.id} label="job id" copy="ghost" />,
 							},
 							{
