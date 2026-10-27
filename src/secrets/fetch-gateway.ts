@@ -215,13 +215,13 @@ export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 			if (resolved.locked.length > 0) {
 				const locked = resolved.locked[0]!
 				const approvalUrl = secretApprovalUrl(this.env.KODY_PUBLIC_URL, locked.name, packageName ?? '')
-				record({ outcome: 'denied', status: 403, secrets, reason: 'secret_locked' })
-				return deny(
-					403,
-					'secret_locked',
-					`Secret "${locked.name}" is locked to approved packages. Ask the account owner to approve this package at ${approvalUrl}.`,
-					{ host, name: locked.name, allowedPackages: locked.allowedPackages, approvalUrl },
-				)
+				return denied({
+					status: 403,
+					code: 'secret_locked',
+					message: `Secret "${locked.name}" is locked to approved packages. Ask the account owner to approve this package at ${approvalUrl}.`,
+					details: { host, name: locked.name, allowedPackages: locked.allowedPackages, approvalUrl },
+					secrets,
+				})
 			}
 			if (resolved.missing.length > 0) {
 				return denied({

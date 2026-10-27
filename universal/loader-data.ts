@@ -659,6 +659,7 @@ export function pageHasAccountRail(page: AppPage): boolean {
 		case 'accountMcpOauthClients':
 		case 'accountApiTokens':
 		case 'accountSecrets':
+		case 'accountSecretApprove':
 		case 'accountPackages':
 		case 'accountJobs':
 		case 'accountJobDetail':
