@@ -190,20 +190,43 @@ type RecordTableProps = {
 const defaultScrollHeight = '22rem'
 
 /**
+ * Collapse a dropped cell without `display: none`. Removing middle cells
+ * from the box tree shifts later cells onto earlier `<col>` widths
+ * (`table-layout: fixed`), which crushed Jobs Actions into the Status
+ * track. Keep the slot, zero it out, and only `display: none` in card
+ * mode (≤620px) where the row is no longer a table grid.
+ */
+const droppedCellCollapseCss = {
+	width: 0,
+	minWidth: 0,
+	maxWidth: 0,
+	padding: 0,
+	border: 'none',
+	overflow: 'hidden',
+	visibility: 'hidden' as const,
+	fontSize: 0,
+	lineHeight: 0,
+	pointerEvents: 'none' as const,
+}
+
+/**
  * Columns drop one priority at a time as the container narrows, then the
  * whole table becomes cards. Each threshold is its own class so a cell can
  * carry exactly one.
  */
 const dropCss = {
-	1: css({ '@container (max-width: 680px)': { display: 'none' } }),
-	2: css({ '@container (max-width: 780px)': { display: 'none' } }),
-	3: css({ '@container (max-width: 900px)': { display: 'none' } }),
-} as const
-
-const collapsedColCss = {
-	900: css({ '@container (max-width: 900px)': { width: 0 } }),
-	780: css({ '@container (max-width: 780px)': { width: 0 } }),
-	680: css({ '@container (max-width: 680px)': { width: 0 } }),
+	1: css({
+		'@container (max-width: 680px)': droppedCellCollapseCss,
+		'@container (max-width: 620px)': { display: 'none' },
+	}),
+	2: css({
+		'@container (max-width: 780px)': droppedCellCollapseCss,
+		'@container (max-width: 620px)': { display: 'none' },
+	}),
+	3: css({
+		'@container (max-width: 900px)': droppedCellCollapseCss,
+		'@container (max-width: 620px)': { display: 'none' },
+	}),
 } as const
 
 const numericCss = css({
@@ -469,16 +492,28 @@ export function RecordTable(handle: Handle<RecordTableProps>) {
 				<colgroup>
 					{columns.map((column) => {
 						const maxWidth = droppedColumnCollapseMaxWidth(column)
-						const widthCss = column.width
-							? css({ width: column.width })
-							: undefined
+						// One `css()` so the drop collapse can override
+						// `column.width` — separate classes live in sibling
+						// cascade layers and the explicit width won before.
+						const colStyle = {
+							...(column.width ? { width: column.width } : {}),
+							...(maxWidth === null
+								? {}
+								: {
+										[`@container (max-width: ${maxWidth}px)`]: {
+											width: 0,
+											minWidth: 0,
+											maxWidth: 0,
+											overflow: 'hidden',
+										},
+									}),
+						}
 						return (
 							<col
 								key={column.key}
-								mix={[
-									widthCss,
-									maxWidth === null ? undefined : collapsedColCss[maxWidth],
-								]}
+								mix={
+									Object.keys(colStyle).length > 0 ? css(colStyle) : undefined
+								}
 							/>
 						)
 					})}

@@ -10,13 +10,15 @@ describe('jobs list action row', () => {
 		const jobsList = readFileSync(here('../../client/routes/account-jobs.tsx'), 'utf8')
 		assert.match(jobsList, /layout="inline"/)
 		assert.match(jobsList, /pendingLabel="Running…"/)
-		assert.match(jobsList, /width: '16\.5rem'/)
+		assert.match(jobsList, /width: '16\.25rem'/)
 
 		const cssSource = readFileSync(here('../../client/routes/account-management-components.tsx'), 'utf8')
 		assert.match(cssSource, /export const accountActionsInlineCss/)
-		assert.match(cssSource, /flexWrap: 'nowrap'/)
+		assert.match(cssSource, /gridAutoFlow: 'column'/)
+		assert.match(cssSource, /gridAutoColumns: '1fr'/)
 		assert.match(cssSource, /width: 'max-content'/)
 		assert.match(cssSource, /gap: '0\.7rem'/)
+		assert.match(cssSource, /minWidth: '6\.75rem'/)
 		assert.doesNotMatch(cssSource, /paddingLeft: '0\.65rem'/)
 	})
 

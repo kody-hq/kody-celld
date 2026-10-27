@@ -122,24 +122,28 @@ export const accountActionsCss = {
 
 /**
  * Single-line actions for a table cell: equal-width design-system `sm`
- * ghost buttons on one row. The row sizes to the buttons (`max-content`)
- * rather than stretching to fill a starved column and crushing padding —
+ * ghost buttons on one row. Grid columns share one track size so "Run now"
+ * / "Pause" / "Resume" / "Running…" stay the same width; `max-content`
+ * keeps the group from stretching into a starved cell and crushing pad —
  * pair with an Actions column width that fits both labels (see jobs list).
  */
 export const accountActionsInlineCss = {
-	display: 'flex',
-	flexWrap: 'nowrap' as const,
+	display: 'grid',
+	gridAutoFlow: 'column' as const,
+	gridAutoColumns: '1fr',
 	alignItems: 'center' as const,
 	gap: '0.7rem',
 	width: 'max-content',
 	maxWidth: '100%',
 	'& > form': {
-		flex: '1 1 0',
 		margin: 0,
+		minWidth: 0,
 	},
 	'& > form > button': {
 		width: '100%',
 		boxSizing: 'border-box' as const,
+		// Fits "Run now" / "Running…" / "Resume" at sm ghost padding.
+		minWidth: '6.75rem',
 	},
 }
 

@@ -13,8 +13,9 @@ export const dropThresholds = [
  * expanded record's `colSpan` still counts dropped columns, so without this
  * a narrowed table left blank tracks for them and squeezed the visible
  * ones. Collapse each dropped column's own `<col>` to zero width at the
- * threshold where its cells `display: none` — never the trailing visible
- * columns (Actions, primary, …).
+ * threshold where its cells collapse (slot-preserving — not `display:
+ * none`, which would shift later cells onto earlier cols) — never the
+ * trailing visible columns (Actions, primary, …).
  */
 export function droppedColumnCollapseMaxWidth(column: {
 	drop?: 1 | 2 | 3 | undefined
