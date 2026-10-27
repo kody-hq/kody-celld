@@ -34,12 +34,12 @@ export function AccountJobs(handle: Handle<{ data: Data; pathname: string }>) {
 						columns={[
 							{ key: 'job', label: 'Job', primary: true },
 							{ key: 'schedule', label: 'Schedule', drop: 3 },
-							{ key: 'next', label: 'Next run', drop: 2, width: '11rem' },
-							{ key: 'last', label: 'Last run', drop: 2, width: '11rem' },
+							{ key: 'next', label: 'Next run', drop: 2, width: '12.5rem' },
+							{ key: 'last', label: 'Last run', drop: 2, width: '12.5rem' },
 							{ key: 'status', label: 'Status', drop: 1, width: '5.5rem' },
 							// Two sm ghost buttons ("Run now" + "Resume") with
-							// design-system padding and a 0.7rem gap.
-							{ key: 'actions', label: 'Actions', width: '13.5rem' },
+							// design-system padding, 0.7rem gap, and cell gutters.
+							{ key: 'actions', label: 'Actions', width: '16.5rem' },
 						]}
 						rows={d.jobs.map((job) => {
 							const jobLabel = `${job.packageName}/${job.jobName}`

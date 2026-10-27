@@ -32,6 +32,14 @@ export function AppRoot(handle: Handle<AppRootProps>) {
 		const { session, pathname, flash, data } = handle.props
 		const loginHref = routes.login.href()
 		const authShell = isAuthShellPage(data.page)
+		// Account and console shells carry a 200px rail; offset the flash into
+		// the content column so it does not paint above the rail.
+		const accountChrome =
+			!authShell &&
+			(pathname === '/account' ||
+				pathname.startsWith('/account/') ||
+				pathname === '/console' ||
+				pathname.startsWith('/console/'))
 		return (
 			<div mix={css(rootCss)}>
 				<a href="#main" mix={css(visuallyHiddenUntilFocusedCss)}>
@@ -51,7 +59,13 @@ export function AppRoot(handle: Handle<AppRootProps>) {
 					{flash ? (
 						<div
 							data-page-flash
-							mix={css(authShell ? authFlashWrapCss : flashWrapCss)}
+							mix={css(
+								authShell
+									? authFlashWrapCss
+									: accountChrome
+										? accountFlashWrapCss
+										: flashWrapCss,
+							)}
 						>
 							<p
 								class={`flash ${flash.kind}`}
@@ -87,26 +101,26 @@ const rootCss = {
 	minHeight: '100vh',
 }
 
-/**
- * Every route renders one page box from `#client/page-layout.ts` in here.
- * When the account/console rail is present, the flash sits in the content
- * column (same left inset as the shell) instead of spanning above the rail.
- */
+/** Every route renders one page box from `#client/page-layout.ts` in here. */
 const mainCss = {
-	flex: 1,
+	flex: '1 1 auto',
 	width: '100%',
 	boxSizing: 'border-box' as const,
-	[`&:has([data-account-nav]) > [data-page-flash]`]: {
-		paddingLeft: `calc(${pageGutter} + 200px + clamp(2rem, 5vw, 4.5rem))`,
-		[accountRailNarrowMq]: {
-			paddingLeft: pageGutter,
-		},
-	},
 }
 
 const flashWrapCss = {
 	...getPageContainerCss('app'),
 	paddingTop: spacing.lg,
+}
+
+/** Same left inset as `AccountManagementShell` when the rail is beside content. */
+const accountFlashWrapCss = {
+	...getPageContainerCss('app'),
+	paddingTop: spacing.lg,
+	paddingLeft: `calc(${pageGutter} + 200px + clamp(2rem, 5vw, 4.5rem))`,
+	[accountRailNarrowMq]: {
+		paddingLeft: pageGutter,
+	},
 }
 
 const authFlashWrapCss = {

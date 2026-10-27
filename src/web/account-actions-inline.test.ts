@@ -10,7 +10,7 @@ describe('jobs list action row', () => {
 		const jobsList = readFileSync(here('../../client/routes/account-jobs.tsx'), 'utf8')
 		assert.match(jobsList, /layout="inline"/)
 		assert.match(jobsList, /pendingLabel="Running…"/)
-		assert.match(jobsList, /width: '13\.5rem'/)
+		assert.match(jobsList, /width: '16\.5rem'/)
 
 		const cssSource = readFileSync(here('../../client/routes/account-management-components.tsx'), 'utf8')
 		assert.match(cssSource, /export const accountActionsInlineCss/)

@@ -296,6 +296,13 @@ const cellCss = {
 	textOverflow: 'ellipsis',
 }
 
+/** Actions cells hold controls, not prose — never ellipsize the buttons. */
+const actionsCellCss = {
+	...cellCss,
+	overflow: 'visible' as const,
+	textOverflow: 'clip' as const,
+}
+
 /**
  * Below 620px the same `<table>` becomes a list of cards — no duplicate DOM.
  * Cells carry their own label from `data-label`; the primary cell is the
@@ -549,15 +556,17 @@ export function RecordTable(handle: Handle<RecordTableProps>) {
 												{content}
 											</a>
 										) : null
+									const bodyCss = column.primary
+										? primaryCellCss
+										: column.key === 'actions'
+											? actionsCellCss
+											: cellCss
 									return (
 										<td
 											key={column.key}
 											data-label={column.label}
 											data-primary={column.primary ? 'true' : undefined}
-											mix={[
-												css(column.primary ? primaryCellCss : cellCss),
-												...columnCss(column),
-											]}
+											mix={[css(bodyCss), ...columnCss(column)]}
 										>
 											{primaryLink && row.primaryAccessory ? (
 												<span mix={css(primaryCellContentCss)}>
