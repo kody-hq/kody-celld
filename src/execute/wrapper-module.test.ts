@@ -73,7 +73,11 @@ it('propagates subscription triggers into the runtime helper context', async () 
 		assert.equal(payload.ok, true)
 		assert.equal(payload.result.id, 'msg-1')
 		assert.deepEqual(calls, [
-			['emailMessageGet', { id: 'msg-1' }, { runId: 'run-1', packageName: '@team/mail', eventDepth: 0 }],
+			[
+				'emailMessageGet',
+				{ id: 'msg-1' },
+				{ runId: 'run-1', packageName: '@team/mail', eventDepth: 0, computedImportDepth: 0 },
+			],
 		])
 	} finally {
 		globalThis.fetch = originalFetch
