@@ -174,6 +174,7 @@ curl -s "$BASE/admin/audit?actor=admin&action=secret_host." -H "authorization: B
 | Action                                                                                                                                                                    | Actor | Target               | Details                                                                 |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | -------------------- | ----------------------------------------------------------------------- |
 | `user.create`, `token.issue`                                                                                                                                              | admin | user id              | email / label                                                           |
+| `token.issue`, `token.rotate`, `token.revoke`                                                                                                                             | user  | user id / token id   | token kind, name, created via (never token values)                      |
 | `secret_host.approve`, `secret_host.revoke`                                                                                                                               | admin | user id              | host                                                                    |
 | `quota.set`, `quota.clear`                                                                                                                                                | admin | user id              | the override                                                            |
 | `jobs.dispatch`                                                                                                                                                           | admin | —                    | jobs ran / skipped                                                      |
@@ -264,7 +265,7 @@ curl -s -X POST $BASE/admin/users/$USER/signout -H "authorization: Bearer $ADMIN
 
 Audit actions: `signin`, `signin.failed`, `signin.magic_link`,
 `signin.invite_accepted`, `password.set`, `password.reset`, `session.revoke`,
-`token.issue`, `token.revoke`, `user.invite`, `user.signout_everywhere`,
+`token.issue`, `token.rotate`, `token.revoke`, `user.invite`, `user.signout_everywhere`,
 `secret.grant`, `secret.grant.remove`,
 `mcp_client.register`, `mcp_client.authorize`, `mcp_client.deny`,
 `mcp_client.revoke`, `mcp_client.revoke_all`, `console.signin`,
