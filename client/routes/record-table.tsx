@@ -400,6 +400,14 @@ const primaryCellContentCss = {
 	alignItems: 'center',
 	gap: spacing.xs,
 	minWidth: 0,
+	maxWidth: '100%',
+	// Email/name link yields width to a one-line IdValue accessory.
+	'& > a': {
+		minWidth: 0,
+		overflow: 'hidden',
+		textOverflow: 'ellipsis',
+		whiteSpace: 'nowrap' as const,
+	},
 }
 
 const recordRowCss = {

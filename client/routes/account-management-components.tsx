@@ -662,9 +662,9 @@ export function IdValue(
 				mix={css({
 					display: 'flex',
 					alignItems: 'stretch',
-					minWidth: wrap ? 0 : '9rem',
-					maxWidth: '100%',
-					flex: wrap ? undefined : '0 1 14rem',
+					minWidth: wrap ? 0 : '7rem',
+					maxWidth: wrap ? '100%' : '9rem',
+					flex: wrap ? undefined : '0 1 9rem',
 					borderRadius: radius.sm,
 					border: `1px solid ${colors.border}`,
 					backgroundColor: colors.background,
