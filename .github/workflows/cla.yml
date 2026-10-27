@@ -170,14 +170,15 @@ jobs:
         run: exit 1
 
   record:
-    # Coarse filter only; the thank-you path and the checker both require the
-    # exact phrase (trim equality), not a bare contains match.
+    # Coarse filter on the full phrase (not a bare "I hereby sign the CLA"
+    # fragment). The thank-you path and the checker both require exact trim
+    # equality before acknowledging or treating a comment as a signature.
     if: >
       github.event_name == 'issue_comment' && github.event.issue.pull_request &&
       github.event.comment.user.type == 'User' &&
-      (github.event.comment.body == 'I have read the CLA and I hereby sign the CLA' ||
+      (contains(github.event.comment.body, 'I have read the CLA and I hereby sign the CLA') ||
       (github.event.action == 'edited' &&
-      github.event.changes.body.from == 'I have read the CLA and I hereby sign the CLA'))
+      contains(github.event.changes.body.from, 'I have read the CLA and I hereby sign the CLA')))
     runs-on: ubuntu-latest
     name: 📝 Record CLA
     timeout-minutes: 5
