@@ -65,7 +65,14 @@ const secondaryCopyButtonCss = mergeCss(
 )
 const pillCopyButtonCss = mergeCss(getPillButtonCss(), getSwapLabelCss())
 const ghostCopyButtonCss = mergeCss(getGhostButtonCss(), getSwapLabelCss())
-const chipCopyButtonCss = mergeCss(getChipButtonCss(), getSwapLabelCss())
+// Cap width to "Copy" — swap labels include "Copy failed", which would
+// otherwise inflate table-accessory IdValues and leave only a glyph of id.
+const chipCopyButtonCss = mergeCss(getChipButtonCss(), getSwapLabelCss(), {
+	width: '2.85rem',
+	boxSizing: 'border-box' as const,
+	overflow: 'hidden',
+	paddingInline: '0.25rem',
+})
 
 const smallPillCopyButtonCss = mergeCss(
 	getPillButtonCss({ size: 'sm' }),

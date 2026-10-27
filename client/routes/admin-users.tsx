@@ -65,9 +65,11 @@ export function AdminUsers(handle: Handle<{ data: Data; pathname: string }>) {
 						emptyLabel="No users yet."
 						countLabel={`${d.users.length} total`}
 						columns={[
+							// Email + one-line IdValue accessory share this track.
 							{ key: 'email', label: 'Email', primary: true },
-							{ key: 'created', label: 'Created', drop: 2 },
-							{ key: 'actions', label: 'Actions' },
+							{ key: 'created', label: 'Created', drop: 2, width: '12.5rem' },
+							// Two stacked sm ghosts; width matches the labels.
+							{ key: 'actions', label: 'Actions', width: '9.5rem' },
 						]}
 						rows={d.users.map((user) => ({
 							id: user.id,
