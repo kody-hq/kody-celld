@@ -62,6 +62,12 @@ export type RecordTableColumn = {
 	 */
 	primary?: boolean
 	/**
+	 * Allow the cell to wrap instead of ellipsizing on one line. Use for
+	 * long primary labels (package/job names) that should stay readable
+	 * beside fixed Actions columns.
+	 */
+	wrap?: boolean
+	/**
 	 * Fixed width for `table-layout: fixed` (e.g. `13.5rem` for an Actions
 	 * cell that must fit two `sm` ghost buttons). Omit to share remaining
 	 * space with other undropped columns.
@@ -371,6 +377,14 @@ const primaryCellCss = {
 	},
 }
 
+/** Primary (or other) cells that must show a long label without ellipsis. */
+const wrapCellCss = {
+	whiteSpace: 'normal' as const,
+	overflow: 'visible' as const,
+	textOverflow: 'clip' as const,
+	overflowWrap: 'anywhere' as const,
+}
+
 const rowLinkCss = {
 	color: colors.text,
 	textDecoration: 'none',
@@ -572,11 +586,14 @@ export function RecordTable(handle: Handle<RecordTableProps>) {
 												{content}
 											</a>
 										) : null
-									const bodyCss = column.primary
-										? primaryCellCss
-										: column.key === 'actions'
-											? actionsCellCss
-											: cellCss
+									const bodyCss = {
+										...(column.primary
+											? primaryCellCss
+											: column.key === 'actions'
+												? actionsCellCss
+												: cellCss),
+										...(column.wrap ? wrapCellCss : null),
+									}
 									return (
 										<td
 											key={column.key}

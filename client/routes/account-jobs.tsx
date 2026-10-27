@@ -1,6 +1,7 @@
 import { css, type Handle } from 'remix/component'
 import { type AppLoaderData } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
+import { primaryLinkCss } from '#universal/styles/style-primitives.ts'
 import { colors, typography } from '#universal/styles/tokens.ts'
 import {
 	AccountManagementPanel,
@@ -32,12 +33,12 @@ export function AccountJobs(handle: Handle<{ data: Data; pathname: string }>) {
 						emptyLabel="No jobs. Jobs come from package manifests."
 						countLabel={`${d.jobs.length} total`}
 						columns={[
-							{ key: 'job', label: 'Job', primary: true },
+							// Wrap so scope/package/job shows in full beside Actions.
+							{ key: 'job', label: 'Job', primary: true, wrap: true },
 							{ key: 'schedule', label: 'Schedule', drop: 3 },
 							// Account shell content is ~50rem beside the rail.
 							// Shed Last with Schedule at 900px so Next, Status,
-							// and Actions keep their design-system widths and
-							// Job still has room at 1280px. Dates keep titles.
+							// and Actions keep their design-system widths.
 							{ key: 'next', label: 'Next run', drop: 2, width: '11.75rem' },
 							{ key: 'last', label: 'Last run', drop: 3, width: '11.75rem' },
 							{ key: 'status', label: 'Status', drop: 1, width: '5.25rem' },
@@ -54,6 +55,7 @@ export function AccountJobs(handle: Handle<{ data: Data; pathname: string }>) {
 											<a
 												href={routes.accountJobDetail.href({ jobId: job.id })}
 												title={jobLabel}
+												mix={css(primaryLinkCss)}
 											>
 												<strong>{jobLabel}</strong>
 											</a>

@@ -38,6 +38,11 @@ export function AccountJobDetail(
 						job.description ?? 'Scheduled work declared by a package.'
 					}
 					currentHref={pathname}
+					belowDescription={
+						<a href={routes.accountJobs.href()} mix={css(primaryLinkCss)}>
+							Back to jobs
+						</a>
+					}
 					actions={
 						<Actions>
 							<ActionForm
@@ -60,9 +65,6 @@ export function AccountJobDetail(
 						</Actions>
 					}
 				/>
-				<a href={routes.accountJobs.href()} mix={css(primaryLinkCss)}>
-					Back to jobs
-				</a>
 				<AccountManagementPanel ariaLabel="Job details">
 					<MetadataGrid
 						items={[
@@ -130,11 +132,23 @@ export function AccountJobDetail(
 						ariaLabel="Recent job runs"
 						emptyLabel="No runs recorded yet."
 						columns={[
-							{ key: 'trigger', label: 'Trigger', primary: true },
-							{ key: 'started', label: 'Started' },
-							{ key: 'duration', label: 'Duration' },
-							{ key: 'status', label: 'Status' },
-							{ key: 'error', label: 'Error' },
+							{
+								key: 'trigger',
+								label: 'Trigger',
+								primary: true,
+								width: '6rem',
+							},
+							// Full locale timestamp at 1280 and mid (~850).
+							{ key: 'started', label: 'Started', width: '12.5rem' },
+							{ key: 'duration', label: 'Duration', width: '6.5rem' },
+							{
+								key: 'status',
+								label: 'Status',
+								width: '7rem',
+								// Badges must not ellipsize inside the cell.
+								wrap: true,
+							},
+							{ key: 'error', label: 'Error', drop: 2 },
 						]}
 						rows={data.runs.map((run) => ({
 							id: run.id,

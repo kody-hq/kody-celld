@@ -279,6 +279,8 @@ type AccountManagementHeaderProps = {
 	title: string
 	description: string
 	actions?: AccountManagementSlot
+	/** Sits under the description (e.g. "Back to jobs") before page chrome. */
+	belowDescription?: AccountManagementSlot
 }
 
 export function AccountManagementHeader(
@@ -294,7 +296,7 @@ export function AccountManagementHeader(
 				flexWrap: 'wrap',
 			})}
 		>
-			<div mix={css({ display: 'grid', gap: '0.6rem' })}>
+			<div mix={css({ display: 'grid', gap: '0.55rem' })}>
 				<h1
 					mix={css({
 						fontSize: 'clamp(2rem, 4vw, 2.7rem)',
@@ -310,6 +312,11 @@ export function AccountManagementHeader(
 				<p mix={css({ color: colors.textMuted, margin: 0 })}>
 					{handle.props.description}
 				</p>
+				{handle.props.belowDescription ? (
+					<div mix={css({ marginTop: '0.15rem' })}>
+						{handle.props.belowDescription}
+					</div>
+				) : null}
 			</div>
 			{handle.props.actions ? (
 				<div
@@ -402,6 +409,7 @@ type AccountPageHeaderProps = {
 	description: string
 	currentHref: string
 	actions?: AccountManagementSlot
+	belowDescription?: AccountManagementSlot
 }
 
 /**
@@ -420,6 +428,7 @@ export function AccountPageHeader(handle: Handle<AccountPageHeaderProps>) {
 					title={handle.props.title}
 					description={handle.props.description}
 					actions={handle.props.actions}
+					belowDescription={handle.props.belowDescription}
 				/>
 				<AccountManagementLinkNav
 					label="Account sections"
@@ -573,7 +582,9 @@ export function MetadataGrid(handle: Handle<MetadataGridProps>) {
 				// without a breakpoint having to guess the container's width.
 				// The `min()` keeps the floor from overflowing a container
 				// narrower than the floor itself.
-				gridTemplateColumns: 'repeat(auto-fit, minmax(min(14rem, 100%), 1fr))',
+				// 16rem fits a typical job id + Copy on one or two lines
+				// without squeezing the field into a stub beside the button.
+				gridTemplateColumns: 'repeat(auto-fit, minmax(min(16rem, 100%), 1fr))',
 				gap: spacing.md,
 				margin: 0,
 			})}
@@ -598,19 +609,18 @@ export function MetadataGrid(handle: Handle<MetadataGridProps>) {
 }
 
 /**
- * An identifier is a copy target, not a sentence. The value stays on one line
- * and clips, so a 36-character UUID can no longer break a metadata column into
- * five lines of hex.
+ * An identifier is a copy target, not a sentence. Value + Copy share one
+ * bordered control (input-group): same outer height, compact Copy segment,
+ * monospace value that can break so a long job id is not clipped.
  *
- * The whole string stays in the DOM — clipping is CSS, never a truncated
+ * The whole string stays in the DOM — wrapping is CSS, never a truncated
  * substring — so a screen reader still reads the id in full, and `user-select:
  * all` turns one click into a whole-value selection for anyone the clipboard
  * button does not work for. `title` is the mouse-hover convenience on top of
  * that, not the mechanism.
  *
- * `copy="chip"` (default) is the dense control for table primary accessories.
- * `copy="ghost"` is the account `sm` ghost pill — same family as Run now /
- * Pause — for metadata bands where a chip reads as a mismatched control.
+ * `copy` is retained for call-site compatibility; both modes use the compact
+ * chip inside the shared chrome (a standalone `sm` ghost overpowered the field).
  */
 export function IdValue(
 	handle: Handle<{
@@ -620,53 +630,61 @@ export function IdValue(
 		copy?: 'chip' | 'ghost'
 	}>,
 ) {
-	return () => {
-		const copy = handle.props.copy ?? 'chip'
-		return (
+	return () => (
+		<span
+			mix={css({
+				display: 'flex',
+				alignItems: 'stretch',
+				minWidth: 0,
+				maxWidth: '100%',
+				borderRadius: radius.sm,
+				border: `1px solid ${colors.border}`,
+				backgroundColor: colors.background,
+				overflow: 'hidden',
+			})}
+		>
+			<code
+				title={handle.props.value}
+				mix={css({
+					flex: '1 1 auto',
+					minWidth: 0,
+					display: 'flex',
+					alignItems: 'center',
+					// Prefer breaks at punctuation (/ #) over mid-glyph splits.
+					overflowWrap: 'anywhere',
+					whiteSpace: 'normal',
+					userSelect: 'all',
+					fontFamily: 'monospace',
+					fontSize: typography.fontSize.sm,
+					lineHeight: 1.35,
+					padding: '0.4rem 0.55rem',
+					border: 'none',
+					backgroundColor: 'transparent',
+					color: colors.text,
+				})}
+			>
+				{handle.props.value}
+			</code>
+			{/* Wrapper owns the segment chrome — a child `css()` layer on the
+			    button cannot be overridden from the parent reliably. */}
 			<span
 				mix={css({
 					display: 'flex',
 					alignItems: 'center',
-					gap: copy === 'ghost' ? '0.5rem' : '0.35rem',
-					minWidth: 0,
+					flex: 'none',
+					borderLeft: `1px solid ${colors.border}`,
+					backgroundColor: colors.surface,
+					paddingInline: '0.35rem',
 				})}
 			>
-				<code
-					title={handle.props.value}
-					mix={css({
-						minWidth: 0,
-						overflow: 'hidden',
-						textOverflow: 'ellipsis',
-						whiteSpace: 'nowrap',
-						userSelect: 'all',
-						fontFamily: 'monospace',
-						fontSize: typography.fontSize.sm,
-						padding: '0.2rem 0.42rem',
-						borderRadius: radius.sm,
-						border: `1px solid ${colors.border}`,
-						backgroundColor: colors.background,
-						color: colors.text,
-					})}
-				>
-					{handle.props.value}
-				</code>
-				{copy === 'ghost' ? (
-					<CopyTextButton
-						value={handle.props.value}
-						variant="ghost"
-						size="sm"
-						ariaLabel={`Copy ${handle.props.label}`}
-					/>
-				) : (
-					<CopyTextButton
-						value={handle.props.value}
-						variant="chip"
-						ariaLabel={`Copy ${handle.props.label}`}
-					/>
-				)}
+				<CopyTextButton
+					value={handle.props.value}
+					variant="chip"
+					ariaLabel={`Copy ${handle.props.label}`}
+				/>
 			</span>
-		)
-	}
+		</span>
+	)
 }
 
 /**

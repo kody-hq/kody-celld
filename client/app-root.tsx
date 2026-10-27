@@ -106,6 +106,11 @@ const mainCss = {
 	flex: '1 1 auto',
 	width: '100%',
 	boxSizing: 'border-box' as const,
+	// Flash already adds top rhythm; tighten the shell so banner → title
+	// reads as one intentional stack rather than two padded bands.
+	'&:has(> [data-page-flash]) [data-account-shell]': {
+		paddingTop: spacing.sm,
+	},
 }
 
 const flashWrapCss = {
@@ -116,7 +121,8 @@ const flashWrapCss = {
 /** Same left inset as `AccountManagementShell` when the rail is beside content. */
 const accountFlashWrapCss = {
 	...getPageContainerCss('app'),
-	paddingTop: spacing.lg,
+	paddingTop: spacing.sm,
+	paddingBottom: 0,
 	paddingLeft: `calc(${pageGutter} + 200px + clamp(2rem, 5vw, 4.5rem))`,
 	[accountRailNarrowMq]: {
 		paddingLeft: pageGutter,

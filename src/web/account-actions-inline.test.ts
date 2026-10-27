@@ -28,8 +28,19 @@ describe('jobs list action row', () => {
 		assert.match(detail, /primaryLinkCss/)
 	})
 
-	it('job detail IdValue copy uses the account sm ghost pill', () => {
+	it('job detail IdValue keeps a compact copy control beside the id', () => {
 		const detail = readFileSync(here('../../client/routes/account-jobs-detail.tsx'), 'utf8')
 		assert.match(detail, /copy="ghost"/)
+		const idValue = readFileSync(here('../../client/routes/account-management-components.tsx'), 'utf8')
+		assert.match(idValue, /variant="chip"/)
+		assert.match(idValue, /overflowWrap: 'anywhere'/)
+		assert.match(idValue, /borderLeft: `1px solid \$\{colors\.border\}`/)
+		assert.match(idValue, /Wrapper owns the segment chrome/)
+	})
+
+	it('jobs list uses primary link styling and wraps the job name', () => {
+		const jobsList = readFileSync(here('../../client/routes/account-jobs.tsx'), 'utf8')
+		assert.match(jobsList, /primaryLinkCss/)
+		assert.match(jobsList, /wrap: true/)
 	})
 })
