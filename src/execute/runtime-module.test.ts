@@ -334,7 +334,7 @@ describe('runtime email helper', () => {
 		assert.deepEqual(capabilityCall, [
 			'emailMessageGet',
 			{ id: 'msg-1' },
-			{ runId: 'run-1', packageName: '@team/mail' },
+			{ runId: 'run-1', packageName: '@team/mail', eventDepth: 0 },
 		])
 		assert.deepEqual(result, {
 			id: 'msg-1',
@@ -413,7 +413,7 @@ describe('runtime email helper', () => {
 		assert.deepEqual(capabilityCall, [
 			'emailAttachmentGet',
 			{ attachmentId: 'att-1' },
-			{ runId: 'run-2', packageName: '@team/mail' },
+			{ runId: 'run-2', packageName: '@team/mail', eventDepth: 0 },
 		])
 		assert.deepEqual(result, {
 			id: 'att-1',
@@ -476,9 +476,9 @@ describe('runtime email helper', () => {
 					attachments: [{ filename: 'note.txt', contentBase64: 'bm90ZQ==' }],
 					headers: { 'x-test': 'value' },
 				},
-				{ runId: 'run-3', packageName: '@team/mail' },
+				{ runId: 'run-3', packageName: '@team/mail', eventDepth: 0 },
 			],
-			['emailReply', { id: 'msg-2', text: 'Again' }, { runId: 'run-4', packageName: '@team/mail' }],
+			['emailReply', { id: 'msg-2', text: 'Again' }, { runId: 'run-4', packageName: '@team/mail', eventDepth: 0 }],
 		])
 	})
 
