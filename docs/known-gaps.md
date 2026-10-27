@@ -217,8 +217,8 @@ roadmap is now shipped; the roadmap below is kept as the change log.
 - **Package-emitted topics.** Celld parses and validates `kody.emits`, but
   `events.dispatch` and delivery to subscriber handlers are not available yet.
   `@` subscriptions are saved with a warning and their filters are retained.
-  The `mcp: true` flag is ignored. Platform-topic filters remain unapplied
-  with a warning.
+  The `mcp: true` flag is ignored with a warning. Platform-topic filters
+  remain unapplied with a warning.
 - **Unsupported manifest keys.** Hosted-only `kody.*` keys that celld does not
   support and unknown `kody.*` keys are ignored with warnings.
 - `/connect/secret-set` does not support `expiresAt` or `allowedPackages`.
