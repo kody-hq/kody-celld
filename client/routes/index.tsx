@@ -6,6 +6,7 @@ import { AccountApiTokens } from './account-api-tokens.tsx'
 import { AccountEmail } from './account-email.tsx'
 import { AccountIntegrations } from './account-integrations.tsx'
 import { AccountJobs } from './account-jobs.tsx'
+import { AccountWorkflows } from './account-workflows.tsx'
 import { AccountJobDetail } from './account-jobs-detail.tsx'
 import { AccountMemories } from './account-memories.tsx'
 import { AccountMcpServerAuthorize } from './account-mcp-server-authorize.tsx'
@@ -80,6 +81,8 @@ export function RouteView(
 				return <PackagePreviewFiles data={data} pathname={pathname} />
 			case 'accountJobs':
 				return <AccountJobs data={data} pathname={pathname} />
+			case 'accountWorkflows':
+				return <AccountWorkflows data={data} pathname={pathname} />
 			case 'accountJobDetail':
 				return <AccountJobDetail data={data} pathname={pathname} />
 			case 'accountMemories':

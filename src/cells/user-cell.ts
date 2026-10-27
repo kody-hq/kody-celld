@@ -1257,6 +1257,13 @@ export class UserCell extends DurableObject<Env> {
 		return Object.fromEntries(rows.map((row) => [row.name, row.updated_at]))
 	}
 
+	async packageManifest(name: string): Promise<PackageManifest | null> {
+		const row = this.ctx.storage.sql
+			.exec<{ manifest_json: string }>('SELECT manifest_json FROM packages WHERE name = ?', name)
+			.toArray()[0]
+		return row ? storedManifest(row.manifest_json) : null
+	}
+
 	async packageGet(name: string): Promise<SavedPackage | null> {
 		const row = this.ctx.storage.sql
 			.exec<{

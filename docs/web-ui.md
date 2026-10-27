@@ -79,6 +79,7 @@ Accounts are created by the operator — there is no open registration:
 | Secrets          | list names + approved hosts, add/replace a value (paste form; the value is never rendered again), delete                                                                                                                                                                                                     |
 | Packages         | list saved packages with exports/jobs/webhooks/source; open details (`/account/packages/:name`, which opens on the files explorer at the package root, like kody) and files (`/account/packages/:name/files/*`); preview then install/fork; publish / unpublish; delete package                              |
 | Jobs             | list schedules, last run, enable/disable; details and runs (`/account/jobs/:jobId`)                                                                                                                                                                                                                          |
+| Workflows        | durable workflow runs: status, run time, attempts, last error; cancel a run that has not finished (`/account/workflows`)                                                                                                                                                                                     |
 | Activity         | recent run history (status, duration, error names — never secret values); summary of open / ignored / resolved / running, an Open errors / Recent runs toggle, and Ignore / Resolve / Reopen on error runs; click a run to expand its full error, logs and result, with a copyable fix prompt for your agent |
 | Webhooks         | every webhook your packages declare: handle, package, status, last delivery (never the URL)                                                                                                                                                                                                                  |
 | Integrations     | connected OAuth integrations and their status, disconnect                                                                                                                                                                                                                                                    |
@@ -91,7 +92,7 @@ Email, Activity and MCP clients live at `/account/inbox`, `/account/runs` and `/
 Cloud Kody's account pages that are not here, on purpose:
 
 - **Hosted-only, won't port:** Billing, Usage, Experiments. Overview already shows usage vs quotas.
-- **Deferred:** Workflows (see [known-gaps.md](./known-gaps.md): not needed by the core yet) and Waiting (until kody-celld has several sources of attention items).
+- **Deferred:** Waiting (until kody-celld has several sources of attention items).
 - **Same surface, different name:** Repositories is Packages here.
 - **Different product:** cloud's MCP servers page manages servers Kody connects to; MCP clients here lists the OAuth clients authorized _to_ this server.
 - **No separate page:** Connections. A "connect another agent" panel on MCP clients is planned.

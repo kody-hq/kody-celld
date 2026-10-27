@@ -4,12 +4,16 @@ import type { CapabilityContext } from '../capabilities/define.ts'
 import { mcpDeps } from '../capabilities/mcp-servers.ts'
 import { runCapability } from '../capabilities/registry.ts'
 import { packageStorageCellName, type StorageListOptions } from '../cells/package-storage-cell.ts'
+import type { CredentialCandidate } from '../credentials/resolve.ts'
+import { resolveCredentials } from '../credentials/resolve.ts'
 import type { Env } from '../env.ts'
 import { errorToJson, KodyError } from '../lib/errors.ts'
 import { callMcpTool } from '../mcp-client/service.ts'
 
 export type RuntimeProps = { userId: string; email: string; packageName: string | null }
 type CallContext = { runId?: string; packageName?: string | null } | null
+const credentialNamePattern = /^[a-zA-Z0-9._-]{1,64}$/
+const credentialErrorDetailsMarker = '\n__kody_credential_error_details__:'
 
 const packageNamePattern = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/
 
@@ -48,6 +52,98 @@ export class RuntimeHost extends WorkerEntrypoint<Env, RuntimeProps> {
 			// RPC serializes plain Errors only; keep the Kody error code in the message.
 			const json = errorToJson(error)
 			throw new Error(`${json.error}: ${json.message}`, { cause: error })
+		}
+	}
+
+	async credentialOpen(input: unknown, _call: CallContext) {
+		try {
+			if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+				throw new KodyError('invalid_args', 'credentialOpen input must be an object.')
+			}
+			const request = input as Record<string, unknown>
+			const key = typeof request.key === 'string' ? request.key : undefined
+			const name = typeof request.name === 'string' ? request.name : undefined
+			if ((request.key !== undefined && key === undefined) || (request.name !== undefined && name === undefined)) {
+				throw new KodyError('invalid_args', 'credentialOpen key and name must be strings.')
+			}
+			if (key !== undefined && name !== undefined) {
+				throw new KodyError('invalid_args', 'credentialOpen accepts key or name, not both.')
+			}
+			if (
+				(key !== undefined && !credentialNamePattern.test(key)) ||
+				(name !== undefined && !credentialNamePattern.test(name))
+			) {
+				throw new KodyError('invalid_args', 'Credential names may contain letters, digits, ".", "_", and "-".')
+			}
+			if (request.all !== undefined && typeof request.all !== 'boolean') {
+				throw new KodyError('invalid_args', 'credentialOpen all must be a boolean.')
+			}
+			if (request.scope !== undefined && request.scope !== null && typeof request.scope !== 'string') {
+				throw new KodyError('invalid_args', 'credentialOpen scope must be a string.')
+			}
+			const userCell = this.env.USER.getByName(this.ctx.props.userId)
+			const packageName = this.ctx.props.packageName
+			const [manifest, secrets, secretHosts, integrations, servers] = await Promise.all([
+				key && packageName ? userCell.packageManifest(packageName) : null,
+				userCell.secretList(),
+				userCell.secretHostList(),
+				userCell.integrationList(),
+				userCell.mcpServerList(),
+			])
+			const mcpServers = servers as Array<{
+				name: string
+				enabled: boolean
+				usage: Extract<CredentialCandidate, { kind: 'mcp' }>['usage']
+				url: string
+			}>
+			const candidates: Array<CredentialCandidate> = [
+				...secrets.map((secret) => ({
+					kind: 'secret' as const,
+					name: secret.name,
+					scope: secret.scope === 'package' ? ('package' as const) : ('user' as const),
+					packageName: secret.packageName,
+					hosts: secretHosts.map(({ host }) => host),
+				})),
+				...integrations.map((integration) => ({
+					kind: 'oauth' as const,
+					name: integration.name,
+					provider: integration.provider,
+					status: integration.status,
+					flow: integration.flow,
+					usage: integration.usage,
+					hosts: integration.allowedHosts,
+				})),
+				...mcpServers.map((server) => ({
+					kind: 'mcp' as const,
+					name: server.name,
+					enabled: server.enabled,
+					usage: server.usage,
+					hosts: (() => {
+						try {
+							return [new URL(server.url).hostname]
+						} catch {
+							return []
+						}
+					})(),
+				})),
+			]
+			return resolveCredentials({
+				key,
+				name,
+				scope: typeof request.scope === 'string' ? request.scope : request.scope === null ? null : undefined,
+				packageName,
+				slot: key ? manifest?.credentials[key] : undefined,
+				candidates,
+				publicUrl: this.env.KODY_PUBLIC_URL,
+				all: request.all === true,
+			})
+		} catch (error) {
+			const json = errorToJson(error)
+			const details = KodyError.fromUnknown(error)?.details
+			throw new Error(
+				`${json.error}: ${json.message}${details ? `${credentialErrorDetailsMarker}${JSON.stringify(details)}` : ''}`,
+				{ cause: error },
+			)
 		}
 	}
 
