@@ -20,6 +20,7 @@ function context(userCell: Record<string, unknown>): CapabilityContext {
 		userCell: userCell as unknown as CapabilityContext['userCell'],
 		packageName: null,
 		runId: null,
+		eventDepth: 0,
 		baseUrl: 'https://kody.example',
 		fromRuntime: false,
 	}

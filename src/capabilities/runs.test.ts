@@ -55,6 +55,7 @@ test('runList uses workflow, error-triage, and limit filters through SQL', async
 		} as unknown as CapabilityContext['userCell'],
 		packageName: null,
 		runId: null,
+		eventDepth: 0,
 		baseUrl: 'http://example.test',
 		fromRuntime: false,
 	} satisfies CapabilityContext
