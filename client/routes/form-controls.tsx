@@ -1,6 +1,7 @@
 import { css, type Handle, type RemixNode } from 'remix/component'
 import { ConfirmSubmitButton } from '#client/confirm-submit-button.tsx'
 import { CopyTextButton } from '#client/copy-text-button.tsx'
+import { PendingSubmitButton } from '#client/pending-submit-button.tsx'
 import {
 	getDangerPillCss,
 	getGhostButtonCss,
@@ -14,6 +15,7 @@ import {
 } from '#universal/styles/tokens.ts'
 import {
 	accountActionsCss,
+	accountActionsInlineCss,
 	accountFieldCss,
 	accountFieldLabelCss,
 	accountFieldNoteCss,
@@ -202,6 +204,8 @@ export function ActionForm(
 		csrf: string
 		fields: Record<string, string>
 		label: string
+		/** When set, the button shows this label and disables after submit. */
+		pendingLabel?: string
 		ariaLabel?: string
 		disabled?: boolean
 	}>,
@@ -212,13 +216,22 @@ export function ActionForm(
 			{Object.entries(handle.props.fields).map(([name, value]) => (
 				<Hidden key={name} name={name} value={value} />
 			))}
-			<SubmitButton
-				variant="secondary"
-				disabled={handle.props.disabled}
-				ariaLabel={handle.props.ariaLabel}
-			>
-				{handle.props.label}
-			</SubmitButton>
+			{handle.props.pendingLabel ? (
+				<PendingSubmitButton
+					label={handle.props.label}
+					pendingLabel={handle.props.pendingLabel}
+					disabled={handle.props.disabled}
+					ariaLabel={handle.props.ariaLabel}
+				/>
+			) : (
+				<SubmitButton
+					variant="secondary"
+					disabled={handle.props.disabled}
+					ariaLabel={handle.props.ariaLabel}
+				>
+					{handle.props.label}
+				</SubmitButton>
+			)}
 		</form>
 	)
 }
@@ -236,8 +249,20 @@ export function SignOutForm(handle: Handle<{ action: string; csrf: string }>) {
 }
 
 /** Wrap of action controls in a table cell or under a section. */
-export function Actions(handle: Handle<{ children: Slot }>) {
-	return () => <div mix={css(accountActionsCss)}>{handle.props.children}</div>
+export function Actions(
+	handle: Handle<{ children: Slot; layout?: 'wrap' | 'inline' }>,
+) {
+	return () => (
+		<div
+			mix={css(
+				handle.props.layout === 'inline'
+					? accountActionsInlineCss
+					: accountActionsCss,
+			)}
+		>
+			{handle.props.children}
+		</div>
+	)
 }
 
 /** A stacked form: fields then the submit row, at the account rhythm. */

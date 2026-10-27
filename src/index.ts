@@ -527,7 +527,7 @@ export default {
 			}
 			if (isOAuthRoute(url.pathname)) return await handleOAuth(request, env, url)
 			if (isSigninRoute(url.pathname)) return await handleSignin(request, env, url)
-			if (isAccountRoute(url.pathname)) return await handleAccount(request, env, url)
+			if (isAccountRoute(url.pathname)) return await handleAccount(request, env, ctx, url)
 			if (isConnectSecretSetRoute(url.pathname)) return await handleConnectSecretSet(request, env, url)
 			if (isConsoleRoute(url.pathname)) return await handleConsole(request, env, ctx, url)
 			if (isCommunityRoute(url.pathname)) return await handleCommunity(request, env, url)

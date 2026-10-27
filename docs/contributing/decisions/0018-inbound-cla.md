@@ -57,20 +57,25 @@ How it works:
   [Entity CLA](../../legal/entity-cla.md) when the work is owned by an employer
   or the contributor is signing for an organization.
 - **How they sign.** Read the CLA, then comment on the pull request:
-  `I have read the CLA and I hereby sign the CLA`. The `CLA` workflow, running
-  from `main` on that comment, records the commenter's GitHub username in
-  `.github/cla-signers.json` on `main` and re-runs the check. Signing covers
-  past, present, and future contributions from that identity. Entity CLA
-  recording stays a maintainer step.
-- **Enforcement.** The `CLA` check job uses `pull_request_target` for fork
-  pull requests so `GITHUB_TOKEN` can post the signing-instructions comment
-  (plain `pull_request` is read-only for forks). It still checks out only the
-  base branch tip, treats PR metadata as untrusted input, and never executes
-  pull request head code. The workflow reads signers from `main` (never from
-  the pull request head), fails closed on unsigned identities, and comments
-  with the signing steps. Recording a signature stays on the first-party
-  `issue_comment` job that writes `main` only. Maintainers do not merge a red
-  `CLA` check. There is no trivial-contribution exception.
+  `I have read the CLA and I hereby sign the CLA` from the identity that needs
+  to sign. That exact comment satisfies the `CLA` check for that identity. After
+  the pull request merges, the workflow opens a bot-generated pull request to
+  add the signer to `.github/cla-signers.json`; it dispatches `CI` (because
+  GITHUB_TOKEN pushes do not start workflows), waits for
+  `validate (typecheck, lint, format, unit tests)`, and merges the signer pull
+  request only if that check succeeds. Signing covers past, present, and future
+  contributions from that identity. Entity CLA recording stays a maintainer
+  step.
+- **Enforcement.** The `CLA` check job uses `pull_request_target` for both fork
+  and same-repo pull requests so `GITHUB_TOKEN` can post the signing-instructions
+  comment (plain `pull_request` is read-only for forks). It still checks out only
+  the base branch tip, treats PR metadata as untrusted input, and never executes
+  pull request head code. The workflow reads signers from `main` (never from the
+  pull request head), accepts exact signing comments on the pull request, fails
+  closed on unsigned identities, and comments with the signing steps. The
+  post-merge recorder checks out `main` only; it never checks out or runs pull
+  request code. Maintainers do not merge a red `CLA` check. There is no
+  trivial-contribution exception.
 - **Existing commits.** History is not rewritten. People who already contributed
   are asked to sign before the next merge; the CLA text covers prior
   contributions once signed.
@@ -80,10 +85,12 @@ How it works:
 - The Licensor stays one party for FSL, the Apache conversion, relicensing, and
   enforcement.
 - Individual signatures do not need a maintainer to edit the signers file. The
-  recorder is a first-party `issue_comment` job that writes `main` only. Do not
-  replace that recorder with an unmaintained `pull_request_target` signing bot.
-  Using `pull_request_target` for the check-and-comment job (base checkout
-  only) is intentional and required for fork PRs.
+  post-merge `pull_request_target` recorder creates a bot pull request, which
+  must pass `validate (typecheck, lint, format, unit tests)` before its signer
+  changes are merged to `main`. Do not replace that recorder with an unmaintained
+  signing bot that pushes straight to `main`. Using `pull_request_target` for the
+  check-and-comment job (base checkout only) is intentional and required for
+  fork PRs.
 - Package authors on a self-hosted instance keep their own copyright; they never
   sign this CLA unless they also patch this repository.
 - Revisit if the Licensor becomes a company (assign the inbound grants to that

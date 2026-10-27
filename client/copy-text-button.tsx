@@ -28,6 +28,12 @@ type CopyTextButtonProps = {
 	 */
 	size?: 'md' | 'sm'
 	/**
+	 * Stretch to fill an input-group segment (job-detail IdValue). Own-layer
+	 * styles — a parent `css()` cannot reliably override this button's
+	 * radius/height across Remix cascade sub-layers.
+	 */
+	embedded?: boolean
+	/**
 	 * Names the button when its own label cannot. A metadata band carries one
 	 * copy button per id, and a screen reader's button list of six identical
 	 * "Copy" entries says nothing about which id each one takes.
@@ -59,7 +65,14 @@ const secondaryCopyButtonCss = mergeCss(
 )
 const pillCopyButtonCss = mergeCss(getPillButtonCss(), getSwapLabelCss())
 const ghostCopyButtonCss = mergeCss(getGhostButtonCss(), getSwapLabelCss())
-const chipCopyButtonCss = mergeCss(getChipButtonCss(), getSwapLabelCss())
+// Cap width to "Copy" — swap labels include "Copy failed", which would
+// otherwise inflate table-accessory IdValues and leave only a glyph of id.
+const chipCopyButtonCss = mergeCss(getChipButtonCss(), getSwapLabelCss(), {
+	width: '2.85rem',
+	boxSizing: 'border-box' as const,
+	overflow: 'hidden',
+	paddingInline: '0.25rem',
+})
 
 const smallPillCopyButtonCss = mergeCss(
 	getPillButtonCss({ size: 'sm' }),
@@ -67,6 +80,25 @@ const smallPillCopyButtonCss = mergeCss(
 )
 const smallGhostCopyButtonCss = mergeCss(
 	getGhostButtonCss({ size: 'sm' }),
+	getSwapLabelCss(),
+)
+
+/** Sm ghost that fills an IdValue segment: square to the divider, full height,
+ *  width of the "Copy" label plus normal pad — not the wide CTA sm pad, and
+ *  not inflated by the "Copy failed" swap label. */
+const embeddedGhostCopyButtonCss = mergeCss(
+	getGhostButtonCss({ size: 'sm' }),
+	{
+		height: '100%',
+		alignSelf: 'stretch',
+		borderRadius: 0,
+		boxShadow: 'none',
+		width: '4.5rem',
+		boxSizing: 'border-box' as const,
+		paddingInline: '0.75rem',
+		paddingBlock: 0,
+		overflow: 'hidden',
+	},
 	getSwapLabelCss(),
 )
 
@@ -86,7 +118,11 @@ const smallCopyButtonCssByVariant = {
 function getCopyButtonCss(
 	variant: NonNullable<CopyTextButtonProps['variant']>,
 	size: CopyTextButtonProps['size'],
+	embedded: CopyTextButtonProps['embedded'],
 ) {
+	if (embedded && variant === 'ghost') {
+		return embeddedGhostCopyButtonCss
+	}
 	if (size === 'sm' && (variant === 'pill' || variant === 'ghost')) {
 		return smallCopyButtonCssByVariant[variant]
 	}
@@ -152,6 +188,7 @@ function CopyTextButtonComponent(handle: Handle<CopyTextButtonProps>) {
 					getCopyButtonCss(
 						handle.props.variant ?? 'primary',
 						handle.props.size,
+						handle.props.embedded,
 					),
 				),
 				on('click', () => void copyValue()),

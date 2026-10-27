@@ -11,7 +11,10 @@ import {
 	getSurfaceCardCss,
 	hoverMq,
 } from '#universal/styles/style-primitives.ts'
-import { collapsedColumnMaxWidth } from '#universal/record-table-columns.ts'
+import {
+	dropThresholds,
+	packedColWidths,
+} from '#universal/record-table-columns.ts'
 import { visuallyHiddenCss } from './record-table-controls.tsx'
 
 export {
@@ -58,6 +61,18 @@ export type RecordTableColumn = {
 	 * than a labeled field below 620px. Exactly one column should set it.
 	 */
 	primary?: boolean
+	/**
+	 * Allow the cell to wrap instead of ellipsizing on one line. Use for
+	 * long primary labels (package/job names) that should stay readable
+	 * beside fixed Actions columns.
+	 */
+	wrap?: boolean
+	/**
+	 * Fixed width for `table-layout: fixed` (e.g. `13.5rem` for an Actions
+	 * cell that must fit two `sm` ghost buttons). Omit to share remaining
+	 * space with other undropped columns.
+	 */
+	width?: string
 }
 
 export type RecordTableRow = {
@@ -186,18 +201,14 @@ const defaultScrollHeight = '22rem'
 /**
  * Columns drop one priority at a time as the container narrows, then the
  * whole table becomes cards. Each threshold is its own class so a cell can
- * carry exactly one.
+ * carry exactly one. `display: none` packs later cells into earlier `<col>`
+ * tracks — pair with {@link packedColWidths} on `<col>` so Actions keeps
+ * its width instead of inheriting a zeroed middle track.
  */
 const dropCss = {
 	1: css({ '@container (max-width: 680px)': { display: 'none' } }),
 	2: css({ '@container (max-width: 780px)': { display: 'none' } }),
 	3: css({ '@container (max-width: 900px)': { display: 'none' } }),
-} as const
-
-const collapsedColCss = {
-	900: css({ '@container (max-width: 900px)': { width: 0 } }),
-	780: css({ '@container (max-width: 780px)': { width: 0 } }),
-	680: css({ '@container (max-width: 680px)': { width: 0 } }),
 } as const
 
 const numericCss = css({
@@ -290,6 +301,13 @@ const cellCss = {
 	textOverflow: 'ellipsis',
 }
 
+/** Actions cells hold controls, not prose — never ellipsize the buttons. */
+const actionsCellCss = {
+	...cellCss,
+	overflow: 'visible' as const,
+	textOverflow: 'clip' as const,
+}
+
 /**
  * Below 620px the same `<table>` becomes a list of cards — no duplicate DOM.
  * Cells carry their own label from `data-label`; the primary cell is the
@@ -359,6 +377,18 @@ const primaryCellCss = {
 	},
 }
 
+/** Primary (or other) cells that must show a long label without ellipsis. */
+const wrapCellCss = {
+	whiteSpace: 'normal' as const,
+	overflow: 'visible' as const,
+	textOverflow: 'clip' as const,
+	// Prefer author-supplied soft breaks (e.g. ZWSP after `/`) over
+	// mid-token splits. `break-word` only breaks inside a word when that
+	// single token still overflows the track.
+	overflowWrap: 'break-word' as const,
+	hyphens: 'none' as const,
+}
+
 const rowLinkCss = {
 	color: colors.text,
 	textDecoration: 'none',
@@ -370,6 +400,14 @@ const primaryCellContentCss = {
 	alignItems: 'center',
 	gap: spacing.xs,
 	minWidth: 0,
+	maxWidth: '100%',
+	// Email/name link yields width to a one-line IdValue accessory.
+	'& > a': {
+		minWidth: 0,
+		overflow: 'hidden',
+		textOverflow: 'ellipsis',
+		whiteSpace: 'nowrap' as const,
+	},
 }
 
 const recordRowCss = {
@@ -455,14 +493,37 @@ export function RecordTable(handle: Handle<RecordTableProps>) {
 			<table aria-label={handle.props.ariaLabel} mix={css(tableCss)}>
 				<colgroup>
 					{columns.map((column, index) => {
-						const maxWidth = collapsedColumnMaxWidth(
-							columns,
-							columns.length - 1 - index,
-						)
+						// One `css()` object: base width plus packed widths at
+						// each drop threshold (narrower queries listed later so
+						// they override when several match).
+						const collapseQueries: Record<
+							string,
+							{
+								width: string | number
+								minWidth?: number
+								maxWidth?: number
+								overflow?: 'hidden'
+							}
+						> = {}
+						for (const { maxWidth } of dropThresholds) {
+							const packed = packedColWidths(columns, maxWidth)[index] ?? null
+							collapseQueries[`@container (max-width: ${maxWidth}px)`] =
+								packed === 0
+									? {
+											width: 0,
+											minWidth: 0,
+											maxWidth: 0,
+											overflow: 'hidden',
+										}
+									: { width: packed === null ? 'auto' : packed }
+						}
 						return (
 							<col
 								key={column.key}
-								mix={maxWidth === null ? undefined : collapsedColCss[maxWidth]}
+								mix={css({
+									...(column.width ? { width: column.width } : {}),
+									...collapseQueries,
+								})}
 							/>
 						)
 					})}
@@ -537,15 +598,20 @@ export function RecordTable(handle: Handle<RecordTableProps>) {
 												{content}
 											</a>
 										) : null
+									const bodyCss = {
+										...(column.primary
+											? primaryCellCss
+											: column.key === 'actions'
+												? actionsCellCss
+												: cellCss),
+										...(column.wrap ? wrapCellCss : null),
+									}
 									return (
 										<td
 											key={column.key}
 											data-label={column.label}
 											data-primary={column.primary ? 'true' : undefined}
-											mix={[
-												css(column.primary ? primaryCellCss : cellCss),
-												...columnCss(column),
-											]}
+											mix={[css(bodyCss), ...columnCss(column)]}
 										>
 											{primaryLink && row.primaryAccessory ? (
 												<span mix={css(primaryCellContentCss)}>

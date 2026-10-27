@@ -316,6 +316,7 @@ export async function startEchoServer(port = Number(process.env.SMOKE_ECHO_PORT 
 		const bodyBytes = Buffer.concat(chunks)
 		const body = bodyBytes.toString('utf8')
 		const authorization = req.headers.authorization ?? ''
+		const key = req.headers['x-smoke-key'] ?? ''
 		const record = {
 			method: req.method,
 			url: req.url,
@@ -324,8 +325,18 @@ export async function startEchoServer(port = Number(process.env.SMOKE_ECHO_PORT 
 			bodySha256: bodyBytes.length ? sha256(bodyBytes) : null,
 			bodyHadPlaceholder: body.includes('{{secret'),
 			headerHadPlaceholder: authorization.includes('{{secret'),
+			keySha256: key ? sha256(key) : null,
 		}
 		seen.push(record)
+		// /redirect?status=307&to=/path[&alt=1] answers with a redirect; alt=1
+		// points it at another name for this server (one not approved for secrets).
+		const target = new URL(req.url, 'http://echo')
+		if (target.pathname === '/redirect') {
+			const to = target.searchParams.get('to') ?? '/'
+			const alt = target.searchParams.get('alt') === '1' ? alternateHost(req.socket.localAddress, host) : null
+			res.statusCode = Number(target.searchParams.get('status') ?? 302)
+			res.setHeader('location', alt ? `http://${alt}:${port}${to}` : to)
+		}
 		res.setHeader('content-type', 'application/json')
 		res.end(JSON.stringify(record))
 	})
@@ -336,6 +347,14 @@ export async function startEchoServer(port = Number(process.env.SMOKE_ECHO_PORT 
 		seen,
 		close: () => new Promise((resolve) => server.close(resolve)),
 	}
+}
+
+// The address the request arrived on (host.docker.internal's IP under
+// Docker), or `localhost` when Kody reached the server as 127.0.0.1.
+function alternateHost(localAddress, host) {
+	const address = (localAddress ?? '').replace(/^::ffff:/, '')
+	if (address && address !== host && address !== '127.0.0.1') return address.includes(':') ? `[${address}]` : address
+	return host === 'localhost' ? '127.0.0.1' : 'localhost'
 }
 
 export async function waitFor(description, predicate, { timeoutMs = 90_000, intervalMs = 3_000 } = {}) {
