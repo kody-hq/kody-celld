@@ -4,14 +4,18 @@ import { SiteHeader } from '#client/site-header.tsx'
 import { Toaster } from '#client/toaster.tsx'
 import { RouteView } from '#client/routes/index.tsx'
 import { type AppRootProps } from '#universal/app-root-props.ts'
-import { isAuthShellPage } from '#universal/loader-data.ts'
+import { isAuthShellPage, pageHasAccountRail } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
 import {
 	getAlertCardCss,
+	pageGutter,
 	visuallyHiddenUntilFocusedCss,
 } from '#universal/styles/style-primitives.ts'
 import { spacing } from '#universal/styles/tokens.ts'
 import { getPageContainerCss } from '#client/page-layout.ts'
+
+/** Same breakpoint as `accountManagementNarrowMq` — rail collapses to a row. */
+const accountRailNarrowMq = '@media (max-width: 860px)'
 
 export type { AppRootProps }
 
@@ -28,6 +32,9 @@ export function AppRoot(handle: Handle<AppRootProps>) {
 		const { session, pathname, flash, data } = handle.props
 		const loginHref = routes.login.href()
 		const authShell = isAuthShellPage(data.page)
+		// Offset the flash into the content column only when the page actually
+		// renders the account/console rail (not package detail/files/preview).
+		const accountChrome = !authShell && pageHasAccountRail(data.page)
 		return (
 			<div mix={css(rootCss)}>
 				<a href="#main" mix={css(visuallyHiddenUntilFocusedCss)}>
@@ -45,7 +52,16 @@ export function AppRoot(handle: Handle<AppRootProps>) {
 				)}
 				<main id="main" mix={css(mainCss)}>
 					{flash ? (
-						<div mix={css(authShell ? authFlashWrapCss : flashWrapCss)}>
+						<div
+							data-page-flash
+							mix={css(
+								authShell
+									? authFlashWrapCss
+									: accountChrome
+										? accountFlashWrapCss
+										: flashWrapCss,
+							)}
+						>
 							<p
 								class={`flash ${flash.kind}`}
 								role={flash.kind === 'error' ? 'alert' : 'status'}
@@ -82,7 +98,7 @@ const rootCss = {
 
 /** Every route renders one page box from `#client/page-layout.ts` in here. */
 const mainCss = {
-	flex: 1,
+	flex: '1 1 auto',
 	width: '100%',
 	boxSizing: 'border-box' as const,
 }
@@ -90,6 +106,17 @@ const mainCss = {
 const flashWrapCss = {
 	...getPageContainerCss('app'),
 	paddingTop: spacing.lg,
+}
+
+/** Same left inset as `AccountManagementShell` when the rail is beside content. */
+const accountFlashWrapCss = {
+	...getPageContainerCss('app'),
+	paddingTop: spacing.sm,
+	paddingBottom: 0,
+	paddingLeft: `calc(${pageGutter} + 200px + clamp(2rem, 5vw, 4.5rem))`,
+	[accountRailNarrowMq]: {
+		paddingLeft: pageGutter,
+	},
 }
 
 const authFlashWrapCss = {

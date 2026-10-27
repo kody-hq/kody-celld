@@ -58,6 +58,16 @@ export type SubscriptionDefinition = {
 	description?: string
 }
 
+export const credentialKinds = ['secret', 'oauth', 'mcp', 'url', 'login', 'signing'] as const
+export type CredentialKind = (typeof credentialKinds)[number]
+
+export type CredentialSlot = {
+	kind?: CredentialKind
+	provider?: string
+	multiple?: boolean
+	description: string
+}
+
 export const subscriptionTopics = [
 	'email.message.received',
 	'email.message.quarantined',
@@ -96,6 +106,8 @@ export type PackageManifest = {
 	subscriptions: Array<SubscriptionDefinition>
 	secretProvider: SecretProviderDefinition | null
 	app: AppDefinition | null
+	credentials: Record<string, CredentialSlot>
+	parseWarnings: Array<string>
 	dependencies: Record<string, string>
 	hidden: boolean
 	keywords: Array<string>
@@ -104,6 +116,7 @@ export type PackageManifest = {
 export type PackageFiles = Record<string, string>
 
 export const packageNamePattern = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/
+const credentialSlotNamePattern = /^[A-Za-z][A-Za-z0-9._-]{0,63}$/
 
 export function normalizeModulePath(path: string) {
 	let next = path.trim().replaceAll('\\', '/')
@@ -387,11 +400,85 @@ function parseApp(raw: unknown, files: PackageFiles): AppDefinition | null {
 	return { entry, assets, client }
 }
 
+function parseCredentialSlots(raw: unknown, warnings: Array<string>): Record<string, CredentialSlot> {
+	if (raw === undefined) return {}
+	if (!isRecord(raw)) throw new KodyError('invalid_manifest', 'kody.credentials must be an object keyed by slot name.')
+	const slots: Record<string, CredentialSlot> = {}
+	for (const [name, value] of Object.entries(raw)) {
+		const where = `kody.credentials.${name}`
+		if (!credentialSlotNamePattern.test(name)) {
+			throw new KodyError(
+				'invalid_manifest',
+				`${where}: slot names start with a letter and use letters, numbers, dots, underscores, or hyphens (max 64).`,
+			)
+		}
+		if (!isRecord(value)) throw new KodyError('invalid_manifest', `${where} must be an object.`)
+		if (typeof value.description !== 'string' || !value.description.trim() || value.description.trim().length > 500) {
+			throw new KodyError('invalid_manifest', `${where}.description is required and must be 1-500 characters.`)
+		}
+		if (value.kind !== undefined && !(credentialKinds as ReadonlyArray<unknown>).includes(value.kind)) {
+			throw new KodyError('invalid_manifest', `${where}.kind must be one of: ${credentialKinds.join(', ')}.`)
+		}
+		if (value.provider !== undefined) {
+			if (typeof value.provider !== 'string' || !value.provider.trim() || value.provider.trim().length > 64) {
+				throw new KodyError('invalid_manifest', `${where}.provider must be 1-64 characters.`)
+			}
+		}
+		if (value.multiple !== undefined && typeof value.multiple !== 'boolean') {
+			throw new KodyError('invalid_manifest', `${where}.multiple must be a boolean.`)
+		}
+		if (value.ownerCredentialForVisitors !== undefined && typeof value.ownerCredentialForVisitors !== 'boolean') {
+			throw new KodyError('invalid_manifest', `${where}.ownerCredentialForVisitors must be a boolean.`)
+		}
+		for (const key of Object.keys(value)) {
+			if (['kind', 'provider', 'multiple', 'description'].includes(key)) continue
+			warnings.push(`${where}.${key} is not supported on celld yet and was dropped.`)
+		}
+		const kind = value.kind as CredentialKind | undefined
+		if (kind === 'url' || kind === 'login' || kind === 'signing') {
+			warnings.push(
+				`${where}.kind "${kind}" has no celld storage yet; credential() for this need fails with credential_unsupported.`,
+			)
+		}
+		slots[name] = {
+			description: value.description.trim(),
+			...(kind ? { kind } : {}),
+			...(typeof value.provider === 'string' ? { provider: value.provider.trim() } : {}),
+			...(typeof value.multiple === 'boolean' ? { multiple: value.multiple } : {}),
+		}
+	}
+	return slots
+}
+
 /** Non-fatal notes returned by packageSave. */
 export function manifestWarnings(manifest: PackageManifest): Array<string> {
-	return manifest.app?.client
-		? ['kody.app.client is not built on kody-celld yet; the app is served server-rendered only.']
-		: []
+	return [
+		...manifest.parseWarnings,
+		...(manifest.app?.client
+			? ['kody.app.client is not built on kody-celld yet; the app is served server-rendered only.']
+			: []),
+	]
+}
+
+export function normalizeStoredManifest(
+	manifest: Partial<PackageManifest> & Pick<PackageManifest, 'name' | 'version'>,
+): PackageManifest {
+	return {
+		name: manifest.name,
+		version: manifest.version,
+		description: manifest.description ?? '',
+		exports: manifest.exports ?? {},
+		jobs: manifest.jobs ?? {},
+		webhooks: manifest.webhooks ?? [],
+		subscriptions: manifest.subscriptions ?? [],
+		secretProvider: manifest.secretProvider ?? null,
+		app: manifest.app ?? null,
+		credentials: manifest.credentials ?? {},
+		parseWarnings: manifest.parseWarnings ?? [],
+		dependencies: manifest.dependencies ?? {},
+		hidden: manifest.hidden === true,
+		keywords: manifest.keywords ?? [],
+	}
 }
 
 export function parsePackageManifest(files: PackageFiles): PackageManifest {
@@ -409,6 +496,7 @@ export function parsePackageManifest(files: PackageFiles): PackageManifest {
 		throw new KodyError('invalid_manifest', 'package.json#name must be an npm-style package name (optionally scoped).')
 	}
 	const kody = isRecord(json.kody) ? json.kody : {}
+	const parseWarnings: Array<string> = []
 
 	const exports: Record<string, string> = {}
 	if (typeof json.exports === 'string') {
@@ -489,6 +577,8 @@ export function parsePackageManifest(files: PackageFiles): PackageManifest {
 		subscriptions: parseSubscriptions(kody.subscriptions, files),
 		secretProvider: parseSecretProvider(kody.secretProvider, exports),
 		app: parseApp(kody.app, files),
+		credentials: parseCredentialSlots(kody.credentials, parseWarnings),
+		parseWarnings,
 		dependencies,
 		hidden: kody.hidden === true,
 		keywords: Array.isArray(json.keywords) ? json.keywords.filter((k): k is string => typeof k === 'string') : [],

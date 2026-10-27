@@ -23,6 +23,7 @@ import {
 } from '../lib/limits.ts'
 import {
 	manifestWarnings,
+	normalizeStoredManifest,
 	parsePackageManifest,
 	type PackageFiles,
 	type PackageManifest,
@@ -157,6 +158,8 @@ export type GatewayEvent = {
 	reason?: string
 	/** Set for host-side MCP tool calls (method 'MCP'). */
 	mcp?: { server: string; tool: string; ms: number }
+	/** Set on a followed redirect's hop: 1 for the first redirect target. */
+	redirect?: number
 }
 
 export type DailyUsage = {
@@ -331,20 +334,7 @@ function nowIso() {
 /** Manifests saved before a field existed come back without it. */
 function storedManifest(json: string): PackageManifest {
 	const manifest = JSON.parse(json) as Partial<PackageManifest> & Pick<PackageManifest, 'name' | 'version'>
-	return {
-		name: manifest.name,
-		version: manifest.version,
-		description: manifest.description ?? '',
-		exports: manifest.exports ?? {},
-		jobs: manifest.jobs ?? {},
-		webhooks: manifest.webhooks ?? [],
-		subscriptions: manifest.subscriptions ?? [],
-		secretProvider: manifest.secretProvider ?? null,
-		app: manifest.app ?? null,
-		dependencies: manifest.dependencies ?? {},
-		hidden: manifest.hidden === true,
-		keywords: manifest.keywords ?? [],
-	}
+	return normalizeStoredManifest(manifest)
 }
 
 function constantTimeEqual(a: string, b: string) {
@@ -1017,6 +1007,7 @@ export class UserCell extends DurableObject<Env> {
 			.toArray()
 		for (const row of existingRows) {
 			if (!declared.has(row.job_name)) {
+				this.ctx.storage.sql.exec('DELETE FROM job_runs WHERE job_id = ?', row.id)
 				this.ctx.storage.sql.exec('DELETE FROM jobs WHERE id = ?', row.id)
 			}
 		}
@@ -1136,6 +1127,9 @@ export class UserCell extends DurableObject<Env> {
 	async packageDelete(name: string) {
 		const cursor = this.ctx.storage.sql.exec('DELETE FROM packages WHERE name = ?', name)
 		deletePackageFiles(this.ctx.storage.sql, name)
+		// Drop run history with the jobs: ids are `${package}#${jobName}`, so a
+		// reinstall must not inherit prior last-run display from orphaned rows.
+		this.ctx.storage.sql.exec('DELETE FROM job_runs WHERE job_id IN (SELECT id FROM jobs WHERE package_name = ?)', name)
 		this.ctx.storage.sql.exec('DELETE FROM jobs WHERE package_name = ?', name)
 		this.ctx.storage.sql.exec('DELETE FROM secrets WHERE scope = ? AND package_name = ?', 'package', name)
 		for (const row of this.ctx.storage.sql
@@ -1521,21 +1515,53 @@ export class UserCell extends DurableObject<Env> {
 		}
 	}
 
+	/**
+	 * Manual runs must not write `jobs.last_run_at` (that column anchors
+	 * interval/once rescheduling). When the latest job_runs row is newer than
+	 * the column, surface its started_at, status, and error together so the
+	 * Jobs UI has one source for Last run and status (including an in-flight
+	 * manual run after a prior success). Cron claim may set the column before
+	 * a row exists; keep the column fields in that window.
+	 */
+	private withLatestRun(job: JobRecord): JobRecord {
+		const latest = this.ctx.storage.sql
+			.exec<{ started_at: string; status: string; error: string | null }>(
+				'SELECT started_at, status, error FROM job_runs WHERE job_id = ? ORDER BY started_at DESC LIMIT 1',
+				job.id,
+			)
+			.toArray()[0]
+		if (!latest) return job
+		if (!job.lastRunAt || latest.started_at > job.lastRunAt) {
+			return {
+				...job,
+				lastRunAt: latest.started_at,
+				lastStatus: latest.status,
+				lastError: latest.error,
+			}
+		}
+		return job
+	}
+
 	async jobList(filter: { packageName?: string | undefined } = {}): Promise<Array<JobRecord>> {
 		const rows = filter.packageName
 			? this.ctx.storage.sql.exec('SELECT * FROM jobs WHERE package_name = ? ORDER BY id', filter.packageName)
 			: this.ctx.storage.sql.exec('SELECT * FROM jobs ORDER BY id')
-		return (rows.toArray() as Array<Parameters<UserCell['rowToJob']>[0]>).map((row) => this.rowToJob(row))
+		return (rows.toArray() as Array<Parameters<UserCell['rowToJob']>[0]>).map((row) =>
+			this.withLatestRun(this.rowToJob(row)),
+		)
 	}
 
 	async jobGet(id: string): Promise<JobRecord | null> {
 		const row = this.ctx.storage.sql.exec('SELECT * FROM jobs WHERE id = ?', id).toArray()[0]
-		return row ? this.rowToJob(row as Parameters<UserCell['rowToJob']>[0]) : null
+		return row ? this.withLatestRun(this.rowToJob(row as Parameters<UserCell['rowToJob']>[0])) : null
 	}
 
 	async jobUpdate(input: { id: string; enabled?: boolean | undefined }) {
-		const job = await this.jobGet(input.id)
-		if (!job) throw new KodyError('job_not_found', `Job "${input.id}" was not found.`, { status: 404 })
+		// Read the row directly: jobGet overlays lastRunAt from job_runs for
+		// display, but resume must anchor on jobs.last_run_at only (cron claim).
+		const row = this.ctx.storage.sql.exec('SELECT * FROM jobs WHERE id = ?', input.id).toArray()[0]
+		if (!row) throw new KodyError('job_not_found', `Job "${input.id}" was not found.`, { status: 404 })
+		const job = this.rowToJob(row as Parameters<UserCell['rowToJob']>[0])
 		const now = new Date()
 		if (input.enabled !== undefined) {
 			const nextRun = input.enabled

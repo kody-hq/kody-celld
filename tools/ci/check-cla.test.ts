@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
 	applyIndividualClaSigningComment,
+	applyIndividualClaSigningComments,
 	checkClaIdentities,
 	formatClaFailure,
 	individualClaSigningPhrase,
@@ -72,6 +73,8 @@ describe('check-cla', () => {
 			],
 		)
 		assert.match(formatClaFailure(failing), new RegExp(individualClaSigningPhrase))
+		assert.match(formatClaFailure(failing), /That signing comment on the pull request satisfies this check\./)
+		assert.match(formatClaFailure(failing), /The signer is recorded on main after the pull request merges\./)
 	})
 
 	it('records the signing comment once and ignores everything else', () => {
@@ -139,5 +142,93 @@ describe('check-cla', () => {
 			}),
 			{ file: empty, status: 'ignored', reason: 'missing_login' },
 		)
+	})
+
+	it('accepts the PR author signing in a comment', () => {
+		const author = {
+			githubLogin: 'example-signer',
+			name: 'Example Signer',
+			email: null,
+		}
+		const comments = [
+			{
+				login: 'example-signer',
+				createdAt: '2026-08-16T10:30:00Z',
+				body: individualClaSigningPhrase,
+			},
+		]
+
+		const signed = applyIndividualClaSigningComments(signersFile(), comments)
+		assert.deepEqual(signed.recorded, ['example-signer'])
+		assert.deepEqual(checkClaIdentities([author], signed.file), { ok: true })
+	})
+
+	it('rejects a signing comment from another login or with extra text', () => {
+		const author = {
+			githubLogin: 'example-signer',
+			name: 'Example Signer',
+			email: null,
+		}
+		const otherLogin = applyIndividualClaSigningComments(signersFile(), [
+			{
+				login: 'different-signer',
+				createdAt: '2026-08-16T10:30:00Z',
+				body: individualClaSigningPhrase,
+			},
+		])
+		const extraText = applyIndividualClaSigningComments(signersFile(), [
+			{
+				login: 'example-signer',
+				createdAt: '2026-08-16T10:30:00Z',
+				body: `${individualClaSigningPhrase} thanks`,
+			},
+		])
+
+		assert.equal(checkClaIdentities([author], otherLogin.file).ok, false)
+		assert.equal(checkClaIdentities([author], extraText.file).ok, false)
+	})
+
+	it('records each new signer only once across multiple comments', () => {
+		const initial = signersFile({
+			signers: [{ github: 'AlreadySigned', signedAt: '2026-08-01', cla: 'individual' }],
+		})
+		const result = applyIndividualClaSigningComments(initial, [
+			{
+				login: 'FirstSigner',
+				createdAt: '2026-08-16T10:30:00Z',
+				body: individualClaSigningPhrase,
+			},
+			{
+				login: 'SecondSigner',
+				createdAt: '2026-08-17T11:45:00Z',
+				body: individualClaSigningPhrase,
+			},
+			{
+				login: 'firstsigner',
+				createdAt: '2026-08-18T12:00:00Z',
+				body: individualClaSigningPhrase,
+			},
+			{
+				login: 'alreadysigned',
+				createdAt: '2026-08-19T12:00:00Z',
+				body: individualClaSigningPhrase,
+			},
+		])
+
+		assert.deepEqual(result.recorded, ['FirstSigner', 'SecondSigner'])
+		assert.deepEqual(result.file.signers, [
+			...initial.signers,
+			{ github: 'FirstSigner', signedAt: '2026-08-16', cla: 'individual' },
+			{ github: 'SecondSigner', signedAt: '2026-08-17', cla: 'individual' },
+		])
+
+		const alreadySigned = applyIndividualClaSigningComments(result.file, [
+			{
+				login: 'firstsigner',
+				createdAt: '2026-08-20T12:00:00Z',
+				body: individualClaSigningPhrase,
+			},
+		])
+		assert.deepEqual(alreadySigned, { file: result.file, recorded: [] })
 	})
 })

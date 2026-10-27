@@ -39,6 +39,12 @@ export type ClaRecordResult =
 	| { status: 'already_signed'; github: string }
 	| { status: 'ignored'; reason: 'not_signing_comment' | 'missing_login' }
 
+export type ClaSigningComment = {
+	login: string
+	createdAt: string
+	body: string
+}
+
 function normalize(value: string) {
 	return value.trim().toLowerCase()
 }
@@ -141,6 +147,37 @@ export function applyIndividualClaSigningComment(input: {
 	}
 }
 
+export function applyIndividualClaSigningComments(
+	file: ClaSignersFile,
+	comments: ReadonlyArray<ClaSigningComment>,
+): { file: ClaSignersFile; recorded: Array<string> } {
+	let updated = file
+	const recorded: Array<string> = []
+	const recordedLogins = new Set<string>()
+
+	for (const comment of comments) {
+		const result = applyIndividualClaSigningComment({
+			file: updated,
+			github: comment.login,
+			signedAt: comment.createdAt.slice(0, 10),
+			comment: comment.body,
+		})
+		updated = result.file
+		if (result.status !== 'recorded') {
+			continue
+		}
+
+		const login = normalize(result.github)
+		if (recordedLogins.has(login)) {
+			continue
+		}
+		recordedLogins.add(login)
+		recorded.push(result.github)
+	}
+
+	return { file: updated, recorded }
+}
+
 export function isAllowlistedIdentity(identity: ClaIdentity, signersFile: ClaSignersFile) {
 	const login = identity.githubLogin ? normalize(identity.githubLogin) : null
 	if (login && (githubBotLoginPattern.test(login) || login.startsWith('app/'))) {
@@ -200,7 +237,8 @@ export function formatClaFailure(result: Extract<ClaCheckResult, { ok: false }>)
 		'Unsigned contributions cannot merge.',
 		'Read docs/legal/individual-cla.md (or the Entity CLA if an organization owns the work).',
 		'Comment on the pull request: I have read the CLA and I hereby sign the CLA',
-		'The CLA workflow records that GitHub username on main. See docs/contributing/inbound-contributions.md.',
+		'That signing comment on the pull request satisfies this check.',
+		'The signer is recorded on main after the pull request merges. See docs/contributing/inbound-contributions.md.',
 		'',
 		'Missing signatures:',
 		...result.missing.map((entry) => `- ${entry.reason}`),
@@ -263,15 +301,49 @@ async function runRecordCli(args: Array<string>) {
 	}
 }
 
+async function runRecordCommentsCli(args: Array<string>) {
+	const signersPath = readFlag(args, '--signers')
+	const commentsPath = readFlag(args, '--record-comments-json')
+
+	if (!signersPath || !commentsPath) {
+		throw new Error('Usage: node tools/ci/check-cla.ts --signers <file> --record-comments-json <file>')
+	}
+
+	const current = parseClaSignersFile(await readFile(signersPath, 'utf8'))
+	const commentsRaw: unknown = JSON.parse(await readFile(commentsPath, 'utf8'))
+	if (!Array.isArray(commentsRaw)) {
+		throw new Error('CLA signing comments JSON must be an array')
+	}
+
+	const result = applyIndividualClaSigningComments(current, commentsRaw as Array<ClaSigningComment>)
+	if (result.recorded.length > 0) {
+		await writeFile(signersPath, serializeClaSignersFile(result.file), 'utf8')
+	}
+
+	console.log(`added=${result.recorded.length > 0}`)
+	console.log(`github=${result.recorded.join(',')}`)
+}
+
 async function runCheckCli(args: Array<string>) {
 	const signersPath = readFlag(args, '--signers')
 	const identitiesPath = readFlag(args, '--identities-json')
+	const signingCommentsPath = readFlag(args, '--signing-comments-json')
 
-	if (!signersPath || !identitiesPath) {
-		throw new Error('Usage: node tools/ci/check-cla.ts --signers <file> --identities-json <file>')
+	if (!signersPath || !identitiesPath || (args.includes('--signing-comments-json') && !signingCommentsPath)) {
+		throw new Error(
+			'Usage: node tools/ci/check-cla.ts --signers <file> --identities-json <file> [--signing-comments-json <file>]',
+		)
 	}
 
-	const signersFile = parseClaSignersFile(await readFile(signersPath, 'utf8'))
+	let signersFile = parseClaSignersFile(await readFile(signersPath, 'utf8'))
+	if (signingCommentsPath) {
+		const commentsRaw: unknown = JSON.parse(await readFile(signingCommentsPath, 'utf8'))
+		if (!Array.isArray(commentsRaw)) {
+			throw new Error('CLA signing comments JSON must be an array')
+		}
+		signersFile = applyIndividualClaSigningComments(signersFile, commentsRaw as Array<ClaSigningComment>).file
+	}
+
 	const identitiesRaw: unknown = JSON.parse(await readFile(identitiesPath, 'utf8'))
 	if (!Array.isArray(identitiesRaw)) {
 		throw new Error('Identities JSON must be an array')
@@ -285,6 +357,11 @@ async function runCheckCli(args: Array<string>) {
 }
 
 async function runCli(args: Array<string>) {
+	if (args.includes('--record-comments-json')) {
+		await runRecordCommentsCli(args)
+		return
+	}
+
 	if (args.includes('--record-signer')) {
 		await runRecordCli(args)
 		return

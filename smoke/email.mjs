@@ -205,7 +205,8 @@ export async function smokeEmail({ mcp, user }) {
 	log('bridge inbound', { accepted: bridged.status, subject: rawStored.subject, searchHits: search.messages.length })
 
 	// 3b. web inbox: a row opens the message with its headers and full body;
-	// HTML renders only in a sandboxed srcdoc iframe with scripts stripped.
+	// HTML renders only in a sandboxed srcdoc iframe with scripts stripped;
+	// the sandbox allows only popups so links open in a new tab.
 	const browser = await signedInBrowser(user.id)
 	const list = await browser.get('/account/inbox')
 	const detailHref = `/account/inbox/${encodeURIComponent(first.messageId)}`
@@ -220,7 +221,7 @@ export async function smokeEmail({ mcp, user }) {
 			detail.text.includes(generic.subject) &&
 			detail.text.includes('alice@sender.example') &&
 			detail.text.includes(`${local}+receipts@${domain}`) &&
-			/<iframe[^>]*sandbox=""/.test(detail.text) &&
+			/<iframe[^>]*sandbox="allow-popups allow-popups-to-escape-sandbox"/.test(detail.text) &&
 			detail.text.includes('srcdoc='),
 		'message detail shows headers and the sandboxed HTML body',
 		detail.status,

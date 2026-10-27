@@ -168,6 +168,8 @@ roadmap is now shipped; the roadmap below is kept as the change log.
 
 ## celld-specific caveats
 
+- **Package credential slots.** Celld parses and stores `kody.credentials`,
+  but `credential()` is not available yet.
 - **Hosted HTTP API.** celld serves `/v1` at the origin of `KODY_PUBLIC_URL`,
   not on a separate `api.` host. `/openapi.json` lists that origin in its
   `servers` array. Memories and secrets routes, token routes,

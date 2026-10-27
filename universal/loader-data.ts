@@ -638,3 +638,57 @@ export function isAuthShellPage(page: AppPage) {
 		page === 'connectSecretSet'
 	)
 }
+
+/**
+ * Pages that render `AccountManagementShell` with the side rail. Flash inset
+ * in `AppRoot` must match this — pathname `/account/*` alone is wrong for
+ * package detail/files/preview, which have no rail.
+ */
+export function pageHasAccountRail(page: AppPage): boolean {
+	switch (page) {
+		case 'account':
+		case 'accountMcpOauthClients':
+		case 'accountApiTokens':
+		case 'accountSecrets':
+		case 'accountPackages':
+		case 'accountJobs':
+		case 'accountJobDetail':
+		case 'accountMemories':
+		case 'accountWebhooks':
+		case 'accountActivity':
+		case 'accountIntegrations':
+		case 'accountMcpServers':
+		case 'accountMcpServerAuthorize':
+		case 'accountEmail':
+		case 'accountSessions':
+		case 'adminUsers':
+		case 'adminUserDetail':
+		case 'adminAudit':
+		case 'adminConfig':
+			return true
+		case 'accountPackageDetail':
+		case 'accountPackageFiles':
+		case 'accountPackagePreviewFiles':
+		case 'login':
+		case 'setup':
+		case 'signinLinkExpired':
+		case 'signinLinkPassword':
+		case 'error':
+		case 'adminLogin':
+		case 'community':
+		case 'communityNotFound':
+		case 'communityDetail':
+		case 'brandGuide':
+		case 'oauthAuthorize':
+		case 'oauthAuthorizeError':
+		case 'connectOauth':
+		case 'connectOauthDone':
+		case 'connectOauthError':
+		case 'connectSecretSet':
+			return false
+		default: {
+			const _exhaustive: never = page
+			return _exhaustive
+		}
+	}
+}
