@@ -151,7 +151,12 @@ async function buildIndex(ctx: CapabilityContext, includeHidden: boolean): Promi
 			title: `kody.${cap.name}`,
 			summary: cap.description,
 			domain: cap.domain,
-			exactNames: [cap.name, `kody.${cap.name}`, ...(cap.aliases ?? []), ...cap.keywords],
+			exactNames: [
+				cap.name,
+				`kody.${cap.name}`,
+				...(cap.aliases ?? []).flatMap((alias) => [alias, `kody.${alias}`]),
+				...cap.keywords,
+			],
 			haystack: tokens(
 				`${cap.name} ${(cap.aliases ?? []).join(' ')} ${cap.domain} ${cap.description} ${cap.tags.join(' ')} ${cap.keywords.join(' ')} ${Object.keys(cap.inputSchema.properties ?? {}).join(' ')}`,
 			).join(' '),
