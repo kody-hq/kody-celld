@@ -46,6 +46,35 @@ export async function smokeApi({ token }) {
 	)
 	log('GET /v1/packages', { count: packages.json.packages.length })
 
+	const memorySubject = `v1 api smoke ${Date.now()}`
+	const memorySummary = `API smoke memory ${memorySubject}`
+	const createdMemory = await request('/v1/memories', {
+		method: 'POST',
+		token,
+		body: { subject: memorySubject, summary: memorySummary },
+	})
+	assert(
+		createdMemory.status === 200 && typeof createdMemory.json?.memory?.id === 'string',
+		'API memory creation failed',
+		createdMemory,
+	)
+	const listedMemories = await request(`/v1/memories?query=${encodeURIComponent(memorySubject)}`, { token })
+	assert(
+		listedMemories.status === 200 &&
+			listedMemories.json?.matches?.some((memory) => memory.id === createdMemory.json.memory.id),
+		'API memory search did not return the created memory',
+		listedMemories,
+	)
+	log('memory API create/list', createdMemory.json.memory.id)
+
+	const secrets = await request('/v1/secrets', { token })
+	assert(secrets.status === 200 && Array.isArray(secrets.json?.secrets), 'API secrets list failed', secrets)
+	log('GET /v1/secrets', { count: secrets.json.secrets.length })
+
+	const webhooks = await request('/v1/webhooks', { token })
+	assert(webhooks.status === 200 && Array.isArray(webhooks.json?.webhooks), 'API webhooks list failed', webhooks)
+	log('GET /v1/webhooks', { count: webhooks.json.webhooks.length })
+
 	const executed = await request('/v1/execute', {
 		method: 'POST',
 		token,

@@ -3143,21 +3143,27 @@ export class UserCell extends DurableObject<Env> {
 	}
 
 	async emailAttachmentGet(input: {
-		messageId: string
+		messageId?: string | undefined
 		attachmentId: string
-	}): Promise<(EmailAttachmentMeta & { contentBase64: string }) | null> {
-		const message = await this.emailMessageGet(input.messageId)
+	}): Promise<(EmailAttachmentMeta & { messageId: string; contentBase64: string }) | null> {
+		const messageId =
+			input.messageId ??
+			this.ctx.storage.sql
+				.exec<{ message_id: string }>('SELECT message_id FROM email_attachments WHERE id = ?', input.attachmentId)
+				.toArray()[0]?.message_id
+		if (!messageId) return null
+		const message = await this.emailMessageGet(messageId)
 		const meta = message?.attachments.find((item) => item.id === input.attachmentId)
 		if (!meta) return null
 		const row = this.ctx.storage.sql
 			.exec<{ content_base64: string }>(
 				'SELECT content_base64 FROM email_attachments WHERE id = ? AND message_id = ?',
 				input.attachmentId,
-				input.messageId,
+				messageId,
 			)
 			.toArray()[0]
 		if (!row) return null
-		return { ...meta, contentBase64: row.content_base64 }
+		return { ...meta, messageId, contentBase64: row.content_base64 }
 	}
 
 	async emailMessageSetDelivery(input: {

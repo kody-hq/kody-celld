@@ -12,6 +12,11 @@ capability and package catalog. `POST /v1/execute` accepts exactly one of
 `kody:@scope/package/export` specifier. `conversationId` and `memoryContext`
 are accepted but unused; `credentials` is not supported:
 
+The route table includes packages, runs, jobs, memories, MCP server
+instructions, secrets, webhooks, email, integrations, MCP servers, community,
+and storage. Routes appear in OpenAPI only when their capability is registered
+in that celld build.
+
 ```json
 {
   "code": "export default async function main() { return 42 }",
