@@ -182,8 +182,11 @@ roadmap is now shipped; the roadmap below is kept as the change log.
   Authorization bearer header (`kind: header`, `name: Authorization`,
   `format: Bearer {value}`); `placement` omitted, null, or all-true. Null
   hosts use the account's approved secret hosts.
-- **Package credential slots.** Celld parses and stores `kody.credentials`,
-  but `credential()` is not available yet.
+- **Package credentials.** Runtime supports `secret`, `oauth`, and `mcp` kinds.
+  Secret hosts come from account-level approved hosts, not per-secret host
+  lists. Celld does not support credential `inject` or `sign()`. Declared
+  `url`, `login`, and `signing` slots fail with `credential_unsupported`.
+  Imported package code resolves credentials as the package being run.
 - **Package subscriptions.** Celld emits only `email.message.received`,
   `email.message.quarantined`, `email.message.delivery.updated`,
   `integration.auth.succeeded`, and `integration.auth.failed`. Other platform
