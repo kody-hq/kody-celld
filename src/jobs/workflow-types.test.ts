@@ -112,6 +112,7 @@ test('finishing a cancelled attempt preserves cancellation for success and failu
 			workflowAttemptFinishState({
 				status: 'cancelled',
 				attempts: 1,
+				attempt: 1,
 				ok,
 				error: 'attempt failed',
 				now: '2030-01-01T00:00:00.000Z',
@@ -119,6 +120,33 @@ test('finishing a cancelled attempt preserves cancellation for success and failu
 			null,
 		)
 	}
+})
+
+test('a stale attempt cannot finish a later attempt', () => {
+	for (const ok of [true, false]) {
+		assert.equal(
+			workflowAttemptFinishState({
+				status: 'running',
+				attempts: 2,
+				attempt: 1,
+				ok,
+				error: 'stale attempt failed',
+				now: '2030-01-01T00:00:00.000Z',
+			}),
+			null,
+		)
+	}
+	assert.equal(
+		workflowAttemptFinishState({
+			status: 'running',
+			attempts: 2,
+			attempt: 2,
+			ok: true,
+			error: null,
+			now: '2030-01-01T00:00:00.000Z',
+		})?.status,
+		'complete',
+	)
 })
 
 test('create and list views use hosted field names', () => {

@@ -84,11 +84,12 @@ export function workflowLostAttemptFailureState(workflow: WorkflowRecord, now: s
 export function workflowAttemptFinishState(input: {
 	status: WorkflowStatus
 	attempts: number
+	attempt: number
 	ok: boolean
 	error: string | null
 	now: string
 }) {
-	if (input.status !== 'running') return null
+	if (input.status !== 'running' || input.attempts !== input.attempt) return null
 	if (input.ok) {
 		return {
 			status: 'complete' as const,

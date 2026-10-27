@@ -1749,13 +1749,14 @@ export class UserCell extends DurableObject<Env> {
 		})
 	}
 
-	workflowAttemptFinish(input: { id: string; ok: boolean; error: string | null; now: string }) {
+	workflowAttemptFinish(input: { id: string; attempt: number; ok: boolean; error: string | null; now: string }) {
 		return this.ctx.storage.transactionSync(() => {
 			const workflow = this.workflowRow(input.id)
 			if (!workflow) return null
 			const next = workflowAttemptFinishState({
 				status: workflow.status,
 				attempts: workflow.attempts,
+				attempt: input.attempt,
 				ok: input.ok,
 				error: input.error,
 				now: input.now,
@@ -1764,23 +1765,25 @@ export class UserCell extends DurableObject<Env> {
 			if (next.status === 'complete') {
 				this.ctx.storage.sql.exec(
 					`UPDATE workflows SET status = ?, last_error = ?, completed_at = ?, updated_at = ?
-					 WHERE id = ? AND status = 'running'`,
+					 WHERE id = ? AND status = 'running' AND attempts = ?`,
 					next.status,
 					next.lastError,
 					next.completedAt,
 					input.now,
 					input.id,
+					input.attempt,
 				)
 			} else {
 				this.ctx.storage.sql.exec(
 					`UPDATE workflows SET status = ?, run_at = ?, last_error = ?, completed_at = ?, updated_at = ?
-					 WHERE id = ? AND status = 'running'`,
+					 WHERE id = ? AND status = 'running' AND attempts = ?`,
 					next.status,
 					next.runAt,
 					next.lastError,
 					next.completedAt,
 					input.now,
 					input.id,
+					input.attempt,
 				)
 			}
 			return this.workflowRow(input.id)

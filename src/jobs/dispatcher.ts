@@ -2,7 +2,7 @@ import type { JobRecord } from '../cells/user-cell.ts'
 import type { WorkflowRecord } from './workflow-types.ts'
 import type { Env } from '../env.ts'
 import { executeRun, getUserCell } from '../execute/engine.ts'
-import { backgroundExecutorTimeoutMs } from '../lib/limits.ts'
+import { backgroundExecutorTimeoutMs, maxConcurrentWorkflows } from '../lib/limits.ts'
 
 export type JobUser = { id: string; email: string }
 
@@ -88,6 +88,7 @@ async function runWorkflowAttempt(
 	}
 	const updated = userCell.workflowAttemptFinish({
 		id: workflow.id,
+		attempt: workflow.attempts,
 		ok,
 		error,
 		now: new Date().toISOString(),
@@ -100,11 +101,15 @@ export async function dispatchDueWorkflows(env: Env, exports: ExecutionContext['
 	const registry = env.REGISTRY.getByName('registry')
 	const users = await registry.listUsers()
 	const nowIso = now.toISOString()
+	const startedAt = Date.now()
 	const summary: Array<{ userId: string; workflowId: string; status: string; runId: string | null }> = []
 	await Promise.all(
 		users.map(async (user) => {
-			const due = await getUserCell(env, user.id).workflowsClaimDue(nowIso)
-			for (const workflow of due) {
+			const userCell = getUserCell(env, user.id)
+			for (let claimed = 0; claimed < maxConcurrentWorkflows; claimed++) {
+				const claimAt = new Date(now.getTime() + Date.now() - startedAt).toISOString()
+				const [workflow] = await userCell.workflowsClaimDue(claimAt, 1)
+				if (!workflow) break
 				const outcome = await runWorkflowAttempt(env, exports, user, workflow)
 				summary.push({ userId: user.id, ...outcome })
 			}
