@@ -1,5 +1,12 @@
 import { DurableObject } from 'cloudflare:workers'
 import { AccountStore, accountSchema, type SigninTokenKind } from '../auth/account-store.ts'
+import {
+	ApiTokenStore,
+	apiTokenSchema,
+	orgPermissionScopes,
+	type ApiTokenSecretView,
+	type ApiTokenView,
+} from '../auth/api-token-store.ts'
 import type { Env } from '../env.ts'
 import { buildMasterKeyring, randomId, randomToken, sha256Hex, type MasterKeyring } from '../lib/crypto.ts'
 import { KodyError } from '../lib/errors.ts'
@@ -100,16 +107,19 @@ export class RegistryCell extends DurableObject<Env> {
 			CREATE INDEX IF NOT EXISTS outbound_email_index_created ON outbound_email_index(created_at);
 		`)
 		this.ctx.storage.sql.exec(accountSchema)
+		this.ctx.storage.sql.exec(apiTokenSchema)
 		this.ctx.storage.sql.exec(oauthServerSchema)
 		this.ctx.storage.sql.exec(communitySchema)
 		this.community = new CommunityStore(this.ctx.storage.sql)
 		this.auditRetentionCount = limitsFromEnv(env).auditRetentionCount
 		this.accounts = new AccountStore(this.ctx.storage.sql)
+		this.apiTokens = new ApiTokenStore(this.ctx.storage.sql)
 		this.oauth = new OAuthServerStore(this.ctx.storage.sql, () => this.keyring())
 	}
 
 	private readonly auditRetentionCount: number
 	private readonly accounts: AccountStore
+	private readonly apiTokens: ApiTokenStore
 	private readonly oauth: OAuthServerStore
 	private readonly community: CommunityStore
 
@@ -267,6 +277,49 @@ export class RegistryCell extends DurableObject<Env> {
 		if (!row) return null
 		this.ctx.storage.sql.exec('UPDATE tokens SET last_used_at = ? WHERE token_hash = ?', new Date().toISOString(), hash)
 		return { id: row.id, email: row.email, createdAt: row.created_at }
+	}
+
+	async apiTokenMint(input: {
+		userId: string
+		name: string
+		lifetime?: string | null
+		idleTtlSeconds?: number
+		maxLifetimeSeconds?: number
+		createdVia: string
+		scopes?: ReadonlyArray<string>
+	}): Promise<ApiTokenSecretView> {
+		return this.apiTokens.mint({
+			...input,
+			scopes: input.scopes ?? orgPermissionScopes,
+		})
+	}
+
+	async apiTokenResolve(token: string): Promise<{ user: UserRecord; tokenId: string } | null> {
+		const resolved = await this.apiTokens.resolve(token)
+		if (!resolved) return null
+		const row = this.ctx.storage.sql
+			.exec<{ id: string; email: string; created_at: string }>(
+				'SELECT id, email, created_at FROM users WHERE id = ?',
+				resolved.userId,
+			)
+			.toArray()[0]
+		if (!row) return null
+		return {
+			user: { id: row.id, email: row.email, createdAt: row.created_at },
+			tokenId: resolved.tokenId,
+		}
+	}
+
+	apiTokenGetCurrent(userId: string, tokenId: string): ApiTokenView | null {
+		return this.apiTokens.getCurrent(userId, tokenId)
+	}
+
+	apiTokenRotateCurrent(userId: string, tokenId: string): Promise<ApiTokenSecretView | null> {
+		return this.apiTokens.rotateCurrent(userId, tokenId)
+	}
+
+	apiTokenRevokeCurrent(userId: string, tokenId: string): boolean {
+		return this.apiTokens.revokeCurrent(userId, tokenId)
 	}
 
 	async listUsers(): Promise<Array<UserRecord>> {

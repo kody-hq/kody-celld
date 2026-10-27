@@ -30,6 +30,20 @@ test('distinguishes unknown paths and methods', () => {
 	})
 })
 
+test('registers only the native token routes in addition to capabilities', () => {
+	const operations = getAvailableApiOperations([])
+	assert.deepEqual(
+		operations.filter(([, path]) => path.startsWith('/v1/tokens')),
+		[
+			['POST', '/v1/tokens/device', 'cliLoginDeviceToken'],
+			['GET', '/v1/tokens/current', 'tokenGetCurrent'],
+			['POST', '/v1/tokens/current/rotate', 'tokenRotateCurrent'],
+			['DELETE', '/v1/tokens/current', 'tokenRevokeCurrent'],
+		],
+	)
+	assert(!operations.some(([, path]) => String(path) === '/v1/tokens' || path.includes('{token_id}')))
+})
+
 test('serves hosted rows only when their capability is registered', () => {
 	const capabilities = new Map<string, (typeof registeredRouteCapabilities)[number]>(
 		registeredRouteCapabilities.map((capability) => [capability.name, capability] as const),

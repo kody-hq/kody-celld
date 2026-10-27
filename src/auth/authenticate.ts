@@ -2,15 +2,18 @@ import type { UserRecord } from '../cells/registry-cell.ts'
 import type { UserCell } from '../cells/user-cell.ts'
 import type { Env } from '../env.ts'
 import { getUserCell } from '../execute/engine.ts'
+import { apiTokenPrefix } from '../lib/api-token-format.ts'
 import { oauthPaths } from '../oauth/protocol.ts'
 
 export type Principal = {
 	user: UserRecord
 	userCell: DurableObjectStub<UserCell>
 	/** How the caller proved who they are. */
-	via: 'api_token' | 'oauth'
+	via: 'api_token' | 'oauth' | 'kody_api_token'
 	/** Registered MCP client name for OAuth callers. */
 	clientName: string | null
+	/** Present when the caller authenticated with a kody_at_ token. */
+	apiTokenId?: string
 }
 
 export function bearer(request: Request) {
@@ -19,13 +22,12 @@ export function bearer(request: Request) {
 	return match?.[1]?.trim() ?? null
 }
 
-/** OAuth access tokens minted by /oauth/token carry this prefix; everything else is an API token. */
+/** OAuth access tokens minted by /oauth/token carry this prefix. */
 export const oauthAccessTokenPrefix = 'mcpat_'
 
 /**
- * Bearer → principal. Accepts long-lived API tokens (`kc_…`, admin- or
- * self-issued) and OAuth access tokens (`mcpat_…`) from the built-in
- * authorization server. Unknown or expired tokens resolve to null.
+ * Bearer to principal. Accepts `kc_`, `kody_at_`, and OAuth `mcpat_` tokens.
+ * Unknown or expired tokens resolve to null.
  */
 export async function authenticateBearer(request: Request, env: Env): Promise<Principal | null> {
 	const token = bearer(request)
@@ -37,6 +39,19 @@ export async function authenticateBearer(request: Request, env: Env): Promise<Pr
 		const userCell = getUserCell(env, resolved.user.id)
 		await userCell.init(resolved.user.id)
 		return { user: resolved.user, userCell, via: 'oauth', clientName: resolved.clientName }
+	}
+	if (token.startsWith(apiTokenPrefix)) {
+		const resolved = await registry.apiTokenResolve(token)
+		if (!resolved) return null
+		const userCell = getUserCell(env, resolved.user.id)
+		await userCell.init(resolved.user.id)
+		return {
+			user: resolved.user,
+			userCell,
+			via: 'kody_api_token',
+			clientName: null,
+			apiTokenId: resolved.tokenId,
+		}
 	}
 	const user = await registry.resolveToken(token)
 	if (!user) return null

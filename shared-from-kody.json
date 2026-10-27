@@ -1,7 +1,7 @@
 {
   "kodyRepo": "kody-hq/kody",
   "kodyCommit": "0bf31fb32793eedadd13b63aaf442408a37debec",
-  "updatedAt": "2026-10-25T03:59:45.130Z",
+  "updatedAt": "2026-10-27T18:35:43.611Z",
   "notes": "Verbatim files must match upstream bytes at kodyCommit (or at the file entry's own kodyCommit when it has one). Adapted files share a path with hosted Kody but are intentionally different; sync:kody reports their diffs and does not overwrite them.",
   "files": [
     {
@@ -256,6 +256,20 @@
       "source": "packages/worker/universal/youtube-watch.ts",
       "sha256": "348355fc94a4896ff41dda55160a7fed6f13141611c769cb0883c9816dfde50e",
       "kind": "ui"
+    },
+    {
+      "path": "src/lib/base64.ts",
+      "source": "packages/shared/src/base64.ts",
+      "sha256": "657e035fdf12f2769f614bca86b2e2f3dd59d71853a0d607a407fffffb6f32e2",
+      "kind": "shared",
+      "kodyCommit": "9e2e2d2d4e8768d636d90f513a43902f110ed5a6"
+    },
+    {
+      "path": "src/lib/api-token-format.ts",
+      "source": "packages/shared/src/api-token-format.ts",
+      "sha256": "fa9adc3fd37b1fff11cc260fcc85bfe6a3001e7c3dfef2b6817dd5d49e596ec9",
+      "kind": "shared",
+      "kodyCommit": "9e2e2d2d4e8768d636d90f513a43902f110ed5a6"
     }
   ],
   "adapted": [

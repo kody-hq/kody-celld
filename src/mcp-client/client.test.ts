@@ -13,6 +13,7 @@ import {
 } from './client.ts'
 import { mcpConfigFromEnv } from './policy.ts'
 import { startTestMcpServer } from './test-server.ts'
+import { formatApiToken, generateApiTokenId, generateApiTokenSecret } from '../lib/api-token-format.ts'
 
 const config = mcpConfigFromEnv({ KODY_PRIVATE_HOSTS: '172.30.0.0/16', KODY_MCP_CALL_TIMEOUT_MS: '2000' })
 const url = 'http://172.30.1.5:8123/mcp'
@@ -51,6 +52,11 @@ describe('discoverServer', () => {
 })
 
 describe('token redaction', () => {
+	it('redacts embedded kody_at_ credentials in remote error text', () => {
+		const token = formatApiToken({ tokenId: generateApiTokenId(), secret: generateApiTokenSecret() })
+		assert.equal(redactSecrets(`failed with Bearer ${token}`, []), 'failed with Bearer kody_at_[redacted]')
+	})
+
 	it('does not leak the bearer token when the remote echoes it in an error body', async () => {
 		const server = startTestMcpServer({})
 		server.setRespond((u) => new Response(`denied for Bearer SECRETTOKEN at ${u.pathname}`, { status: 401 }))

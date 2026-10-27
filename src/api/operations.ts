@@ -102,6 +102,10 @@ export const apiOperations = [
 	['GET', '/v1/community/profile', 'communityProfileGet'],
 	['PATCH', '/v1/community/profile', 'communityProfileUpdate'],
 	['POST', '/v1/execute', 'execute'],
+	['POST', '/v1/tokens/device', 'cliLoginDeviceToken'],
+	['GET', '/v1/tokens/current', 'tokenGetCurrent'],
+	['POST', '/v1/tokens/current/rotate', 'tokenRotateCurrent'],
+	['DELETE', '/v1/tokens/current', 'tokenRevokeCurrent'],
 ] as const
 
 export type ApiMethod = (typeof apiOperations)[number][0]
@@ -143,7 +147,14 @@ export const apiOperationOptions: Partial<
 	runUpdate: { pathParams: { run_id: 'runId' } },
 }
 
-const nativeOperations = new Set<ApiOperationId>(['search', 'execute'])
+const nativeOperations = new Set<ApiOperationId>([
+	'search',
+	'execute',
+	'cliLoginDeviceToken',
+	'tokenGetCurrent',
+	'tokenRotateCurrent',
+	'tokenRevokeCurrent',
+])
 
 export function getAvailableApiOperations(capabilityNames: Iterable<string>): Array<ApiOperation> {
 	const names = new Set(capabilityNames)

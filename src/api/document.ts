@@ -2,6 +2,7 @@ import type { JsonSchema } from '../capabilities/define.ts'
 import type { CapabilityDefinition } from '../capabilities/define.ts'
 import { searchToolSchema } from '../mcp/tool-schemas.ts'
 import { apiOperationOptions, getAvailableApiOperations } from './operations.ts'
+import { tokenApiOperations } from './token-operations.ts'
 
 const executeSchema: JsonSchema = {
 	type: 'object',
@@ -20,6 +21,7 @@ const executeSchema: JsonSchema = {
 type ApiCapability = Pick<CapabilityDefinition, 'name' | 'inputSchema' | 'readOnly'>
 
 function inputSchema(operationId: string, capabilityByName: Map<string, ApiCapability>): JsonSchema {
+	if (tokenApiOperations[operationId]) return tokenApiOperations[operationId].inputSchema
 	if (operationId === 'execute') return executeSchema
 	if (operationId === 'search') {
 		const properties = Object.fromEntries(
@@ -52,8 +54,10 @@ export function buildOpenApiDocument(publicUrl: string, registeredCapabilities: 
 			schema: properties[renames[name] ?? name] ?? { type: 'string' },
 		}))
 		const isQuery = method === 'GET' || method === 'DELETE'
+		const tokenOperation = tokenApiOperations[operationId]
 		const operationDocument: Record<string, unknown> = {
 			operationId,
+			...(tokenOperation ? { summary: tokenOperation.summary, description: tokenOperation.description } : {}),
 			security: [{ BearerAuth: [] }],
 			parameters: [
 				...parameters,
@@ -69,16 +73,17 @@ export function buildOpenApiDocument(publicUrl: string, registeredCapabilities: 
 							}))
 					: []),
 			],
-			'x-kody-read-only': operationId === 'search' || capabilityByName.get(operationId)?.readOnly === true,
+			'x-kody-read-only':
+				tokenOperation?.readOnly ?? (operationId === 'search' || capabilityByName.get(operationId)?.readOnly === true),
 			responses: {
 				'200': {
-					description: 'Capability result.',
-					content: { 'application/json': { schema: {} } },
+					description: tokenOperation?.summary ?? 'Capability result.',
+					content: { 'application/json': { schema: tokenOperation?.outputSchema ?? {} } },
 				},
 				default: { $ref: '#/components/responses/Error' },
 			},
 		}
-		if (!isQuery) {
+		if (!isQuery && tokenOperation?.inputKind !== 'none') {
 			const requestProperties = Object.fromEntries(
 				Object.entries(properties).filter(([name]) => !pathInputNames.has(name)),
 			)
@@ -104,7 +109,7 @@ export function buildOpenApiDocument(publicUrl: string, registeredCapabilities: 
 			title: 'Kody API',
 			version: '1.0.0',
 			description:
-				'Authenticate requests with a Bearer token. celld API tokens use the kc_ prefix; OAuth access tokens use the mcpat_ prefix.',
+				'Authenticate requests with a Bearer token. celld API tokens use the kc_ or kody_at_ prefix; OAuth access tokens use the mcpat_ prefix.',
 		},
 		servers: [{ url: new URL(publicUrl).origin }],
 		paths,

@@ -8,6 +8,12 @@ import { searchToolSchema } from '../mcp/tool-schemas.ts'
 import { buildOpenApiDocument } from './document.ts'
 import { apiOperationOptions, getAvailableApiOperations, matchApiRoute } from './operations.ts'
 import { maxApiRequestBodyBytes, mergeApiParams, readJsonBody, readQueryParams } from './request-params.ts'
+import {
+	requireCliLoginOAuthPrincipal,
+	requireCurrentApiTokenPrincipal,
+	tokenApiOperations,
+} from './token-operations.ts'
+import { orgPermissionScopes } from '../auth/api-token-store.ts'
 
 function errorResponse(cause: unknown, pathname: string) {
 	const kodyError = KodyError.fromUnknown(cause)
@@ -69,6 +75,7 @@ function inputSchemaFor(
 	operationId: string,
 	registeredCapabilities: ReadonlyArray<Pick<CapabilityDefinition, 'name' | 'inputSchema'>>,
 ): JsonSchema {
+	if (tokenApiOperations[operationId]) return tokenApiOperations[operationId].inputSchema
 	if (operationId === 'search') {
 		return {
 			...searchToolSchema,
@@ -115,6 +122,59 @@ async function readParams(
 
 function context(env: Env, execution: ExecutionContext, auth: Principal) {
 	return capabilityContext(env, execution, auth)
+}
+
+async function handleTokenOperation(operationId: string, params: Record<string, unknown>, env: Env, auth: Principal) {
+	const registry = env.REGISTRY.getByName('registry')
+	if (operationId === 'cliLoginDeviceToken') {
+		requireCliLoginOAuthPrincipal(auth)
+		if (params.name !== undefined && typeof params.name !== 'string') {
+			throw error('invalid_request', 'Invalid parameters.', 400)
+		}
+		if (params.lifetime !== undefined && typeof params.lifetime !== 'string') {
+			throw error('invalid_request', 'Invalid parameters.', 400)
+		}
+		const idleTtlSeconds =
+			params.idle_ttl_seconds === undefined
+				? undefined
+				: typeof params.idle_ttl_seconds === 'number'
+					? params.idle_ttl_seconds
+					: Number.NaN
+		const maxLifetimeSeconds =
+			params.max_lifetime_seconds === undefined
+				? undefined
+				: typeof params.max_lifetime_seconds === 'number'
+					? params.max_lifetime_seconds
+					: Number.NaN
+		const token = await registry.apiTokenMint({
+			userId: auth.user.id,
+			name: typeof params.name === 'string' ? params.name.trim() || 'kody-cli' : 'kody-cli',
+			lifetime: params.lifetime as string | undefined,
+			idleTtlSeconds,
+			maxLifetimeSeconds,
+			createdVia: 'cli-login',
+			scopes: orgPermissionScopes,
+		})
+		return Response.json({ ...token, login_org: null }, { headers: { 'Cache-Control': 'no-store' } })
+	}
+	const tokenId = requireCurrentApiTokenPrincipal(auth)
+	if (operationId === 'tokenGetCurrent') {
+		const token = await registry.apiTokenGetCurrent(auth.user.id, tokenId)
+		if (!token) throw error('not_found', 'The calling API token was not found.', 404)
+		return Response.json(token, { headers: { 'Cache-Control': 'no-store' } })
+	}
+	if (operationId === 'tokenRotateCurrent') {
+		const token = await registry.apiTokenRotateCurrent(auth.user.id, tokenId)
+		if (!token) throw error('not_found', 'The calling API token was not found.', 404)
+		return Response.json(token, { headers: { 'Cache-Control': 'no-store' } })
+	}
+	if (operationId === 'tokenRevokeCurrent') {
+		if (!(await registry.apiTokenRevokeCurrent(auth.user.id, tokenId))) {
+			throw error('not_found', 'The calling API token was not found.', 404)
+		}
+		return Response.json({ id: tokenId, revoked: true }, { headers: { 'Cache-Control': 'no-store' } })
+	}
+	throw error('not_found', 'No route for this API operation.', 404)
 }
 
 function validateExecuteApiInput(params: Record<string, unknown>) {
@@ -211,6 +271,7 @@ export async function handleApiRequest(request: Request, env: Env, execution: Ex
 		let params = await readParams(request, url, operationId, request.method, registeredCapabilities)
 		if (operationId === 'search') delete params.memoryContext
 		params = mergeApiParams(renamedPathParams(match.route.pathParams, operationId), params)
+		if (tokenApiOperations[operationId]) return await handleTokenOperation(operationId, params, env, auth)
 		const capContext: CapabilityContext = context(env, execution, auth)
 		if (operationId === 'search') {
 			const runSearch = (await import('../mcp/search.ts')).search

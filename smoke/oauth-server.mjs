@@ -363,7 +363,50 @@ export async function smokeOAuthServer({ user, mcp }) {
 		headers: { authorization: `Bearer ${tokens.json.access_token}` },
 	})
 	assert(restApi.status === 200, 'OAuth token also authenticates /v1', restApi.status)
-	log('access', 'search + execute + userinfo + /v1 with the OAuth token; grant listed without material')
+	const deviceToken = await json('/v1/tokens/device', {
+		method: 'POST',
+		headers: { authorization: `Bearer ${tokens.json.access_token}` },
+		body: { lifetime: 'short' },
+	})
+	assert(
+		deviceToken.status === 200 &&
+			deviceToken.json.token?.startsWith('kody_at_') &&
+			deviceToken.json.name === 'kody-cli' &&
+			deviceToken.json.login_org === null,
+		'OAuth access token mints a CLI token',
+		{ status: deviceToken.status, error: deviceToken.json.error },
+	)
+	const apiAuthorization = { authorization: `Bearer ${deviceToken.json.token}` }
+	const currentToken = await json('/v1/tokens/current', { headers: apiAuthorization })
+	assert(
+		currentToken.status === 200 &&
+			currentToken.json.id === deviceToken.json.id &&
+			currentToken.headers.get('cache-control') === 'no-store',
+		'current-token route returns metadata without caching',
+		{ status: currentToken.status },
+	)
+	const apiSearch = await json('/v1/search?query=secret', { headers: apiAuthorization })
+	assert(apiSearch.status === 200, 'kody_at_ token authenticates an existing /v1 route', apiSearch.status)
+	const rotatedToken = await json('/v1/tokens/current/rotate', {
+		method: 'POST',
+		headers: apiAuthorization,
+	})
+	assert(rotatedToken.status === 200 && rotatedToken.json.token !== deviceToken.json.token, 'current token rotates')
+	const oldToken = await json('/v1/search?query=secret', { headers: apiAuthorization })
+	assert(oldToken.status === 401, 'rotated credential no longer authenticates')
+	const rotatedAuthorization = { authorization: `Bearer ${rotatedToken.json.token}` }
+	const revoke = await json('/v1/tokens/current', { method: 'DELETE', headers: rotatedAuthorization })
+	assert(revoke.status === 200 && revoke.json.revoked === true, 'current token revokes')
+	const revokedCurrent = await json('/v1/tokens/current', { headers: rotatedAuthorization })
+	const revokedToken = await json('/v1/search?query=secret', { headers: rotatedAuthorization })
+	assert(revokedToken.status === 401, 'revoked credential no longer authenticates', {
+		status: revokedToken.status,
+		error: revokedToken.json.error,
+		currentStatus: revokedCurrent.status,
+		currentTokenStatus: revokedCurrent.json.status,
+		revokedAt: revokedCurrent.json.revoked_at,
+	})
+	log('access', 'OAuth token mints kody_at_; metadata, /v1 access, rotation, and revocation work')
 
 	// --- refresh rotation + replay detection ----------------------------------
 	const refreshed = await tokenRequest({

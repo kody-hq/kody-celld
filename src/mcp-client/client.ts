@@ -3,6 +3,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { CfWorkerJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/cfworker'
 import { KODY_CELLD_VERSION } from '../env.ts'
 import { KodyError } from '../lib/errors.ts'
+import { redactApiTokens } from '../lib/api-token-format.ts'
 import { assertMcpUrl, type McpConfig } from './policy.ts'
 import { assertResolvedHostAllowed, type DnsMemo } from './resolve.ts'
 
@@ -180,7 +181,7 @@ export function redactSecrets(text: string, secrets: Array<string | null | undef
 		const credential = secret.replace(/^\S+\s+/, '')
 		if (credential) all.add(credential)
 	}
-	let out = text
+	let out = redactApiTokens(text)
 	for (const secret of [...all].sort((a, b) => b.length - a.length)) out = out.split(secret).join('[redacted]')
 	return out
 }

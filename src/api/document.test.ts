@@ -44,6 +44,32 @@ test('documents unique operations registered in the capability registry', () => 
 	}
 })
 
+test('documents hosted token operation ids, inputs, outputs, and caller errors', () => {
+	const document = buildOpenApiDocument('https://celld.example', registeredCapabilities)
+	const device = document.paths['/v1/tokens/device']?.post as {
+		operationId: string
+		description: string
+		requestBody: { content: { 'application/json': { schema: { properties: Record<string, unknown> } } } }
+		responses: { '200': { content: { 'application/json': { schema: { properties: Record<string, unknown> } } } } }
+	}
+	assert.equal(device.operationId, 'cliLoginDeviceToken')
+	assert.match(device.description, /POST \/v1\/tokens\/device accepts the official CLI login OAuth access token/)
+	assert.deepEqual(Object.keys(device.requestBody.content['application/json'].schema.properties), [
+		'lifetime',
+		'idle_ttl_seconds',
+		'max_lifetime_seconds',
+		'name',
+	])
+	assert('login_org' in device.responses['200'].content['application/json'].schema.properties)
+	const currentPath = document.paths['/v1/tokens/current'] as Record<string, { operationId: string }>
+	const rotatePath = document.paths['/v1/tokens/current/rotate'] as Record<string, { operationId: string }>
+	assert.equal(currentPath.get?.operationId, 'tokenGetCurrent')
+	assert.equal(rotatePath.post?.operationId, 'tokenRotateCurrent')
+	assert.equal(currentPath.delete?.operationId, 'tokenRevokeCurrent')
+	assert(!('/v1/tokens' in document.paths))
+	assert(!('/v1/tokens/{token_id}' in document.paths))
+})
+
 test('documents hosted path parameter names with celld input schemas', () => {
 	const document = buildOpenApiDocument('https://celld.example', registeredCapabilities)
 	const runGet = document.paths['/v1/runs/{run_id}']?.get as {

@@ -2,8 +2,8 @@
 
 celld serves its hosted-compatible HTTP API at the origin of `KODY_PUBLIC_URL`,
 not on a separate `api.` host. `GET /openapi.json` lists that origin in its
-`servers` array. Send a Bearer token with each `/v1` request: `kc_` API tokens
-and `mcpat_` OAuth access tokens are accepted.
+`servers` array. Send a Bearer token with each `/v1` request: `kc_` API tokens,
+`kody_at_` API credentials, and `mcpat_` OAuth access tokens are accepted.
 
 `GET /openapi.json` is public and describes the operations enabled by the
 capabilities registered in this celld build. `GET /v1/search` searches the
@@ -11,6 +11,12 @@ capability and package catalog. `POST /v1/execute` accepts exactly one of
 `code` or `invoke` and returns the same execute envelope as MCP. `invoke` uses a
 `kody:@scope/package/export` specifier. `conversationId` and `memoryContext`
 are accepted but unused; `credentials` is not supported:
+
+`POST /v1/tokens/device` exchanges an OAuth access token for a user-bound
+`kody_at_` credential. `GET /v1/tokens/current` describes the calling token,
+`POST /v1/tokens/current/rotate` replaces its value, and
+`DELETE /v1/tokens/current` revokes it. The token value is returned only when
+minting or rotating. These routes are native operations, not MCP capabilities.
 
 The route table includes packages, runs, jobs, memories, MCP server
 instructions, secrets, webhooks, email, integrations, MCP servers, community,

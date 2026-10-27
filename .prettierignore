@@ -41,3 +41,5 @@ universal/styles/style-primitives.ts
 universal/styles/tokens.ts
 universal/user-avatar.tsx
 universal/youtube-watch.ts
+src/lib/api-token-format.ts
+src/lib/base64.ts
