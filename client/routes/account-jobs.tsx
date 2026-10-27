@@ -43,12 +43,14 @@ export function AccountJobs(handle: Handle<{ data: Data; pathname: string }>) {
 								drop: 3,
 								width: '8.5rem',
 							},
-							// Account shell content is ~50rem beside the rail.
-							// Shed Last with Schedule at 900px so Next, Status,
-							// and Actions keep their design-system widths.
-							{ key: 'next', label: 'Next run', drop: 2, width: '11.75rem' },
-							{ key: 'last', label: 'Last run', drop: 3, width: '11.75rem' },
-							{ key: 'status', label: 'Status', drop: 1, width: '5.25rem' },
+							// Account shell content beside the rail is ~50rem /
+							// ~800px — Job needs ~19rem of that for a typical
+							// scope/package/job on one line, so Next stays just
+							// wide enough for a locale timestamp and Status for
+							// "success"/"running" (not a wide empty track).
+							{ key: 'next', label: 'Next run', drop: 2, width: '10rem' },
+							{ key: 'last', label: 'Last run', drop: 3, width: '10rem' },
+							{ key: 'status', label: 'Status', drop: 1, width: '5.75rem' },
 							// Two equal sm ghost buttons + 0.7rem gap + cell pad.
 							{ key: 'actions', label: 'Actions', width: '16.25rem' },
 						]}
