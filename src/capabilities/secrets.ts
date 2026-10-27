@@ -153,6 +153,9 @@ function assertSecretName(name: unknown, capabilityName: string) {
 }
 
 function assertSecretScope(scope: SecretScope | undefined) {
+	if (scope !== undefined && scope !== 'user' && scope !== 'package' && scope !== 'session') {
+		throw new KodyError('invalid_secret_scope', 'scope must be user or package.')
+	}
 	if (scope === 'session') {
 		throw new KodyError(
 			'invalid_secret_scope',
@@ -283,11 +286,11 @@ export default async function main({ secrets }) {
 			packageName: secret.packageName,
 		}))
 		if (assertOnly) {
-			await ctx.userCell.secretValidateMany(secretRows)
+			const validated = await ctx.userCell.secretValidateMany(secretRows)
 			return {
 				ok: true,
 				assertOnly: true,
-				secrets: secretRows.map((secret) => ({
+				secrets: validated.map((secret) => ({
 					name: secret.name,
 					scope: secret.scope,
 					packageName: secret.packageName ?? null,
