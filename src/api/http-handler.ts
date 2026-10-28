@@ -6,6 +6,7 @@ import { recordAudit } from '../lib/audit.ts'
 import { KodyError } from '../lib/errors.ts'
 import type { SearchInput } from '../mcp/search.ts'
 import { searchToolSchema } from '../mcp/tool-schemas.ts'
+import { cliClientId } from '../oauth/cli-client-metadata.ts'
 import { buildOpenApiDocument } from './document.ts'
 import { apiOperationOptions, getAvailableApiOperations, matchApiRoute } from './operations.ts'
 import { maxApiRequestBodyBytes, mergeApiParams, readJsonBody, readQueryParams } from './request-params.ts'
@@ -132,7 +133,7 @@ export async function handleTokenOperation(
 	}
 	const registry = env.REGISTRY.getByName('registry')
 	if (['tokenList', 'tokenCreate', 'tokenGet', 'tokenRotate', 'tokenRevoke'].includes(operationId)) {
-		requireTokenManagementPrincipal(auth)
+		requireTokenManagementPrincipal(auth, cliClientId(env.KODY_PUBLIC_URL))
 		const userId = auth.user.id
 		const invalidParams = () => {
 			throw error('invalid_request', 'Invalid parameters.', 400)

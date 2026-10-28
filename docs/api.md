@@ -12,13 +12,30 @@ capability and package catalog. `POST /v1/execute` accepts exactly one of
 `kody:@scope/package/export` specifier. `conversationId` and `memoryContext`
 are accepted but unused; `credentials` is not supported:
 
+```json
+{
+  "code": "export default async function main() { return 42 }",
+  "params": {}
+}
+```
+
+The route table includes packages, runs, jobs, memories, MCP server
+instructions, secrets, webhooks, email, integrations, MCP servers, community,
+and storage. Routes appear in OpenAPI only when their capability is registered
+in that celld build.
+
+Other routes invoke the corresponding capability and return its raw result.
+See `/openapi.json` for the routes available in the running deployment.
+
 `POST /v1/tokens/device` exchanges an OAuth access token for a user-bound
 `kody_at_` credential. `GET /v1/tokens` lists tokens and `POST /v1/tokens`
 creates one. `GET /v1/tokens/{token_id}`,
 `POST /v1/tokens/{token_id}/rotate`, and `DELETE /v1/tokens/{token_id}` inspect,
 rotate, and revoke a token by id. The `/v1/tokens/current` routes describe,
 rotate, or revoke the calling `kody_at_` token. Token credentials are returned
-only when minting or rotating. These routes are native operations, not MCP
+only when minting or rotating. OAuth access tokens can call the token routes
+only when issued to the official CLI client; other OAuth clients must use a
+`kody_at_` or `kc_` token. These routes are native operations, not MCP
 capabilities.
 
 ## Hosted CLI login
@@ -33,21 +50,6 @@ kody login
 ```
 
 The CLI also accepts `--mcp-url` and `--api-url` to override these values.
-
-The route table includes packages, runs, jobs, memories, MCP server
-instructions, secrets, webhooks, email, integrations, MCP servers, community,
-and storage. Routes appear in OpenAPI only when their capability is registered
-in that celld build.
-
-```json
-{
-  "code": "export default async function main() { return 42 }",
-  "params": {}
-}
-```
-
-Other routes invoke the corresponding capability and return its raw result.
-See `/openapi.json` for the routes available in the running deployment.
 
 ## Legacy capability API
 

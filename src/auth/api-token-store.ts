@@ -344,12 +344,17 @@ export class ApiTokenStore {
 	}
 
 	list(userId: string, includeInactive = false, now = new Date()): Array<ApiTokenView> {
-		return this.sql
-			.exec<ApiTokenSqlRow>('SELECT * FROM api_tokens WHERE user_id = ? ORDER BY created_at DESC, id ASC', userId)
-			.toArray()
-			.map(mapRow)
-			.filter((record) => includeInactive || status(record, now) === 'active')
-			.map((record) => view(record, now))
+		const rows = includeInactive
+			? this.sql.exec<ApiTokenSqlRow>(
+					'SELECT * FROM api_tokens WHERE user_id = ? ORDER BY created_at DESC, id ASC',
+					userId,
+				)
+			: this.sql.exec<ApiTokenSqlRow>(
+					'SELECT * FROM api_tokens WHERE user_id = ? AND revoked_at IS NULL AND expires_at > ? ORDER BY created_at DESC, id ASC',
+					userId,
+					now.toISOString(),
+				)
+		return rows.toArray().map((row) => view(mapRow(row), now))
 	}
 
 	get(userId: string, tokenId: string, now = new Date()): ApiTokenView | null {

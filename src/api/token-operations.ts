@@ -212,9 +212,16 @@ export function requireCurrentApiTokenPrincipal(principal: Principal) {
 	return principal.apiTokenId
 }
 
-export function requireTokenManagementPrincipal(principal: Principal) {
+export const tokenManagementOAuthMessage =
+	'Token management over OAuth is limited to the official CLI client. Use a kody_at_ or kc_ token, or sign in with kody login.'
+
+/** OAuth callers manage tokens only through the official CLI client, so a third-party grant cannot mint credentials that outlive its revocation. */
+export function requireTokenManagementPrincipal(principal: Principal, officialClientId: string) {
 	if (principal.via !== 'oauth' && principal.via !== 'api_token' && principal.via !== 'kody_api_token') {
 		throw new KodyError('invalid_request', 'Authentication required.')
+	}
+	if (principal.via === 'oauth' && principal.oauthClientId !== officialClientId) {
+		throw new KodyError('invalid_request', tokenManagementOAuthMessage)
 	}
 	if (principal.via === 'kody_api_token' && !principal.apiTokenId) {
 		throw new KodyError('invalid_request', 'API token principal is missing its token id.')

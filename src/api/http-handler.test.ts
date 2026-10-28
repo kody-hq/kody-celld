@@ -34,12 +34,13 @@ function fixture() {
 			return { ...entry, id: 'audit-id', at: '2026-01-01T00:00:00.000Z' }
 		},
 	}
-	const env = { REGISTRY: { getByName: () => registry } } as unknown as Env
+	const env = { KODY_PUBLIC_URL: 'https://celld.example', REGISTRY: { getByName: () => registry } } as unknown as Env
 	const auth = {
 		user,
 		userCell: {},
 		via: 'oauth',
-		clientName: 'kody-cli',
+		clientName: '@kodycodes/cli',
+		oauthClientId: 'https://celld.example/oauth/cli-client-metadata.json',
 	} as Principal
 	return { env, behavior, auditEntries, createdTokenId, tokenId, createdCredential, rotatedCredential, tokenHash, auth }
 }
@@ -109,5 +110,29 @@ test('does not audit failed kody_at_ collection token mutations', async () => {
 
 	behavior.failRevoke = true
 	await assert.rejects(handleTokenOperation('tokenRevoke', { token_id: 'token-id' }, env, auth))
+	assert.deepEqual(auditEntries, [])
+})
+
+test('rejects collection token create from a third-party OAuth client without minting or auditing', async () => {
+	const { env, auditEntries, auth } = fixture()
+	let minted = false
+	const registry = env.REGISTRY.getByName('registry') as unknown as { apiTokenMint: () => unknown }
+	registry.apiTokenMint = () => {
+		minted = true
+		throw new Error('must not mint')
+	}
+	await assert.rejects(
+		handleTokenOperation('tokenCreate', { name: 'third-party', scopes: ['packages:read'] }, env, {
+			...auth,
+			clientName: 'Some MCP Host',
+			oauthClientId: 'mcpc_third_party',
+		} as Principal),
+		(error: Error & { code?: string }) => {
+			assert.equal(error.code, 'invalid_request')
+			assert.match(error.message, /official CLI client/)
+			return true
+		},
+	)
+	assert.equal(minted, false)
 	assert.deepEqual(auditEntries, [])
 })

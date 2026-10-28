@@ -54,9 +54,26 @@ test('current-token operations reject non-kody_at_ principals', () => {
 	assert.equal(requireCurrentApiTokenPrincipal(principal('kody_api_token', 'id-1')), 'id-1')
 })
 
-test('collection and by-id token operations allow OAuth, kc_, and kody_at_ callers', () => {
-	for (const via of ['oauth', 'api_token', 'kody_api_token'] as const) {
-		assert.doesNotThrow(() => requireTokenManagementPrincipal(principal(via, 'token-id')))
+test('collection and by-id token operations allow the official CLI OAuth client, kc_, and kody_at_ callers', () => {
+	assert.doesNotThrow(() =>
+		requireTokenManagementPrincipal(principal('oauth', undefined, officialClientId), officialClientId),
+	)
+	assert.doesNotThrow(() => requireTokenManagementPrincipal(principal('api_token'), officialClientId))
+	assert.doesNotThrow(() => requireTokenManagementPrincipal(principal('kody_api_token', 'token-id'), officialClientId))
+	assert.throws(() => requireTokenManagementPrincipal(principal('kody_api_token'), officialClientId))
+})
+
+test('collection and by-id token operations reject other OAuth clients', () => {
+	for (const oauthClientId of ['mcpc_third_party', 'https://other.example/oauth/cli-client-metadata.json', undefined]) {
+		assert.throws(
+			() => requireTokenManagementPrincipal(principal('oauth', undefined, oauthClientId), officialClientId),
+			(error: Error) => {
+				assert.equal(
+					error.message,
+					'Token management over OAuth is limited to the official CLI client. Use a kody_at_ or kc_ token, or sign in with kody login.',
+				)
+				return true
+			},
+		)
 	}
-	assert.throws(() => requireTokenManagementPrincipal(principal('kody_api_token')))
 })

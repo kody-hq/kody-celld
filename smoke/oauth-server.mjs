@@ -478,6 +478,7 @@ export async function smokeOAuthServer({ user, mcp }) {
 	if (process.env.KODY_CLI_BIN) {
 		const cli = spawnSync(process.execPath, [process.env.KODY_CLI_BIN, 'whoami', '--json'], {
 			encoding: 'utf8',
+			timeout: 60_000,
 			env: {
 				...process.env,
 				KODY_API_TOKEN: deviceToken.json.token,
@@ -488,6 +489,7 @@ export async function smokeOAuthServer({ user, mcp }) {
 		assert(cli.status === 0, 'hosted CLI reads the minted token in headless mode', {
 			status: cli.status,
 			signal: cli.signal,
+			error: cli.error?.message,
 		})
 		assert(!cli.stdout.includes(deviceToken.json.token), 'hosted CLI does not print the token value')
 		log('hosted CLI', 'whoami with KODY_API_TOKEN')
@@ -522,9 +524,29 @@ export async function smokeOAuthServer({ user, mcp }) {
 		currentTokenStatus: revokedCurrent.json.status,
 		revokedAt: revokedCurrent.json.revoked_at,
 	})
-	const collectionToken = await json('/v1/tokens', {
+	const thirdPartyCollectionToken = await json('/v1/tokens', {
 		method: 'POST',
 		headers: { authorization: `Bearer ${tokens.json.access_token}` },
+		body: { name: 'third-party smoke', scopes: ['search:read'], lifetime: 'short' },
+	})
+	const thirdPartyCollectionList = await json('/v1/tokens', {
+		headers: { authorization: `Bearer ${tokens.json.access_token}` },
+	})
+	assert(
+		thirdPartyCollectionToken.status === 400 &&
+			thirdPartyCollectionToken.json.error?.code === 'invalid_request' &&
+			!thirdPartyCollectionToken.json.token &&
+			thirdPartyCollectionList.status === 400,
+		'third-party OAuth client cannot create or list tokens through the collection route',
+		{
+			create: thirdPartyCollectionToken.status,
+			list: thirdPartyCollectionList.status,
+			error: thirdPartyCollectionToken.json.error,
+		},
+	)
+	const collectionToken = await json('/v1/tokens', {
+		method: 'POST',
+		headers: { authorization: `Bearer ${officialCliRefresh.json.access_token}` },
 		body: { name: 'collection smoke', scopes: ['search:read'], lifetime: 'short' },
 	})
 	assert(
@@ -532,11 +554,11 @@ export async function smokeOAuthServer({ user, mcp }) {
 			collectionToken.json.token?.startsWith('kody_at_') &&
 			collectionToken.json.created_via === 'mcp-api' &&
 			collectionToken.headers.get('cache-control') === 'no-store',
-		'OAuth access token creates a token through the collection route',
+		'official CLI OAuth access token creates a token through the collection route',
 		{ status: collectionToken.status, error: collectionToken.json.error },
 	)
 	const collectionList = await json('/v1/tokens', {
-		headers: { authorization: `Bearer ${tokens.json.access_token}` },
+		headers: { authorization: `Bearer ${officialCliRefresh.json.access_token}` },
 	})
 	assert(
 		collectionList.status === 200 &&
@@ -546,7 +568,7 @@ export async function smokeOAuthServer({ user, mcp }) {
 		{ status: collectionList.status },
 	)
 	const collectionGet = await json(`/v1/tokens/${collectionToken.json.id}`, {
-		headers: { authorization: `Bearer ${tokens.json.access_token}` },
+		headers: { authorization: `Bearer ${officialCliRefresh.json.access_token}` },
 	})
 	assert(
 		collectionGet.status === 200 &&
@@ -558,7 +580,7 @@ export async function smokeOAuthServer({ user, mcp }) {
 	const collectionAuthorization = { authorization: `Bearer ${collectionToken.json.token}` }
 	const collectionRotate = await json(`/v1/tokens/${collectionToken.json.id}/rotate`, {
 		method: 'POST',
-		headers: { authorization: `Bearer ${tokens.json.access_token}` },
+		headers: { authorization: `Bearer ${officialCliRefresh.json.access_token}` },
 	})
 	assert(
 		collectionRotate.status === 200 &&
@@ -570,7 +592,7 @@ export async function smokeOAuthServer({ user, mcp }) {
 	assert(collectionOldCredential.status === 401, 'by-id rotation invalidates the old credential')
 	const collectionRevoke = await json(`/v1/tokens/${collectionToken.json.id}`, {
 		method: 'DELETE',
-		headers: { authorization: `Bearer ${tokens.json.access_token}` },
+		headers: { authorization: `Bearer ${officialCliRefresh.json.access_token}` },
 	})
 	assert(
 		collectionRevoke.status === 200 &&

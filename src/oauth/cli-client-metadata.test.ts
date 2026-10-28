@@ -11,7 +11,7 @@ const publicUrl = 'https://celld.example/'
 
 test('official CLI client metadata matches the celld OAuth server', () => {
 	assert.deepEqual(buildCliClientIdMetadataDocument(publicUrl), {
-		client_id: `https://celld.example${cliClientMetadataPath}`,
+		client_id: 'https://celld.example/oauth/cli-client-metadata.json',
 		client_name: '@kodycodes/cli',
 		client_uri: 'https://github.com/kody-hq/kody',
 		redirect_uris: ['http://127.0.0.1:43742/callback'],
@@ -21,7 +21,7 @@ test('official CLI client metadata matches the celld OAuth server', () => {
 		application_type: 'native',
 		scope: 'openid profile email',
 	})
-	assert.equal(cliClientId(publicUrl), `https://celld.example${cliClientMetadataPath}`)
+	assert.equal(cliClientId(publicUrl), 'https://celld.example/oauth/cli-client-metadata.json')
 })
 
 test('official CLI metadata route serves GET, HEAD, and OPTIONS with public cache headers', async () => {

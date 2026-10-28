@@ -3,7 +3,6 @@ import { DatabaseSync } from 'node:sqlite'
 import { describe, it } from 'node:test'
 import { pkceChallenge } from '../integrations/oauth.ts'
 import { buildMasterKeyring, randomToken } from '../lib/crypto.ts'
-import { cliClientId, cliOAuthCallbackUrl } from './cli-client-metadata.ts'
 import { OAuthProtocolError, refreshReplayGraceMs, verifyPkce, type ClientRegistration } from './protocol.ts'
 import { OAuthServerStore, oauthServerSchema } from './server-store.ts'
 
@@ -125,11 +124,11 @@ describe('OAuthServerStore clients', () => {
 
 	it('recognizes only the official metadata client and exchanges a PKCE code without credentials', async () => {
 		const publicUrl = 'https://kody.example/'
-		const officialClientId = cliClientId(publicUrl)
+		const officialClientId = 'https://kody.example/oauth/cli-client-metadata.json'
 		const { db, store: s } = store(publicUrl)
 		const client = s.clientGet(officialClientId)!
 		assert.equal(client.clientName, '@kodycodes/cli')
-		assert.deepEqual(client.redirectUris, [cliOAuthCallbackUrl])
+		assert.deepEqual(client.redirectUris, ['http://127.0.0.1:43742/callback'])
 		assert.equal(client.tokenEndpointAuthMethod, 'none')
 		assert.deepEqual(client.grantTypes, ['authorization_code', 'refresh_token'])
 		assert.equal(client.clientUri, 'https://github.com/kody-hq/kody')
@@ -162,13 +161,13 @@ describe('OAuthServerStore clients', () => {
 		const code = await s.codeIssue({
 			clientId: officialClientId,
 			userId: 'user_cli',
-			redirectUri: cliOAuthCallbackUrl,
+			redirectUri: 'http://127.0.0.1:43742/callback',
 			codeChallenge: challenge,
 			scope: 'openid profile email',
 			resource,
 		})
 		const consumed = await s.codeConsume(code)
-		assert.equal(consumed?.redirectUri, cliOAuthCallbackUrl)
+		assert.equal(consumed?.redirectUri, 'http://127.0.0.1:43742/callback')
 		assert.equal(await verifyPkce(verifier, consumed!.codeChallenge), true)
 		const grantId = s.grantEnsure({
 			userId: 'user_cli',
