@@ -27,12 +27,21 @@ describe('contentSecurityPolicyWithFormAction', () => {
 		assert.equal(contentSecurityPolicyWithFormAction([]), base)
 	})
 
+	it('accepts a scheme source for a private-use redirect scheme', () => {
+		assert.equal(
+			directive(contentSecurityPolicyWithFormAction(['alice:']), 'form-action'),
+			"form-action 'self' https: http://localhost:* http://127.0.0.1:* alice:",
+		)
+	})
+
 	it('refuses anything that is not a bare http(s) origin', () => {
 		for (const bad of [
 			"'unsafe-inline'",
 			'http://a.example/path',
 			'javascript:alert(1)',
 			'http://a.example; script-src *',
+			'javascript:',
+			'data:',
 		]) {
 			assert.throws(() => contentSecurityPolicyWithFormAction([bad]))
 		}

@@ -40,11 +40,17 @@ function buildContentSecurityPolicy(formActionDirective: string) {
 
 const contentSecurityPolicy = buildContentSecurityPolicy(formAction)
 
-/** The first-party CSP with `origins` (bare http(s) origins only) added to `form-action`. */
+/** The first-party CSP with `origins` (bare http(s) origins or scheme sources like `alice:`) added to `form-action`. */
 export function contentSecurityPolicyWithFormAction(
 	origins: Array<string>,
 ): string {
 	for (const origin of origins) {
+		if (
+			/^[a-z][a-z0-9+.-]*:$/.test(origin) &&
+			origin !== 'javascript:' &&
+			origin !== 'data:'
+		)
+			continue
 		let parsed: URL | null = null
 		try {
 			parsed = new URL(origin)
