@@ -105,7 +105,8 @@ value goes. Every other setting is optional; the
 
 The image is published for `linux/amd64` and `linux/arm64` by
 [`publish.yml`](../.github/workflows/publish.yml) on every push to `main`
-(`:latest`, `:main`, `:sha-…`) and on version tags (`:1.2.3`). Pin a tag if you
+(`:latest`, `:main`, `:sha-…`) and for each daily release (`:1.2.3`, `:1.2`,
+`:latest`; see [releases](./contributing/releases.md)). Pin a version if you
 want to control when you upgrade.
 
 **Option 2 — build from source.** Needed for the overlays (`compose.*.yaml`)

@@ -38,6 +38,10 @@ Use Fixes / Closes / Resolves #1234 only when this PR fully fixes the issue.
 Related work: Related to #1234. Never write "does not close #N".
 -->
 
+## Release notes
+
+<!-- Optional. Only when a self-hoster must act on upgrade (new KODY_ variable, migration, removed route). Copied into the daily GitHub Release. Public @handles only, no em dashes. -->
+
 ## Testing
 
 <!-- What you ran: validate, focused tests, smoke summary line when you ran smoke. -->
