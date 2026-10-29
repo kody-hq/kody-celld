@@ -133,10 +133,9 @@ function relaySocket(options, callback) {
 }
 
 const transport = createTransport({
-	...(config.smtpUrl
-		? { url: config.smtpUrl, socketTimeout: config.sendTimeoutMs }
-		: { direct: true, name: config.hostname }),
+	...(config.smtpUrl ? { url: config.smtpUrl } : { direct: true, name: config.hostname }),
 	connectionTimeout: config.sendTimeoutMs,
+	socketTimeout: config.sendTimeoutMs,
 	getSocket: relaySocket,
 })
 const transportKind = config.smtpUrl ? 'relay' : 'direct'
