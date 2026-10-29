@@ -1,6 +1,7 @@
 // kody mail bridge: SMTP in -> POST /email/inbound/bridge, POST /send -> SMTP relay.
 import { readFileSync } from 'node:fs'
 import http from 'node:http'
+import net from 'node:net'
 import { createTransport } from 'nodemailer'
 import { SMTPServer } from 'smtp-server'
 import {
@@ -110,12 +111,33 @@ smtp.on('error', (error) => log('error', 'smtp', { error: error.message }))
 
 // ------------------------------------------------------------- outbound HTTP
 
-const transport = config.smtpUrl
-	? createTransport(config.smtpUrl, {
-			connectionTimeout: config.sendTimeoutMs,
-			socketTimeout: config.sendTimeoutMs,
-		})
-	: createTransport({ direct: true, name: config.hostname, connectionTimeout: config.sendTimeoutMs })
+// Relay sockets are opened through nodemailer's getSocket hook so the shutdown
+// cutoff can destroy them: an abandoned send must not complete after it was
+// reported failed.
+function relaySocket(options, callback) {
+	if (drain.cutOff) return callback(new Error(SHUTDOWN_CUTOFF))
+	const socket = net.connect({
+		host: options.host || 'localhost',
+		port: Number(options.port) || (options.secure ? 465 : 587),
+		...(options.localAddress ? { localAddress: options.localAddress } : {}),
+	})
+	drain.sockets.add(socket)
+	socket.once('close', () => drain.sockets.delete(socket))
+	socket.setTimeout(config.sendTimeoutMs, () => socket.destroy(new Error('Connection timeout')))
+	socket.once('error', callback)
+	socket.once('connect', () => {
+		socket.setTimeout(0)
+		socket.off('error', callback)
+		callback(null, { connection: socket })
+	})
+}
+
+const transport = createTransport({
+	...(config.smtpUrl ? { url: config.smtpUrl } : { direct: true, name: config.hostname }),
+	connectionTimeout: config.sendTimeoutMs,
+	socketTimeout: config.sendTimeoutMs,
+	getSocket: relaySocket,
+})
 const transportKind = config.smtpUrl ? 'relay' : 'direct'
 
 async function reportEvent(messageId, event, detail) {
@@ -133,6 +155,20 @@ async function reportEvent(messageId, event, detail) {
 	}
 }
 
+// Shutdown drain. Accepted deliveries are tracked so SIGTERM waits for them;
+// at the cutoff, relay sockets still open are destroyed and their sends are
+// reported `failed`, leaving the event report (bounded by kodyTimeoutMs) to
+// finish before exit.
+const SHUTDOWN_CUTOFF = 'Bridge shut down before the relay confirmed delivery.'
+const drain = {
+	active: false,
+	cutOff: false,
+	deliveries: new Set(),
+	sockets: new Set(),
+	sendCutoffMs: config.sendTimeoutMs,
+	exitAfterMs: config.sendTimeoutMs + config.kodyTimeoutMs + 5_000,
+}
+
 async function deliver(options) {
 	const messageId = bareMessageId(options.messageId)
 	try {
@@ -145,8 +181,9 @@ async function deliver(options) {
 			rejected > 0 ? `Relay rejected ${rejected} recipient(s).` : (info.response ?? null),
 		)
 	} catch (error) {
-		log('warn', 'outbound failed', { messageId, error: error.message })
-		await reportEvent(messageId, 'failed', error.message)
+		const detail = drain.cutOff ? SHUTDOWN_CUTOFF : error.message
+		log('warn', 'outbound failed', { messageId, error: detail })
+		await reportEvent(messageId, 'failed', detail)
 	}
 }
 
@@ -182,11 +219,13 @@ function respond(response, status, payload) {
 const api = http.createServer(async (request, response) => {
 	const url = new URL(request.url ?? '/', 'http://bridge')
 	if (request.method === 'GET' && url.pathname === '/health') {
+		if (drain.active) return respond(response, 503, { ok: false, error: 'shutting_down' })
 		return respond(response, 200, { ok: true, transport: transportKind, domains: config.domains })
 	}
 	if (request.method !== 'POST' || url.pathname !== '/send') {
 		return respond(response, 404, { error: 'not_found' })
 	}
+	if (drain.active) return respond(response, 503, { error: 'shutting_down' })
 	if (!bearerMatches(request.headers.authorization, config.token)) {
 		return respond(response, 401, { error: 'unauthorized' })
 	}
@@ -198,9 +237,12 @@ const api = http.createServer(async (request, response) => {
 	} catch (error) {
 		return respond(response, error.status ?? 400, { error: 'invalid_message', message: error.message })
 	}
-	const messageId = bareMessageId(options.messageId)
-	respond(response, 202, { messageId, status: 'queued' })
-	void deliver(options)
+	// Shutdown may have started while the body was being read.
+	if (drain.active) return respond(response, 503, { error: 'shutting_down' })
+	const delivery = deliver(options)
+	drain.deliveries.add(delivery)
+	void delivery.finally(() => drain.deliveries.delete(delivery))
+	respond(response, 202, { messageId: bareMessageId(options.messageId), status: 'queued' })
 })
 
 // ------------------------------------------------------------------ startup
@@ -218,11 +260,26 @@ if (config.smtpUrl) {
 	)
 }
 
-function shutdown() {
-	log('info', 'shutting down')
-	api.close()
-	smtp.close(() => process.exit(0))
-	setTimeout(() => process.exit(0), 5000).unref()
+async function shutdown(signal) {
+	if (drain.active) return
+	drain.active = true
+	log('info', 'shutting down', { signal, inFlight: drain.deliveries.size })
+	setTimeout(() => {
+		log('error', 'shutdown deadline passed with deliveries unreported', { inFlight: drain.deliveries.size })
+		api.closeAllConnections()
+		process.exit(1)
+	}, drain.exitAfterMs).unref()
+	const cutoff = setTimeout(() => {
+		drain.cutOff = true
+		for (const socket of drain.sockets) socket.destroy(new Error(SHUTDOWN_CUTOFF))
+	}, drain.sendCutoffMs)
+	const smtpClosed = new Promise((resolve) => smtp.close(resolve))
+	await Promise.allSettled([...drain.deliveries])
+	clearTimeout(cutoff)
+	await smtpClosed
+	await new Promise((resolve) => api.close(resolve))
+	log('info', 'shutdown complete')
+	process.exit(0)
 }
-process.on('SIGTERM', shutdown)
-process.on('SIGINT', shutdown)
+process.on('SIGTERM', () => void shutdown('SIGTERM'))
+process.on('SIGINT', () => void shutdown('SIGINT'))

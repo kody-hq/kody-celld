@@ -19,6 +19,10 @@ services:
     image: ${MAIL_BRIDGE_IMAGE:-kody-mail-bridge:local}
     restart: unless-stopped
     init: true
+    # On SIGTERM the bridge drains accepted /send deliveries for up to
+    # MAIL_BRIDGE_SEND_TIMEOUT_MS + MAIL_BRIDGE_KODY_TIMEOUT_MS + 5 s (50 s by
+    # default); the grace period must cover that or Docker kills it mid-drain.
+    stop_grace_period: ${MAIL_BRIDGE_STOP_GRACE_PERIOD:-60s}
     ports:
       - '${MAIL_BRIDGE_SMTP_PUBLIC_PORT:-25}:25'
     environment:
@@ -29,6 +33,8 @@ services:
       MAIL_BRIDGE_SMTP_URL: ${MAIL_BRIDGE_SMTP_URL:-}
       MAIL_BRIDGE_HOSTNAME: ${MAIL_BRIDGE_HOSTNAME:-mail.${KODY_EMAIL_DOMAIN}}
       MAIL_BRIDGE_MAX_BYTES: ${MAIL_BRIDGE_MAX_BYTES:-}
+      MAIL_BRIDGE_SEND_TIMEOUT_MS: ${MAIL_BRIDGE_SEND_TIMEOUT_MS:-}
+      MAIL_BRIDGE_KODY_TIMEOUT_MS: ${MAIL_BRIDGE_KODY_TIMEOUT_MS:-}
       # Optional STARTTLS for inbound SMTP: mount a cert/key and set these paths.
       MAIL_BRIDGE_TLS_CERT: ${MAIL_BRIDGE_TLS_CERT:-}
       MAIL_BRIDGE_TLS_KEY: ${MAIL_BRIDGE_TLS_KEY:-}

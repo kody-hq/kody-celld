@@ -5,6 +5,21 @@ Releases are now automated daily and their notes live in
 [GitHub Releases](https://github.com/kody-hq/kody-celld/releases); see
 [docs/contributing/releases.md](docs/contributing/releases.md).
 
+### mail-bridge drains accepted sends on shutdown
+
+Thanks to @brandonperfetti for the clear report (#141). On `SIGTERM` the
+bridge exited without waiting for `/send` deliveries it had already answered
+`202 queued`, so a message accepted just before a restart could be lost and
+stay `queued` in Kody forever. The bridge now refuses new `/send` requests with
+`503` once shutdown starts, waits for accepted deliveries, and reports any send
+still running at `MAIL_BRIDGE_SEND_TIMEOUT_MS` as `failed`. `compose.mail.yaml`
+gives the bridge a `stop_grace_period` of 60 s
+(`MAIL_BRIDGE_STOP_GRACE_PERIOD`) to cover that drain.
+`MAIL_BRIDGE_SEND_TIMEOUT_MS` is now the connection and idle timeout for both
+`MAIL_BRIDGE_SMTP_URL` relays and direct-to-MX sends; relays previously ignored
+it (it was passed where nodemailer reads message defaults). See
+[docs/email.md](docs/email.md#the-mail-bridge-no-third-party).
+
 ## [0.2.4] - 2026-10-29
 
 ### Desktop MCP clients can finish OAuth consent

@@ -167,6 +167,20 @@ never sends on behalf of arbitrary addresses.
   delivers through `MAIL_BRIDGE_SMTP_URL` (`smtp://` / `smtps://` with
   credentials — your ISP, Fastmail, SES SMTP, Postfix…) or **directly to the
   recipient's MX** when unset, then posts `sent`/`failed` to Kody.
+- **Shutdown**: on `SIGTERM` the bridge answers `503 shutting_down` to new
+  `/send` requests (and `/health`), stops accepting SMTP connections, and waits
+  for every accepted delivery to settle. A send still running after
+  `MAIL_BRIDGE_SEND_TIMEOUT_MS` has its relay connection closed and is reported
+  `failed` ("Bridge shut down before the relay confirmed delivery."), so nothing
+  accepted stays `queued`. A relay that had already taken the whole message
+  before that close may still deliver it, so treat this `failed` as
+  unconfirmed. The process exits once the event reports finish, or with status 1
+  after `MAIL_BRIDGE_SEND_TIMEOUT_MS + MAIL_BRIDGE_KODY_TIMEOUT_MS + 5 s`
+  (50 s by default). `compose.mail.yaml` sets `stop_grace_period` to
+  `MAIL_BRIDGE_STOP_GRACE_PERIOD` (default `60s`); raise it if you raise those
+  timeouts. A bridge killed outright (`SIGKILL`, crash, power loss) or unable to
+  reach Kody can still leave a message `queued`, because accepted mail is held
+  in memory only.
 - Logs are structured JSON with ids, sizes and status codes — never bodies or
   tokens.
 
