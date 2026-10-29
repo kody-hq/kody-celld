@@ -6,14 +6,59 @@ tag, and a short index of past ones.
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-10-29
+
+### Desktop MCP clients can finish OAuth consent
+
+Thanks to @Averus89 for this fix (#138). The consent page's
+Content-Security-Policy `form-action` only allowed `https:`, `localhost`, and
+`127.0.0.1`, so the browser blocked the redirect after Approve or Deny for
+clients the authorization server already accepts: private-use schemes such as
+`cursor://` and loopback hosts such as `*.localhost` or `[::1]`. Desktop MCP
+clients could not connect. The consent page now allows the source each
+request's validated `redirect_uri` needs.
+
+### `/v1` HTTP API and `/openapi.json`
+
+celld now serves the hosted-compatible `/v1` HTTP API at the origin of
+`KODY_PUBLIC_URL`, with `GET /openapi.json` describing the operations this
+build supports (#118, #119). See [docs/api.md](docs/api.md).
+
 ### Legacy capability API deprecated
 
 `POST /api/call/:capability` and `GET /api/capabilities` are deprecated in favor
 of the `/v1` HTTP API and `GET /openapi.json`; see [docs/api.md](docs/api.md).
 Responses from the legacy routes now carry a `Deprecation` header and a
 `Link: <.../docs/api.md>; rel="deprecation"` header. The legacy routes keep
-working until they are removed in v0.3.0. The smoke suite now calls `/v1`
-wherever a route exists.
+working until they are removed in v0.3.0 (#131). The smoke suite now calls
+`/v1` wherever a route exists.
+
+### API tokens and hosted CLI login
+
+Hosted-style `kody_at_` API tokens with list, create, rotate, and revoke routes
+under `/v1/tokens`, and the hosted `kody` CLI can log in to celld through its
+official OAuth client (#132). Only that official CLI client can manage tokens
+with an OAuth access token; other OAuth clients use a `kody_at_` or `kc_` token
+(#137).
+
+### Package runtime
+
+- **Workflows:** durable background runs with `workflows.create()`,
+  `workflowRunList`, and `workflowRunCancel` (#112), workflow attempts linked
+  in run history (#113), and an account Workflows page with cancel (#114). See
+  [docs/workflows.md](docs/workflows.md).
+- **Credentials:** packages declare `kody.credentials` slots (#106) and use the
+  `credential()` and `credentials()` runtime clients (#107).
+- **Secrets:** `secretSet` and `secretSetMany` match the hosted names
+  (`secretSave` stays as an alias), plus `metaGetCurrentUser` and capability
+  aliases (#104). `secretLock` lets a package ask the owner to approve access
+  to a user secret (#111).
+- **Events:** `events.dispatch` and package event delivery (#116), with
+  `kody.emits` parsing and subscription filters (#115).
+- **Email:** an `email` helper for email subscription handlers (#110).
+- **Imports:** computed `kody:@` dynamic imports (#117).
+- **Manifests:** package previews warn on unknown subscription topics and
+  `kody` keys (#109).
 
 ## [0.2.3] - 2026-10-27
 
@@ -115,6 +160,7 @@ Kody. HTML renders the way hosted does: scripts stripped, then a sandboxed
 
 ## Past releases
 
+- [v0.2.4](https://github.com/kody-hq/kody-celld/releases/tag/v0.2.4): desktop MCP clients can finish OAuth consent (thanks @Averus89); `/v1` HTTP API, API tokens and CLI login, workflows, package credentials
 - [v0.2.3](https://github.com/kody-hq/kody-celld/releases/tag/v0.2.3): the fetch gateway follows redirects itself and re-checks every hop; JSON body values escaped; invalid header values refused cleanly
 - [v0.2.2](https://github.com/kody-hq/kody-celld/releases/tag/v0.2.2): email preview links open in a new tab; link normalization hardened against comment and RAWTEXT bypasses
 - [v0.2.1](https://github.com/kody-hq/kody-celld/releases/tag/v0.2.1): resolve hostnames for package sources and browser URLs, Email message view, single-mode Docker fixes
