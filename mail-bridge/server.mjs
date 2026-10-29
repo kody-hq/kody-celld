@@ -119,6 +119,7 @@ function relaySocket(options, callback) {
 	const socket = net.connect({
 		host: options.host || 'localhost',
 		port: Number(options.port) || (options.secure ? 465 : 587),
+		...(options.localAddress ? { localAddress: options.localAddress } : {}),
 	})
 	drain.sockets.add(socket)
 	socket.once('close', () => drain.sockets.delete(socket))
@@ -271,7 +272,7 @@ async function shutdown(signal) {
 	}, drain.exitAfterMs).unref()
 	const cutoff = setTimeout(() => {
 		drain.cutOff = true
-		for (const socket of drain.sockets) socket.destroy()
+		for (const socket of drain.sockets) socket.destroy(new Error(SHUTDOWN_CUTOFF))
 	}, drain.sendCutoffMs)
 	const smtpClosed = new Promise((resolve) => smtp.close(resolve))
 	await Promise.allSettled([...drain.deliveries])
