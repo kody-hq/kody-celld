@@ -36,6 +36,57 @@ function waitFor(check, timeoutMs = 10_000) {
 	})
 }
 
+function spawnBridge(ports, env = {}) {
+	const child = spawn(process.execPath, ['server.mjs'], {
+		cwd: here,
+		env: {
+			...process.env,
+			KODY_URL: `http://127.0.0.1:${ports.kody}`,
+			KODY_EMAIL_DOMAIN: 'kody.test',
+			KODY_EMAIL_INBOUND_TOKEN: 'inbound-token-for-test',
+			MAIL_BRIDGE_TOKEN: 'bridge-token-for-test',
+			MAIL_BRIDGE_SMTP_URL: `smtp://127.0.0.1:${ports.relay}?ignoreTLS=true`,
+			MAIL_BRIDGE_SMTP_PORT: String(ports.smtp),
+			MAIL_BRIDGE_HTTP_PORT: String(ports.http),
+			MAIL_BRIDGE_HOSTNAME: 'bridge.kody.test',
+			...env,
+		},
+		stdio: ['ignore', 'pipe', 'inherit'],
+	})
+	child.stdout.on('data', () => {})
+	child.exited = new Promise((resolve) => child.once('exit', (code) => resolve(code)))
+	return child
+}
+
+function postSend(httpPort, subject) {
+	return fetch(`http://127.0.0.1:${httpPort}/send`, {
+		method: 'POST',
+		headers: { 'content-type': 'application/json', authorization: 'Bearer bridge-token-for-test' },
+		body: JSON.stringify({ from: 'kent@kody.test', to: ['friend@example.com'], subject, text: 'body' }),
+	})
+}
+
+/** Listens on a free port; SMTPServer keeps its net.Server on `.server`. */
+function listen(server) {
+	const inner = server.server ?? server
+	return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(inner.address().port)))
+}
+
+/** Fake Kody that records bridge delivery events. */
+async function eventRecorder() {
+	const events = []
+	const server = http.createServer((request, response) => {
+		const chunks = []
+		request.on('data', (c) => chunks.push(c))
+		request.on('end', () => {
+			if (request.url === '/email/events/bridge') events.push(JSON.parse(Buffer.concat(chunks).toString()))
+			response.writeHead(200, { 'content-type': 'application/json' })
+			response.end('{}')
+		})
+	})
+	return { events, server, port: await listen(server) }
+}
+
 const kodyRequests = []
 const relayMessages = []
 let bridge
@@ -80,22 +131,7 @@ describe('mail bridge', () => {
 			},
 		})
 		await new Promise((resolve) => relay.listen(ports.relay, '127.0.0.1', resolve))
-		bridge = spawn(process.execPath, ['server.mjs'], {
-			cwd: here,
-			env: {
-				...process.env,
-				KODY_URL: `http://127.0.0.1:${ports.kody}`,
-				KODY_EMAIL_DOMAIN: 'kody.test',
-				KODY_EMAIL_INBOUND_TOKEN: 'inbound-token-for-test',
-				MAIL_BRIDGE_TOKEN: 'bridge-token-for-test',
-				MAIL_BRIDGE_SMTP_URL: `smtp://127.0.0.1:${ports.relay}?ignoreTLS=true`,
-				MAIL_BRIDGE_SMTP_PORT: String(ports.smtp),
-				MAIL_BRIDGE_HTTP_PORT: String(ports.http),
-				MAIL_BRIDGE_HOSTNAME: 'bridge.kody.test',
-			},
-			stdio: ['ignore', 'pipe', 'inherit'],
-		})
-		bridge.stdout.on('data', () => {})
+		bridge = spawnBridge({ kody: ports.kody, smtp: ports.smtp, http: ports.http, relay: ports.relay })
 		cleanup = () => {
 			bridge.kill('SIGTERM')
 			fakeKody.close()
@@ -171,5 +207,102 @@ describe('mail bridge', () => {
 		const payload = JSON.parse(event.body.toString())
 		assert.equal(payload.messageId, messageId)
 		assert.equal(payload.event, 'sent')
+	})
+})
+
+describe('mail bridge shutdown', () => {
+	it('refuses new sends and waits for an in-flight delivery before exiting', async (t) => {
+		const kody = await eventRecorder()
+		let releaseRelay
+		const relayHolding = new Promise((resolve) => {
+			releaseRelay = resolve
+		})
+		let relayReceived
+		const relayStarted = new Promise((resolve) => {
+			relayReceived = resolve
+		})
+		const relay = new SMTPServer({
+			authOptional: true,
+			disabledCommands: ['AUTH', 'STARTTLS'],
+			onData(stream, _session, callback) {
+				stream.resume()
+				stream.on('end', async () => {
+					relayReceived()
+					await relayHolding
+					callback(null, 'OK relayed')
+				})
+			},
+		})
+		const relayPort = await listen(relay)
+		const ports = { kody: kody.port, relay: relayPort, smtp: await freePort(), http: await freePort() }
+		const child = spawnBridge(ports, { MAIL_BRIDGE_SEND_TIMEOUT_MS: '20000' })
+		t.after(() => {
+			releaseRelay()
+			child.kill('SIGKILL')
+			kody.server.close()
+			relay.close()
+		})
+		await waitFor(async () => (await fetch(`http://127.0.0.1:${ports.http}/health`)).ok)
+
+		const accepted = await postSend(ports.http, 'in flight')
+		assert.equal(accepted.status, 202)
+		const { messageId } = await accepted.json()
+		await relayStarted
+		child.kill('SIGTERM')
+		await waitFor(async () => (await fetch(`http://127.0.0.1:${ports.http}/health`)).status === 503)
+
+		const refused = await postSend(ports.http, 'after shutdown')
+		assert.equal(refused.status, 503)
+		assert.deepEqual(await refused.json(), { error: 'shutting_down' })
+		assert.equal(kody.events.length, 0)
+
+		releaseRelay()
+		assert.equal(await child.exited, 0)
+		assert.deepEqual(
+			kody.events.map((e) => [e.messageId, e.event]),
+			[[messageId, 'sent']],
+		)
+	})
+
+	it('reports a delivery still sending at the cutoff as failed, then exits', async (t) => {
+		const kody = await eventRecorder()
+		// Never finishes its greeting but keeps the socket busy, so only the
+		// shutdown cutoff (not an idle timeout) can end the send.
+		const sockets = new Set()
+		let relayConnected
+		const relayStarted = new Promise((resolve) => {
+			relayConnected = resolve
+		})
+		const relay = net.createServer((socket) => {
+			sockets.add(socket)
+			socket.on('error', () => {})
+			const trickle = setInterval(() => socket.write('2'), 100)
+			socket.on('close', () => clearInterval(trickle))
+			relayConnected()
+		})
+		const relayPort = await listen(relay)
+		const ports = { kody: kody.port, relay: relayPort, smtp: await freePort(), http: await freePort() }
+		const child = spawnBridge(ports, { MAIL_BRIDGE_SEND_TIMEOUT_MS: '1000', MAIL_BRIDGE_KODY_TIMEOUT_MS: '2000' })
+		t.after(() => {
+			child.kill('SIGKILL')
+			kody.server.close()
+			for (const socket of sockets) socket.destroy()
+			relay.close()
+		})
+		await waitFor(async () => (await fetch(`http://127.0.0.1:${ports.http}/health`)).ok)
+
+		const accepted = await postSend(ports.http, 'stuck')
+		assert.equal(accepted.status, 202)
+		const { messageId } = await accepted.json()
+		await relayStarted
+		await new Promise((resolve) => setTimeout(resolve, 1500))
+		assert.equal(kody.events.length, 0)
+		child.kill('SIGTERM')
+
+		assert.equal(await child.exited, 0)
+		assert.equal(kody.events.length, 1)
+		assert.equal(kody.events[0].messageId, messageId)
+		assert.equal(kody.events[0].event, 'failed')
+		assert.match(kody.events[0].detail, /shut down before the relay confirmed delivery/)
 	})
 })

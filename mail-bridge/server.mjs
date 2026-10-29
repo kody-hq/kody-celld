@@ -133,10 +133,34 @@ async function reportEvent(messageId, event, detail) {
 	}
 }
 
+// Shutdown drain. Accepted deliveries are tracked so SIGTERM waits for them;
+// sends still running at the cutoff are abandoned and reported `failed`, which
+// leaves the event report (bounded by kodyTimeoutMs) to finish before exit.
+const drain = {
+	active: false,
+	deliveries: new Set(),
+	sendCutoff: new AbortController(),
+	sendCutoffMs: config.sendTimeoutMs,
+	exitAfterMs: config.sendTimeoutMs + config.kodyTimeoutMs + 5_000,
+}
+
+function unlessAborted(promise, signal, reason) {
+	return new Promise((resolve, reject) => {
+		const onAbort = () => reject(new Error(reason))
+		if (signal.aborted) return onAbort()
+		signal.addEventListener('abort', onAbort, { once: true })
+		promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort))
+	})
+}
+
 async function deliver(options) {
 	const messageId = bareMessageId(options.messageId)
 	try {
-		const info = await transport.sendMail(options)
+		const info = await unlessAborted(
+			transport.sendMail(options),
+			drain.sendCutoff.signal,
+			'Bridge shut down before the relay confirmed delivery.',
+		)
 		const rejected = info.rejected?.length ?? 0
 		log('info', 'outbound', { messageId, transport: transportKind, accepted: info.accepted?.length ?? 0, rejected })
 		await reportEvent(
@@ -148,6 +172,11 @@ async function deliver(options) {
 		log('warn', 'outbound failed', { messageId, error: error.message })
 		await reportEvent(messageId, 'failed', error.message)
 	}
+}
+
+function track(delivery) {
+	drain.deliveries.add(delivery)
+	void delivery.finally(() => drain.deliveries.delete(delivery))
 }
 
 function readJson(request, limit) {
@@ -182,11 +211,13 @@ function respond(response, status, payload) {
 const api = http.createServer(async (request, response) => {
 	const url = new URL(request.url ?? '/', 'http://bridge')
 	if (request.method === 'GET' && url.pathname === '/health') {
+		if (drain.active) return respond(response, 503, { ok: false, error: 'shutting_down' })
 		return respond(response, 200, { ok: true, transport: transportKind, domains: config.domains })
 	}
 	if (request.method !== 'POST' || url.pathname !== '/send') {
 		return respond(response, 404, { error: 'not_found' })
 	}
+	if (drain.active) return respond(response, 503, { error: 'shutting_down' })
 	if (!bearerMatches(request.headers.authorization, config.token)) {
 		return respond(response, 401, { error: 'unauthorized' })
 	}
@@ -198,9 +229,10 @@ const api = http.createServer(async (request, response) => {
 	} catch (error) {
 		return respond(response, error.status ?? 400, { error: 'invalid_message', message: error.message })
 	}
-	const messageId = bareMessageId(options.messageId)
-	respond(response, 202, { messageId, status: 'queued' })
-	void deliver(options)
+	// Shutdown may have started while the body was being read.
+	if (drain.active) return respond(response, 503, { error: 'shutting_down' })
+	track(deliver(options))
+	respond(response, 202, { messageId: bareMessageId(options.messageId), status: 'queued' })
 })
 
 // ------------------------------------------------------------------ startup
@@ -218,11 +250,23 @@ if (config.smtpUrl) {
 	)
 }
 
-function shutdown() {
-	log('info', 'shutting down')
+async function shutdown(signal) {
+	if (drain.active) return
+	drain.active = true
+	log('info', 'shutting down', { signal, inFlight: drain.deliveries.size })
+	setTimeout(() => {
+		log('error', 'shutdown deadline passed with deliveries unreported', { inFlight: drain.deliveries.size })
+		process.exit(1)
+	}, drain.exitAfterMs).unref()
+	const cutoff = setTimeout(() => drain.sendCutoff.abort(), drain.sendCutoffMs)
+	const smtpClosed = new Promise((resolve) => smtp.close(resolve))
+	await Promise.allSettled([...drain.deliveries])
+	clearTimeout(cutoff)
+	await smtpClosed
 	api.close()
-	smtp.close(() => process.exit(0))
-	setTimeout(() => process.exit(0), 5000).unref()
+	api.closeAllConnections()
+	log('info', 'shutdown complete')
+	process.exit(0)
 }
-process.on('SIGTERM', shutdown)
-process.on('SIGINT', shutdown)
+process.on('SIGTERM', () => void shutdown('SIGTERM'))
+process.on('SIGINT', () => void shutdown('SIGINT'))
