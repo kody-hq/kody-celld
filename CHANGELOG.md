@@ -15,7 +15,10 @@ stay `queued` in Kody forever. The bridge now refuses new `/send` requests with
 `503` once shutdown starts, waits for accepted deliveries, and reports any send
 still running at `MAIL_BRIDGE_SEND_TIMEOUT_MS` as `failed`. `compose.mail.yaml`
 gives the bridge a `stop_grace_period` of 60 s
-(`MAIL_BRIDGE_STOP_GRACE_PERIOD`) to cover that drain. See
+(`MAIL_BRIDGE_STOP_GRACE_PERIOD`) to cover that drain.
+`MAIL_BRIDGE_SEND_TIMEOUT_MS` now also applies to `MAIL_BRIDGE_SMTP_URL` relays
+as the connection and idle timeout; it was previously passed where nodemailer
+reads message defaults and was ignored. See
 [docs/email.md](docs/email.md#the-mail-bridge-no-third-party).
 
 ## [0.2.4] - 2026-10-29

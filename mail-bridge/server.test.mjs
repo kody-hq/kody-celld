@@ -73,13 +73,16 @@ function listen(server) {
 }
 
 /** Fake Kody that records bridge delivery events. */
-async function eventRecorder() {
+async function eventRecorder(onEvent = () => {}) {
 	const events = []
 	const server = http.createServer((request, response) => {
 		const chunks = []
 		request.on('data', (c) => chunks.push(c))
 		request.on('end', () => {
-			if (request.url === '/email/events/bridge') events.push(JSON.parse(Buffer.concat(chunks).toString()))
+			if (request.url === '/email/events/bridge') {
+				events.push(JSON.parse(Buffer.concat(chunks).toString()))
+				onEvent()
+			}
 			response.writeHead(200, { 'content-type': 'application/json' })
 			response.end('{}')
 		})
@@ -265,10 +268,13 @@ describe('mail bridge shutdown', () => {
 	})
 
 	it('reports a delivery still sending at the cutoff as failed, then exits', async (t) => {
-		const kody = await eventRecorder()
 		// Never finishes its greeting but keeps the socket busy, so only the
 		// shutdown cutoff (not an idle timeout) can end the send.
 		const sockets = new Set()
+		let relayOpenAtReport
+		const kody = await eventRecorder(() => {
+			relayOpenAtReport = [...sockets].some((socket) => !socket.readableEnded)
+		})
 		let relayConnected
 		const relayStarted = new Promise((resolve) => {
 			relayConnected = resolve
@@ -304,5 +310,35 @@ describe('mail bridge shutdown', () => {
 		assert.equal(kody.events[0].messageId, messageId)
 		assert.equal(kody.events[0].event, 'failed')
 		assert.match(kody.events[0].detail, /shut down before the relay confirmed delivery/)
+		assert.equal(relayOpenAtReport, false, 'relay connection closed before failure was reported')
+	})
+})
+
+describe('mail bridge relay timeouts', () => {
+	it('reports failed when the relay goes silent for MAIL_BRIDGE_SEND_TIMEOUT_MS', async (t) => {
+		const kody = await eventRecorder()
+		const sockets = new Set()
+		const relay = net.createServer((socket) => {
+			sockets.add(socket)
+			socket.on('error', () => {})
+			socket.write('220 silent relay\r\n')
+		})
+		const relayPort = await listen(relay)
+		const ports = { kody: kody.port, relay: relayPort, smtp: await freePort(), http: await freePort() }
+		const child = spawnBridge(ports, { MAIL_BRIDGE_SEND_TIMEOUT_MS: '1000' })
+		t.after(() => {
+			child.kill('SIGKILL')
+			kody.server.close()
+			for (const socket of sockets) socket.destroy()
+			relay.close()
+		})
+		await waitFor(async () => (await fetch(`http://127.0.0.1:${ports.http}/health`)).ok)
+
+		const accepted = await postSend(ports.http, 'silent relay')
+		assert.equal(accepted.status, 202)
+		const { messageId } = await accepted.json()
+		await waitFor(() => kody.events.length > 0, 5_000)
+		assert.equal(kody.events[0].messageId, messageId)
+		assert.equal(kody.events[0].event, 'failed')
 	})
 })
