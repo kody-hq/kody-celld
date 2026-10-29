@@ -36,3 +36,5 @@ and review agents follow
 - [Getting started](./docs/getting-started.md)
 - [Architecture](./docs/architecture.md)
 - [Agent guide](./AGENTS.md)
+- [Releases](./docs/contributing/releases.md): daily and automated; add a
+  `## Release notes` section to your PR when an upgrade needs action

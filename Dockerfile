@@ -21,6 +21,10 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci && npm cache clean --force
 COPY . .
+# The release tag is the version (docs/contributing/releases.md): publish.yml
+# passes it here and src/version.ts is rewritten before the bundle builds.
+ARG KODY_CELLD_VERSION=0.0.0-dev
+RUN node tools/release/stamp-version.ts "$KODY_CELLD_VERSION"
 # Browser bundle (Vite, remix/component hydration) into public/build; celld serves
 # public/ as static assets next to the Worker.
 RUN npm run build:client \

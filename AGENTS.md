@@ -24,6 +24,8 @@ This file is a map, not the docs. Open the page that owns the task:
 - Verbatim sync lock (`npm run sync:kody`):
   [docs/contributing/shared-from-kody.md](./docs/contributing/shared-from-kody.md)
 - Architecture: [docs/architecture.md](./docs/architecture.md)
+- Releases (daily, automated; the tag is the version):
+  [docs/contributing/releases.md](./docs/contributing/releases.md)
 
 ## Where things live
 

@@ -24,6 +24,7 @@ away; open only the page the task needs.
   no second lanes, no test-only prod code
 - [Pull request template](../../.github/pull_request_template.md)
 - [Steward review checklist](./review-checklist.md)
+- [Releases](./releases.md): daily automated patch releases, tag is the version
 
 Follow the principles, especially
 [Match hosted first](../principles/match-hosted-first.md) and

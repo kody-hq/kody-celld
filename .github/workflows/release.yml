@@ -1,0 +1,104 @@
+name: Release
+
+# Daily automated release, modeled on hosted Kody's nightly release
+# (quiet-day no-op, notes from merged PRs, idempotent release create).
+# See docs/contributing/releases.md.
+#   no commits on main since the latest vX.Y.Z tag -> no-op
+#   otherwise -> GitHub Release + tag v<next patch> on the planned main commit,
+#                then the versioned image via publish.yml (workflow_call)
+# No bump commit: the tag is the version, so the CLA-protected main branch is
+# never pushed to. A tag created with GITHUB_TOKEN does not fire publish.yml's
+# tag trigger, which is why the publish job below calls it directly.
+on:
+  schedule:
+    # 11:17 UTC daily (04:17 PDT / 03:17 PST), after the overnight merges.
+    - cron: '17 11 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Plan and print the notes only (no tag, release, or image)
+        type: boolean
+        default: true
+      bump:
+        description: Version bump (scheduled runs always use patch)
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      release: ${{ steps.plan.outputs.release }}
+      tag: ${{ steps.plan.outputs.tag }}
+      head: ${{ steps.plan.outputs.head }}
+      title: ${{ steps.plan.outputs.title }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUMP: ${{ inputs.bump || 'patch' }}
+        run: node tools/release/plan.ts --bump "$BUMP" --head HEAD --notes-file release-notes.md
+      - if: steps.plan.outputs.release == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: release-notes.md
+          retention-days: 7
+
+  release:
+    name: tag + GitHub release
+    needs: plan
+    if: needs.plan.outputs.release == 'true' && (github.event_name == 'schedule' || inputs.dry_run == false)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+      # Idempotent like hosted createRelease: a rerun after a later failure
+      # finds the release and moves on to publishing.
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          HEAD_SHA: ${{ needs.plan.outputs.head }}
+          TITLE: ${{ needs.plan.outputs.title }}
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "$TAG already has a GitHub release; skipping create."
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$HEAD_SHA" \
+              --title "$TITLE" --notes-file release-notes.md --latest
+          fi
+          echo "Release: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$TAG" >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    name: publish image
+    needs: [plan, release]
+    uses: ./.github/workflows/publish.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      tag: ${{ needs.plan.outputs.tag }}

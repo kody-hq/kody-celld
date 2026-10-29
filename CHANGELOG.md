@@ -1,10 +1,9 @@
 # Changelog
 
-Release notes for **kody-celld**. Tagged GitHub Releases remain the published
-source; this file holds the draft for the next tag, the notes for the latest
-tag, and a short index of past ones.
-
-## [Unreleased]
+Release notes for **kody-celld** up to v0.2.4, the last release cut by hand.
+Releases are now automated daily and their notes live in
+[GitHub Releases](https://github.com/kody-hq/kody-celld/releases); see
+[docs/contributing/releases.md](docs/contributing/releases.md).
 
 ## [0.2.4] - 2026-10-29
 
@@ -164,6 +163,6 @@ Kody. HTML renders the way hosted does: scripts stripped, then a sandboxed
 - [v0.2.3](https://github.com/kody-hq/kody-celld/releases/tag/v0.2.3): the fetch gateway follows redirects itself and re-checks every hop; JSON body values escaped; invalid header values refused cleanly
 - [v0.2.2](https://github.com/kody-hq/kody-celld/releases/tag/v0.2.2): email preview links open in a new tab; link normalization hardened against comment and RAWTEXT bypasses
 - [v0.2.1](https://github.com/kody-hq/kody-celld/releases/tag/v0.2.1): resolve hostnames for package sources and browser URLs, Email message view, single-mode Docker fixes
-- [v0.2.0](https://github.com/kody-hq/kody-celld/releases/tag/v0.2.0) — external MCP servers, package apps, one private-host allowlist
-- [v0.1.1](https://github.com/kody-hq/kody-celld/releases/tag/v0.1.1) — keep dev email defaults out of single-node Docker
-- [v0.1.0](https://github.com/kody-hq/kody-celld/releases/tag/v0.1.0) — first public self-hosted release
+- [v0.2.0](https://github.com/kody-hq/kody-celld/releases/tag/v0.2.0): external MCP servers, package apps, one private-host allowlist
+- [v0.1.1](https://github.com/kody-hq/kody-celld/releases/tag/v0.1.1): keep dev email defaults out of single-node Docker
+- [v0.1.0](https://github.com/kody-hq/kody-celld/releases/tag/v0.1.0): first public self-hosted release
