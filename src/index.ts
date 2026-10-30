@@ -11,7 +11,7 @@ import { BlobService, normalizeMetadata } from './blobs/service.ts'
 import { browserConfigFromEnv, describeBrowserConfig } from './browser/config.ts'
 import { describeNpmConfig, npmConfigFromEnv } from './execute/npm-config.ts'
 import { describeEmailConfig } from './email/config.ts'
-import { handleEmailEvents, handleEmailInbound, loadEmailConfig } from './email/service.ts'
+import { failStaleQueuedSends, handleEmailEvents, handleEmailInbound, loadEmailConfig } from './email/service.ts'
 import type { CapabilityContext } from './capabilities/define.ts'
 import { capabilityContext } from './capabilities/context.ts'
 import { getMemoryCell } from './capabilities/memory.ts'
@@ -550,11 +550,13 @@ export default {
 	},
 
 	async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
-		const [jobs, workflows] = await Promise.all([
+		const [jobs, workflows, staleSends] = await Promise.all([
 			dispatchDueJobs(env, ctx.exports),
 			dispatchDueWorkflows(env, ctx.exports),
+			failStaleQueuedSends(env, ctx),
 		])
 		if (jobs.ran.length > 0) console.log('[kody-celld] jobs dispatched', JSON.stringify(jobs))
 		if (workflows.ran.length > 0) console.log('[kody-celld] workflows dispatched', JSON.stringify(workflows))
+		if (staleSends.failed > 0) console.warn('[kody-celld] stale queued email sends failed', JSON.stringify(staleSends))
 	},
 } satisfies ExportedHandler<Env>

@@ -1,4 +1,5 @@
 import { DurableObject } from 'cloudflare:workers'
+import { failStaleQueuedDeliveries, recordDelivery, type DeliveryUpdate } from '../email/delivery-store.ts'
 import { normalizeEmailAddress, snippetOf } from '../email/message.ts'
 import type { Env } from '../env.ts'
 import { computeNextRun, validateSchedule } from '../jobs/schedule.ts'
@@ -584,6 +585,7 @@ export class UserCell extends DurableObject<Env> {
 			);
 			CREATE INDEX IF NOT EXISTS email_messages_received ON email_messages(direction, received_at DESC);
 			CREATE INDEX IF NOT EXISTS email_messages_provider ON email_messages(provider_message_id);
+			CREATE INDEX IF NOT EXISTS email_messages_delivery ON email_messages(delivery_status, created_at);
 			CREATE TABLE IF NOT EXISTS email_attachments (
 				id TEXT PRIMARY KEY,
 				message_id TEXT NOT NULL,
@@ -3166,45 +3168,24 @@ export class UserCell extends DurableObject<Env> {
 		return { ...meta, messageId, contentBase64: row.content_base64 }
 	}
 
-	async emailMessageSetDelivery(input: {
-		id?: string | undefined
-		providerMessageId?: string | undefined
-		provider: string
-		status: string
-		event: string
-		detail?: string | null | undefined
-		at?: string | undefined
-	}): Promise<EmailMessageRecord | null> {
-		const row = (
-			input.id
-				? this.ctx.storage.sql.exec('SELECT id FROM email_messages WHERE id = ?', input.id)
-				: this.ctx.storage.sql.exec(
-						`SELECT id FROM email_messages WHERE provider = ? AND provider_message_id = ? AND direction = 'outbound'`,
-						input.provider,
-						input.providerMessageId ?? '',
-					)
-		).toArray()[0] as { id: string } | undefined
-		if (!row) return null
-		if (input.id === undefined && input.providerMessageId === undefined) return null
-		this.ctx.storage.sql.exec('UPDATE email_messages SET delivery_status = ? WHERE id = ?', input.status, row.id)
-		if (input.providerMessageId !== undefined) {
-			this.ctx.storage.sql.exec(
-				'UPDATE email_messages SET provider_message_id = COALESCE(provider_message_id, ?) WHERE id = ?',
-				input.providerMessageId,
-				row.id,
+	async emailMessageSetDelivery(input: DeliveryUpdate): Promise<EmailMessageRecord | null> {
+		const outcome = recordDelivery(this.ctx.storage.sql, input, nowIso())
+		if (!outcome) return null
+		if (outcome.kind === 'ignored') {
+			console.warn(
+				'[kody-celld] email delivery event ignored: message already failed',
+				JSON.stringify({ messageId: outcome.id, provider: input.provider, event: input.event, status: input.status }),
 			)
+			return null
 		}
-		this.ctx.storage.sql.exec(
-			'INSERT INTO email_delivery_events (id, message_id, provider, event, status, detail, at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-			randomId('evt'),
-			row.id,
-			input.provider,
-			input.event,
-			input.status,
-			input.detail ?? null,
-			input.at ?? nowIso(),
-		)
-		return this.emailMessageGet(row.id)
+		return this.emailMessageGet(outcome.id)
+	}
+
+	/** Marks outbound sends stuck in `queued` as `failed` (see `queuedDeliveryTimeoutMs`). */
+	async emailDeliveryFailStaleQueued(): Promise<Array<EmailMessageRecord>> {
+		const ids = failStaleQueuedDeliveries(this.ctx.storage.sql, new Date())
+		const messages = await Promise.all(ids.map((id) => this.emailMessageGet(id)))
+		return messages.filter((message) => message !== null)
 	}
 
 	async emailDeliveryEventList(messageId: string): Promise<Array<EmailDeliveryEvent>> {

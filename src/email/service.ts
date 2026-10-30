@@ -11,6 +11,7 @@ import {
 	emailConfigFromEnv,
 	type EmailConfig,
 } from './config.ts'
+import { queuedDeliveryTimeoutDetail, queuedDeliveryTimeoutEvent } from './delivery-store.ts'
 import { normalizeDeliveryEvents, type DeliveryEvent } from './events.ts'
 import { normalizeInbound, readInboundPayload, type InboundEmail } from './inbound.ts'
 import { snippetOf, splitInboxAddress } from './message.ts'
@@ -318,14 +319,51 @@ export async function applyDeliveryEvents(
 		})
 		if (!updated) continue
 		matched++
-		ctx.waitUntil(
-			dispatchTopic(env, ctx.exports, user, 'email.message.delivery.updated', {
-				message: subscriptionMessage(updated),
-				delivery: { event: event.event, status: event.status, detail: event.detail, at: event.at },
-			}),
-		)
+		announceDelivery(env, ctx, user, updated, {
+			event: event.event,
+			status: event.status,
+			detail: event.detail,
+			at: event.at,
+		})
 	}
 	return { matched, unmatched }
+}
+
+/** Cron: outbound sends with no provider report within `queuedDeliveryTimeoutMs` end `failed`. */
+export async function failStaleQueuedSends(env: Env, ctx: ExecutionContext) {
+	if (!loadEmailConfig(env)?.outbound) return { failed: 0 }
+	const users = await env.REGISTRY.getByName('registry').listUsers()
+	let failed = 0
+	await Promise.all(
+		users.map(async (user) => {
+			const expired = await getUserCell(env, user.id).emailDeliveryFailStaleQueued()
+			for (const message of expired) {
+				failed++
+				announceDelivery(env, ctx, user, message, {
+					event: queuedDeliveryTimeoutEvent,
+					status: 'failed',
+					detail: queuedDeliveryTimeoutDetail,
+					at: null,
+				})
+			}
+		}),
+	)
+	return { failed }
+}
+
+function announceDelivery(
+	env: Env,
+	ctx: ExecutionContext,
+	user: { id: string; email: string },
+	message: EmailMessageRecord,
+	delivery: { event: string; status: string; detail: string | null; at: string | null },
+) {
+	ctx.waitUntil(
+		dispatchTopic(env, ctx.exports, user, 'email.message.delivery.updated', {
+			message: subscriptionMessage(message),
+			delivery,
+		}),
+	)
 }
 
 // ------------------------------------------------------------------ outbound

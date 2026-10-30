@@ -27,7 +27,7 @@ search, send and reply from `execute`; packages subscribe to inbound mail.
 | `emailSenderRuleSet` / `emailSenderRuleList` / `emailSenderRuleDelete`, `emailMessageRelease` | Route a sender or `@domain` to `inbox` or `quarantine`; release a quarantined message.                                                           |
 | `emailDestinationAdd` / `emailDestinationVerify` / `emailDestinationSetDefault` / … `Remove`  | Where you may send to: your account email (pre-verified), your own inboxes, and addresses confirmed with a 6-digit code (30 min).                |
 | `emailSend` / `emailReply`                                                                    | Send from one of your inboxes (text/HTML, attachments, allow-listed extra headers); reply threads `In-Reply-To`/`References` automatically.      |
-| `emailDeliveryEventList`                                                                      | Delivery events for a sent message (`queued`, then `sent` or `failed` from the bridge).                                                          |
+| `emailDeliveryEventList`                                                                      | Delivery events for a sent message (`queued`, then `sent` or `failed` from the bridge, or `failed` after 15 min with no report).                 |
 
 Inbox claiming, destination management and releasing are **direct-only**
 (`forbidden_from_runtime` from package code). Sends are bounded by
@@ -179,8 +179,12 @@ never sends on behalf of arbitrary addresses.
   (50 s by default). `compose.mail.yaml` sets `stop_grace_period` to
   `MAIL_BRIDGE_STOP_GRACE_PERIOD` (default `60s`); raise it if you raise those
   timeouts. A bridge killed outright (`SIGKILL`, crash, power loss) or unable to
-  reach Kody can still leave a message `queued`, because accepted mail is held
-  in memory only.
+  reach Kody loses the mail it was holding, because accepted mail is held in
+  memory only. Kody covers that case: the per-minute cron marks any outbound
+  send still `queued` 15 minutes after it was stored as `failed`
+  (`delivery_timeout`, "No delivery report from the outbound provider within 15
+  minutes of queueing."). `failed` is final, so a late report from the bridge
+  for that send is ignored and logged.
 - Logs are structured JSON with ids, sizes and status codes — never bodies or
   tokens.
 
