@@ -107,7 +107,8 @@ asks each `UserCell` to atomically claim due jobs (advancing `next_run_at`
 before running so a crash cannot double-fire), then executes the entry via
 `executeRun` with `kind: 'job'` and records a `job_run`.
 The same tick marks outbound email still `queued` after 15 minutes as
-`failed` (`failStaleQueuedSends`, `src/email/delivery-store.ts`).
+`failed` (`failStaleQueuedSends` in `src/email/service.ts`, which calls
+`failStaleQueuedDeliveries` in `src/email/delivery-store.ts`).
 
 ## Durable Objects
 
