@@ -404,9 +404,19 @@ export async function smokeEmail({ mcp, user }) {
 			'delivery history',
 			history,
 		)
+		const failedEvent = await postJson('/email/events/bridge', { messageId: sent.providerMessageId, event: 'failed' })
+		const lateEvent = await postJson('/email/events/bridge', { messageId: sent.providerMessageId, event: 'sent' })
+		assert(failedEvent.json.matched === 1 && lateEvent.json.matched === 0, 'failed is final', lateEvent.json)
+		const afterLate = await mcp.call('emailMessageGet', { id: sent.id })
+		assert(afterLate.deliveryStatus === 'failed', 'late report after failed is ignored', afterLate.deliveryStatus)
 		const outbox = await mcp.call('emailMessageList', { direction: 'outbound' })
 		assert(outbox.messages.length >= 3, 'outbound list', outbox.messages.length)
-		log('events', { unauthenticated: noAuth.status, matched: event.json.matched, status: afterEvent.deliveryStatus })
+		log('events', {
+			unauthenticated: noAuth.status,
+			matched: event.json.matched,
+			status: afterEvent.deliveryStatus,
+			afterLate: afterLate.deliveryStatus,
+		})
 
 		const everything = JSON.stringify([
 			status,
