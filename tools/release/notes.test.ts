@@ -52,6 +52,10 @@ test('the optional Release notes PR section is extracted without comments', () =
 	assert.equal(releaseNotesFromBody(body), 'Set `KODY_X` before upgrading.')
 	assert.equal(releaseNotesFromBody('## Release notes\n\n<!-- only a hint -->\n\n## Testing'), null)
 	assert.equal(releaseNotesFromBody('## Release notes\n\nNone\n'), null)
+	assert.equal(releaseNotesFromBody('## Release notes\n\nNone. Something else.'), null)
+	assert.equal(releaseNotesFromBody('## Release notes\n\nN/A docs only.'), null)
+	assert.equal(releaseNotesFromBody('## Release notes\n\n- Restart after upgrading.'), '- Restart after upgrading.')
+	assert.equal(releaseNotesFromBody('## Release notes\n\nNonexistent keys now fail.'), 'Nonexistent keys now fail.')
 	assert.equal(releaseNotesFromBody(null), null)
 })
 
