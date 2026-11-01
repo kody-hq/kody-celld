@@ -72,6 +72,10 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
+          # The raw `latest` rule below decides when `latest` is pushed; the
+          # default latest=auto would add it a second time for semver tags.
+          flavor: |
+            latest=false
           tags: |
             type=ref,event=branch,enable=${{ !inputs.tag }}
             type=sha,prefix=sha-
