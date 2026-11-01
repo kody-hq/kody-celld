@@ -94,7 +94,7 @@ export function changeKind(title: string): ChangeKind {
 
 /**
  * The optional `## Release notes` section of a PR body (any heading level),
- * minus HTML comments. Returns null when it is missing or left empty.
+ * minus HTML comments. Returns null when it is missing, left empty, or opens with None or N/A.
  */
 export function releaseNotesFromBody(body: string | null): string | null {
 	if (!body) return null
@@ -112,7 +112,8 @@ export function releaseNotesFromBody(body: string | null): string | null {
 		section.push(line)
 	}
 	const text = section.join('\n').trim()
-	if (!text || /^(none|n\/a|-)\.?$/i.test(text)) return null
+	// A lone `-` is a placeholder, but `- note` is a real list item.
+	if (!text || /^-\.?$/.test(text) || /^(none|n\/a)\.?(\s|$)/i.test(text)) return null
 	return withoutLongDashes(text)
 }
 
