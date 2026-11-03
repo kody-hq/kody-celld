@@ -5,6 +5,16 @@ Releases are now automated daily and their notes live in
 [GitHub Releases](https://github.com/kody-hq/kody-celld/releases); see
 [docs/contributing/releases.md](docs/contributing/releases.md).
 
+### Fleet deploys forward package app and secret provider settings
+
+`npm run fleet:render` (and so `fleet:deploy`) dropped `KODY_APP_BASE_URL`,
+`KODY_SECRET_PROVIDER_TIMEOUT_MS` and `KODY_SECRET_PROVIDER_CACHE_SECONDS`, so
+fleet nodes always ran with package apps off and the default secret provider
+timeout and cache. The renderer now forwards these three. **Fleet operators
+who already set `KODY_APP_BASE_URL` in their deploy environment will get
+package apps enabled on their next `fleet:deploy`**; unset it first if you do
+not want apps yet ([docs/package-apps.md](docs/package-apps.md)).
+
 ### mail-bridge drains accepted sends on shutdown
 
 Thanks to @brandonperfetti for the clear report (#141). On `SIGTERM` the
