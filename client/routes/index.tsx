@@ -22,12 +22,6 @@ import { AdminAudit } from './admin-audit.tsx'
 import { AdminConfig } from './admin-config.tsx'
 import { AdminUserDetail } from './admin-user-detail.tsx'
 import { AdminUsers } from './admin-users.tsx'
-import {
-	ConnectOauth,
-	ConnectOauthDone,
-	ConnectOauthError,
-} from './connect-oauth.tsx'
-import { ConnectSecretSet } from './connect-secret-set.tsx'
 import { ErrorPage } from './error-page.tsx'
 import { PackageFiles } from './package-files.tsx'
 import { PackagePreviewFiles } from './package-preview-files.tsx'
@@ -108,15 +102,13 @@ export function RouteView(
 			case 'signinLinkPassword':
 			case 'oauthAuthorize':
 			case 'oauthAuthorizeError':
-				throw new Error('Auth pages require the Start document renderer')
 			case 'connectOauth':
-				return <ConnectOauth data={data} />
 			case 'connectOauthDone':
-				return <ConnectOauthDone data={data} />
 			case 'connectOauthError':
-				return <ConnectOauthError data={data} />
 			case 'connectSecretSet':
-				return <ConnectSecretSet data={data} />
+				throw new Error(
+					'Auth and connect pages require the Start document renderer',
+				)
 			default: {
 				const _exhaustive: never = data
 				void _exhaustive

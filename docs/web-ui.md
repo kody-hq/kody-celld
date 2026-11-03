@@ -4,7 +4,8 @@ kody-celld ships a server-rendered web UI so that people who self-host it do
 not have to drive everything with `curl` and an admin token. It is built on the
 design system of [kody-hq/kody](https://github.com/kody-hq/kody), using
 TanStack Start, Redact, and Emotion for the public brand guide, community
-catalog/detail pages, sign-in, setup, one-time links, and MCP OAuth consent.
+catalog/detail pages, sign-in, setup, one-time links, MCP OAuth consent,
+integration connect, and secret-set handoffs.
 The remaining pages still use Remix 3 components and streaming SSR during
 migration.
 Typed URL builders are framework-independent, matching hosted's

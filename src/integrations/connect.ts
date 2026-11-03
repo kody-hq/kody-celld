@@ -1,4 +1,4 @@
-import { renderPage } from '#app/render.tsx'
+import { renderStartDocument } from '#app/start-render.ts'
 import type { Env } from '../env.ts'
 import { getUserCell } from '../execute/engine.ts'
 import { recordAudit } from '../lib/audit.ts'
@@ -17,10 +17,10 @@ export function connectUrl(baseUrl: string, userId: string, connectId: string, t
 	return `${baseUrl}/connect/oauth/${encodeURIComponent(userId)}/${encodeURIComponent(connectId)}?ticket=${encodeURIComponent(ticket)}`
 }
 
-function errorPage(error: unknown) {
+function errorPage(request: Request, error: unknown) {
 	const json = errorToJson(error)
 	const status = KodyError.fromUnknown(error)?.status ?? 500
-	return renderPage({
+	return renderStartDocument(request, {
 		title: 'Connection failed',
 		pathname: oauthCallbackPath,
 		status,
@@ -88,7 +88,7 @@ export async function handleOAuthConnect(
 			}
 			const record = await userCell.integrationGet(connect.name)
 			if (!record) throw new KodyError('integration_not_found', 'This integration no longer exists.', { status: 404 })
-			return renderPage({
+			return renderStartDocument(request, {
 				title: `Connect ${record.provider}`,
 				pathname: url.pathname,
 				headers: { 'referrer-policy': 'no-referrer' },
@@ -114,7 +114,7 @@ export async function handleOAuthConnect(
 		}
 		return new Response(null, { status: 405, headers: { allow: 'GET, POST' } })
 	} catch (error) {
-		return errorPage(error)
+		return errorPage(request, error)
 	}
 }
 
@@ -141,7 +141,7 @@ async function handleCallback(request: Request, env: Env, ctx: ExecutionContext,
 			details: { provider: record.provider, grantedScope: record.grantedScope, expiresAt: record.expiresAt },
 		})
 		notify(env, ctx, user, 'integration.auth.succeeded', record, null)
-		return renderPage({
+		return renderStartDocument(request, {
 			title: 'Connected',
 			pathname: oauthCallbackPath,
 			headers: { 'referrer-policy': 'no-referrer' },

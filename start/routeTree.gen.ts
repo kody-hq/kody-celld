@@ -14,7 +14,9 @@ import { Route as SetupRouteImport } from './routes/setup'
 import { Route as SigninRouteImport } from './routes/signin'
 import { Route as CommunityIndexRouteImport } from './routes/community.index'
 import { Route as CommunitySplatRouteImport } from './routes/community_.$'
+import { Route as ConnectSecretSetRouteImport } from './routes/connect.secret-set'
 import { Route as OauthAuthorizeRouteImport } from './routes/oauth.authorize'
+import { Route as ConnectOauthSplatRouteImport } from './routes/connect.oauth.$'
 import { Route as SigninLinkTokenRouteImport } from './routes/signin_.link.$token'
 
 const BrandGuideRoute = BrandGuideRouteImport.update({
@@ -42,9 +44,19 @@ const CommunitySplatRoute = CommunitySplatRouteImport.update({
   path: '/community/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ConnectSecretSetRoute = ConnectSecretSetRouteImport.update({
+  id: '/connect/secret-set',
+  path: '/connect/secret-set',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OauthAuthorizeRoute = OauthAuthorizeRouteImport.update({
   id: '/oauth/authorize',
   path: '/oauth/authorize',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConnectOauthSplatRoute = ConnectOauthSplatRouteImport.update({
+  id: '/connect/oauth/$',
+  path: '/connect/oauth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SigninLinkTokenRoute = SigninLinkTokenRouteImport.update({
@@ -58,8 +70,10 @@ export interface FileRoutesByFullPath {
   '/setup': typeof SetupRoute
   '/signin': typeof SigninRoute
   '/community/$': typeof CommunitySplatRoute
+  '/connect/secret-set': typeof ConnectSecretSetRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/community/': typeof CommunityIndexRoute
+  '/connect/oauth/$': typeof ConnectOauthSplatRoute
   '/signin/link/$token': typeof SigninLinkTokenRoute
 }
 export interface FileRoutesByTo {
@@ -67,8 +81,10 @@ export interface FileRoutesByTo {
   '/setup': typeof SetupRoute
   '/signin': typeof SigninRoute
   '/community/$': typeof CommunitySplatRoute
+  '/connect/secret-set': typeof ConnectSecretSetRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/community': typeof CommunityIndexRoute
+  '/connect/oauth/$': typeof ConnectOauthSplatRoute
   '/signin/link/$token': typeof SigninLinkTokenRoute
 }
 export interface FileRoutesById {
@@ -77,8 +93,10 @@ export interface FileRoutesById {
   '/setup': typeof SetupRoute
   '/signin': typeof SigninRoute
   '/community_/$': typeof CommunitySplatRoute
+  '/connect/secret-set': typeof ConnectSecretSetRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/community/': typeof CommunityIndexRoute
+  '/connect/oauth/$': typeof ConnectOauthSplatRoute
   '/signin_/link/$token': typeof SigninLinkTokenRoute
 }
 export interface FileRouteTypes {
@@ -88,8 +106,10 @@ export interface FileRouteTypes {
     | '/setup'
     | '/signin'
     | '/community/$'
+    | '/connect/secret-set'
     | '/oauth/authorize'
     | '/community/'
+    | '/connect/oauth/$'
     | '/signin/link/$token'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -97,8 +117,10 @@ export interface FileRouteTypes {
     | '/setup'
     | '/signin'
     | '/community/$'
+    | '/connect/secret-set'
     | '/oauth/authorize'
     | '/community'
+    | '/connect/oauth/$'
     | '/signin/link/$token'
   id:
     | '__root__'
@@ -106,8 +128,10 @@ export interface FileRouteTypes {
     | '/setup'
     | '/signin'
     | '/community_/$'
+    | '/connect/secret-set'
     | '/oauth/authorize'
     | '/community/'
+    | '/connect/oauth/$'
     | '/signin_/link/$token'
   fileRoutesById: FileRoutesById
 }
@@ -116,8 +140,10 @@ export interface RootRouteChildren {
   SetupRoute: typeof SetupRoute
   SigninRoute: typeof SigninRoute
   CommunitySplatRoute: typeof CommunitySplatRoute
+  ConnectSecretSetRoute: typeof ConnectSecretSetRoute
   OauthAuthorizeRoute: typeof OauthAuthorizeRoute
   CommunityIndexRoute: typeof CommunityIndexRoute
+  ConnectOauthSplatRoute: typeof ConnectOauthSplatRoute
   SigninLinkTokenRoute: typeof SigninLinkTokenRoute
 }
 
@@ -158,11 +184,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CommunitySplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/connect/secret-set': {
+      id: '/connect/secret-set'
+      path: '/connect/secret-set'
+      fullPath: '/connect/secret-set'
+      preLoaderRoute: typeof ConnectSecretSetRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/oauth/authorize': {
       id: '/oauth/authorize'
       path: '/oauth/authorize'
       fullPath: '/oauth/authorize'
       preLoaderRoute: typeof OauthAuthorizeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/connect/oauth/$': {
+      id: '/connect/oauth/$'
+      path: '/connect/oauth/$'
+      fullPath: '/connect/oauth/$'
+      preLoaderRoute: typeof ConnectOauthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/signin_/link/$token': {
@@ -180,8 +220,10 @@ const rootRouteChildren: RootRouteChildren = {
   SetupRoute: SetupRoute,
   SigninRoute: SigninRoute,
   CommunitySplatRoute: CommunitySplatRoute,
+  ConnectSecretSetRoute: ConnectSecretSetRoute,
   OauthAuthorizeRoute: OauthAuthorizeRoute,
   CommunityIndexRoute: CommunityIndexRoute,
+  ConnectOauthSplatRoute: ConnectOauthSplatRoute,
   SigninLinkTokenRoute: SigninLinkTokenRoute,
 }
 export const routeTree = rootRouteImport
