@@ -30,7 +30,13 @@ export async function renderStartDocument(
 	)) {
 		headers.set(name, value)
 	}
-	headers.set('content-security-policy', contentSecurityPolicyWithNonce(nonce))
+	headers.set(
+		'content-security-policy',
+		contentSecurityPolicyWithNonce(
+			nonce,
+			headers.get('content-security-policy') ?? undefined,
+		),
+	)
 	const body = response.body
 		? await openDocumentStream(response.body, { prependDoctype: false })
 		: null

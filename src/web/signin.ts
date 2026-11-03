@@ -7,7 +7,7 @@ import type { Env } from '../env.ts'
 import { getUserCell } from '../execute/engine.ts'
 import { recordAudit } from '../lib/audit.ts'
 import { KodyError } from '../lib/errors.ts'
-import { renderPage } from '#app/render.tsx'
+import { renderStartDocument } from '#app/start-render.ts'
 import { type PageFlash } from '#universal/loader-data.ts'
 import { readForm, redirect, safeNext } from './http.ts'
 import { passwordFormView, passwordProblem } from './password-form.ts'
@@ -75,7 +75,7 @@ export async function handleSignin(request: Request, env: Env, url: URL): Promis
 	if ((await registry(env).userCount()) === 0) return redirect('/setup')
 
 	if (request.method === 'GET') {
-		return signinPage(env, { next, flash: flashFromQuery(url) })
+		return signinPage(request, env, { next, flash: flashFromQuery(url) })
 	}
 	if (request.method !== 'POST') throw new KodyError('method_not_allowed', 'GET or POST only.', { status: 405 })
 	assertSameOrigin(request, env.KODY_PUBLIC_URL)
@@ -85,7 +85,7 @@ export async function handleSignin(request: Request, env: Env, url: URL): Promis
 	if (form.intent === 'password') {
 		const email = (form.email ?? '').trim().toLowerCase()
 		if (!email || !form.password)
-			return signinPage(env, { next: nextTarget, error: 'Email and password are required.', email })
+			return signinPage(request, env, { next: nextTarget, error: 'Email and password are required.', email })
 		const user = await registry(env).passwordSignin({ email, password: form.password })
 		if (!user) {
 			await recordAudit(env, {
@@ -94,7 +94,7 @@ export async function handleSignin(request: Request, env: Env, url: URL): Promis
 				target: email,
 				details: { method: 'password' },
 			})
-			return signinPage(env, { next: nextTarget, error: 'Wrong email or password.', email, status: 401 })
+			return signinPage(request, env, { next: nextTarget, error: 'Wrong email or password.', email, status: 401 })
 		}
 		return await finishSignin(request, env, user.id, 'password', nextTarget)
 	}
@@ -109,14 +109,17 @@ export async function handleSignin(request: Request, env: Env, url: URL): Promis
 				target: null,
 				details: { method: 'token' },
 			})
-			return signinPage(env, { next: nextTarget, error: 'That API token is not valid.', status: 401 })
+			return signinPage(request, env, { next: nextTarget, error: 'That API token is not valid.', status: 401 })
 		}
 		return await finishSignin(request, env, user.id, 'token', nextTarget)
 	}
 
 	if (form.intent === 'magic') {
 		if (!magicLinksAvailable(env)) {
-			return signinPage(env, { next: nextTarget, error: 'This server has no outbound email adapter configured.' })
+			return signinPage(request, env, {
+				next: nextTarget,
+				error: 'This server has no outbound email adapter configured.',
+			})
 		}
 		const email = (form.email ?? '').trim().toLowerCase()
 		// Always answer the same way so the form does not reveal which emails have accounts.
@@ -126,13 +129,13 @@ export async function handleSignin(request: Request, env: Env, url: URL): Promis
 			await emailMagicLink(env, user.email, link.url)
 			await recordAudit(env, { actor: 'anonymous', action: 'signin.magic_link', target: user.id, details: null })
 		}
-		return signinPage(env, {
+		return signinPage(request, env, {
 			next: nextTarget,
 			flash: { kind: 'ok', text: 'If that address has an account, a sign-in link is on its way (valid 15 minutes).' },
 		})
 	}
 
-	return signinPage(env, { next: nextTarget, error: 'Unknown sign-in method.' })
+	return signinPage(request, env, { next: nextTarget, error: 'Unknown sign-in method.' })
 }
 
 async function finishSignin(request: Request, env: Env, userId: string, method: string, next: string) {
@@ -154,7 +157,7 @@ async function handleSignout(request: Request, env: Env) {
 async function handleLink(request: Request, env: Env, token: string) {
 	const peek = await registry(env).signinTokenPeek(token)
 	if (!peek) {
-		return renderPage({
+		return renderStartDocument(request, {
 			title: 'Link expired',
 			pathname: '/signin',
 			status: 410,
@@ -173,7 +176,7 @@ async function handleLink(request: Request, env: Env, token: string) {
 	const title = kind === 'invite' ? 'Welcome to Kody' : 'Reset your password'
 	const pathname = new URL(request.url).pathname
 	const linkPage = (input: { submit: string; status?: number; flash?: PageFlash | null }) =>
-		renderPage({
+		renderStartDocument(request, {
 			title,
 			pathname,
 			status: input.status ?? 200,
@@ -221,7 +224,7 @@ async function handleLink(request: Request, env: Env, token: string) {
 async function handleSetup(request: Request, env: Env) {
 	if ((await registry(env).userCount()) > 0) return redirect('/signin')
 	const body = (error: string | null = null) =>
-		renderPage({
+		renderStartDocument(request, {
 			title: 'Set up Kody',
 			pathname: '/setup',
 			status: error ? 400 : 200,
@@ -271,6 +274,7 @@ function flashFromQuery(url: URL) {
 }
 
 function signinPage(
+	request: Request,
 	env: Env,
 	input: {
 		next: string
@@ -280,7 +284,7 @@ function signinPage(
 		flash?: PageFlash | null
 	},
 ) {
-	return renderPage({
+	return renderStartDocument(request, {
 		title: 'Sign in',
 		pathname: '/signin',
 		status: input.status ?? (input.error ? 400 : 200),

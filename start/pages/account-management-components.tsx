@@ -3,6 +3,7 @@ import type { CSSObject } from '@emotion/react'
 import { type ReactNode, type FormEvent } from 'react'
 import { formatDocumentTimestamp } from '../document-locale.ts'
 import { Route as Root } from '../routes/__root.tsx'
+import { getAuthInputCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
 /*
  * Account-area visual language, ported from the redesign prototype
@@ -200,4 +201,29 @@ export function TimestampValue(props: { value: string | null; fallback?: string 
 			{label}
 		</span>
 	)
+}
+
+/** `.field` */
+export const accountFieldCss: CSSObject = {
+	display: 'grid',
+	gap: '0.45rem',
+	minWidth: 0,
+}
+/** `.field input` — the shared auth-field treatment (green border + glow on
+ * focus). Inputs must carry `data-field-ring` so the unlayered global
+ * `:focus-visible` outline stands down. */
+export const accountInputCss: CSSObject = {
+	...getAuthInputCss(),
+	maxWidth: '100%',
+}
+export const accountTextareaCss: CSSObject = {
+	...accountInputCss,
+	resize: 'vertical' as const,
+	minHeight: '7rem',
+}
+/** `.field-note` */
+export const accountFieldNoteCss: CSSObject = {
+	margin: 0,
+	fontSize: '0.92rem',
+	color: colors.textMuted,
 }

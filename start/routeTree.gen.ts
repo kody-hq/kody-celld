@@ -10,12 +10,26 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as BrandGuideRouteImport } from './routes/brand-guide'
+import { Route as SetupRouteImport } from './routes/setup'
+import { Route as SigninRouteImport } from './routes/signin'
 import { Route as CommunityIndexRouteImport } from './routes/community.index'
 import { Route as CommunitySplatRouteImport } from './routes/community_.$'
+import { Route as OauthAuthorizeRouteImport } from './routes/oauth.authorize'
+import { Route as SigninLinkTokenRouteImport } from './routes/signin_.link.$token'
 
 const BrandGuideRoute = BrandGuideRouteImport.update({
   id: '/brand-guide',
   path: '/brand-guide',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SetupRoute = SetupRouteImport.update({
+  id: '/setup',
+  path: '/setup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SigninRoute = SigninRouteImport.update({
+  id: '/signin',
+  path: '/signin',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CommunityIndexRoute = CommunityIndexRouteImport.update({
@@ -28,35 +42,83 @@ const CommunitySplatRoute = CommunitySplatRouteImport.update({
   path: '/community/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OauthAuthorizeRoute = OauthAuthorizeRouteImport.update({
+  id: '/oauth/authorize',
+  path: '/oauth/authorize',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SigninLinkTokenRoute = SigninLinkTokenRouteImport.update({
+  id: '/signin_/link/$token',
+  path: '/signin/link/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/brand-guide': typeof BrandGuideRoute
+  '/setup': typeof SetupRoute
+  '/signin': typeof SigninRoute
   '/community/$': typeof CommunitySplatRoute
+  '/oauth/authorize': typeof OauthAuthorizeRoute
   '/community/': typeof CommunityIndexRoute
+  '/signin/link/$token': typeof SigninLinkTokenRoute
 }
 export interface FileRoutesByTo {
   '/brand-guide': typeof BrandGuideRoute
+  '/setup': typeof SetupRoute
+  '/signin': typeof SigninRoute
   '/community/$': typeof CommunitySplatRoute
+  '/oauth/authorize': typeof OauthAuthorizeRoute
   '/community': typeof CommunityIndexRoute
+  '/signin/link/$token': typeof SigninLinkTokenRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/brand-guide': typeof BrandGuideRoute
+  '/setup': typeof SetupRoute
+  '/signin': typeof SigninRoute
   '/community_/$': typeof CommunitySplatRoute
+  '/oauth/authorize': typeof OauthAuthorizeRoute
   '/community/': typeof CommunityIndexRoute
+  '/signin_/link/$token': typeof SigninLinkTokenRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/brand-guide' | '/community/$' | '/community/'
+  fullPaths:
+    | '/brand-guide'
+    | '/setup'
+    | '/signin'
+    | '/community/$'
+    | '/oauth/authorize'
+    | '/community/'
+    | '/signin/link/$token'
   fileRoutesByTo: FileRoutesByTo
-  to: '/brand-guide' | '/community/$' | '/community'
-  id: '__root__' | '/brand-guide' | '/community_/$' | '/community/'
+  to:
+    | '/brand-guide'
+    | '/setup'
+    | '/signin'
+    | '/community/$'
+    | '/oauth/authorize'
+    | '/community'
+    | '/signin/link/$token'
+  id:
+    | '__root__'
+    | '/brand-guide'
+    | '/setup'
+    | '/signin'
+    | '/community_/$'
+    | '/oauth/authorize'
+    | '/community/'
+    | '/signin_/link/$token'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   BrandGuideRoute: typeof BrandGuideRoute
+  SetupRoute: typeof SetupRoute
+  SigninRoute: typeof SigninRoute
   CommunitySplatRoute: typeof CommunitySplatRoute
+  OauthAuthorizeRoute: typeof OauthAuthorizeRoute
   CommunityIndexRoute: typeof CommunityIndexRoute
+  SigninLinkTokenRoute: typeof SigninLinkTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -66,6 +128,20 @@ declare module '@tanstack/react-router' {
       path: '/brand-guide'
       fullPath: '/brand-guide'
       preLoaderRoute: typeof BrandGuideRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/setup': {
+      id: '/setup'
+      path: '/setup'
+      fullPath: '/setup'
+      preLoaderRoute: typeof SetupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/signin': {
+      id: '/signin'
+      path: '/signin'
+      fullPath: '/signin'
+      preLoaderRoute: typeof SigninRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/community/': {
@@ -82,13 +158,31 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CommunitySplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/oauth/authorize': {
+      id: '/oauth/authorize'
+      path: '/oauth/authorize'
+      fullPath: '/oauth/authorize'
+      preLoaderRoute: typeof OauthAuthorizeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/signin_/link/$token': {
+      id: '/signin_/link/$token'
+      path: '/signin/link/$token'
+      fullPath: '/signin/link/$token'
+      preLoaderRoute: typeof SigninLinkTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   BrandGuideRoute: BrandGuideRoute,
+  SetupRoute: SetupRoute,
+  SigninRoute: SigninRoute,
   CommunitySplatRoute: CommunitySplatRoute,
+  OauthAuthorizeRoute: OauthAuthorizeRoute,
   CommunityIndexRoute: CommunityIndexRoute,
+  SigninLinkTokenRoute: SigninLinkTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

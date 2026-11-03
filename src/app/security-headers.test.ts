@@ -40,6 +40,20 @@ describe('contentSecurityPolicyWithNonce', () => {
 			)
 		}
 	})
+	it('preserves a page-specific form-action policy while adding the document nonce', () => {
+		const custom = contentSecurityPolicyWithFormAction(['alice:'])
+		const nonce = '0123456789abcdef0123456789abcdef'
+		const result = contentSecurityPolicyWithNonce(nonce, custom)
+		assert.equal(
+			directive(result, 'form-action'),
+			directive(custom, 'form-action'),
+		)
+		assert.equal(
+			directive(result, 'script-src'),
+			`script-src 'self' 'nonce-${nonce}'`,
+		)
+		assert.equal(result.split('; ').length, custom.split('; ').length)
+	})
 })
 
 describe('contentSecurityPolicyWithFormAction', () => {

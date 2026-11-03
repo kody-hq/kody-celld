@@ -3,9 +3,10 @@
 kody-celld ships a server-rendered web UI so that people who self-host it do
 not have to drive everything with `curl` and an admin token. It is built on the
 design system of [kody-hq/kody](https://github.com/kody-hq/kody), using
-TanStack Start, Redact, and Emotion for the public brand guide and community
-catalog/detail pages. The remaining pages still use Remix 3 components and
-streaming SSR during migration.
+TanStack Start, Redact, and Emotion for the public brand guide, community
+catalog/detail pages, sign-in, setup, one-time links, and MCP OAuth consent.
+The remaining pages still use Remix 3 components and streaming SSR during
+migration.
 Typed URL builders are framework-independent, matching hosted's
 `packages/worker/universal/routes.ts`; request handlers still own method
 dispatch. Hosted Kody uses TanStack Start with `@tanstack/redact` replacing
@@ -18,7 +19,9 @@ JavaScript disabled. The legacy browser bundle hydrates small islands (copy
 buttons, double-confirm buttons, the header menu, toasts); Start hydrates its
 documents. Start serializes the server's timestamp locale and time zone so
 hydration preserves the existing server display even in a different browser
-locale. The MCP surface is
+locale. Auth pages retain their native forms and server-owned session,
+CSRF, and OAuth validation. Request-scoped CSP nonces also preserve the
+consent page's validated redirect `form-action` source. The MCP surface is
 unchanged — the UI is a convenience layer over the same cells and
 capabilities.
 
