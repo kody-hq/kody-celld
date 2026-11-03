@@ -71,4 +71,31 @@ describe('matchAccountDetailPath', () => {
 		assert.doesNotThrow(() => matchAccountDetailPath(new URL('/account/packages/%E0%A4%A', 'http://localhost')))
 		assert.equal(matchAccountDetailPath(new URL('/account/packages/%E0%A4%A', 'http://localhost')), null)
 	})
+
+	it('matches literal browser paths without depending on a URL builder', () => {
+		const cases: Array<[string, ReturnType<typeof matchAccountDetailPath>]> = [
+			['/account/packages/%40example%2Fpkg?tab=files', { kind: 'package', name: '@example/pkg' }],
+			['/account/jobs/pkg%23tick', { kind: 'job', jobId: 'pkg#tick' }],
+			['/account/packages/p/files', { kind: 'packageFiles', name: 'p', relativePath: null }],
+			['/account/packages/p/files/', { kind: 'packageFiles', name: 'p', relativePath: '' }],
+			[
+				'/account/packages/p/files/docs/100%2525.txt',
+				{ kind: 'packageFiles', name: 'p', relativePath: 'docs/100%25.txt' },
+			],
+			[
+				'/account/package-preview/a%2Fb/files/x%2Fy',
+				{ kind: 'packagePreviewFiles', source: 'a/b', relativePath: 'x/y' },
+			],
+			['/account/packages/p/files//x/', { kind: 'packageFiles', name: 'p', relativePath: '/x/' }],
+			['/account/packages/p/', null],
+			['/account/jobs/p/x', null],
+			['/ACCOUNT/packages/p', null],
+			['/account/packages/p/files/%E0%A4%A', null],
+			['/account/package-preview/%E0%A4%A/files/x', null],
+			['/account/jobs/%E0%A4%A', null],
+		]
+		for (const [path, expected] of cases) {
+			assert.deepEqual(matchAccountDetailPath(new URL(path, 'http://localhost')), expected, path)
+		}
+	})
 })
