@@ -80,15 +80,15 @@ export async function serveApp(input: {
 	const { env, target, user } = input
 	const publicUrl = env.KODY_PUBLIC_URL.replace(/\/$/, '')
 	const userCell = getUserCell(env, user.id)
-	// Only /_assets/* needs the files; page requests read the metadata and build (or reuse) the graph.
+	// /_assets/* reads the metadata and the one requested file; page requests build (or reuse) the graph.
 	if (isAssetPath(target.restPath)) {
-		const saved = await userCell.packageGet(target.packageName)
-		const assetApp = saved?.manifest.app
-		if (!saved || !assetApp) return appNotFoundPage()
+		const meta = await userCell.packageMeta(target.packageName)
+		const assetApp = meta?.manifest.app
+		if (!meta || !assetApp) return appNotFoundPage()
 		return serveAppAsset({
 			request: input.request,
 			restPath: target.restPath,
-			files: saved.files,
+			loadFile: (path) => userCell.packageFileBytes(meta.name, path),
 			assetsDir: assetApp.assets,
 		})
 	}

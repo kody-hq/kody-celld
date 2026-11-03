@@ -6,6 +6,7 @@ import {
 	resolvePackageExport,
 	type PackageFiles,
 } from '../packages/manifest.ts'
+import { packageTextFiles } from '../packages/package-file-content.ts'
 import {
 	lexComputedDynamicImports,
 	lexImportSpecifiers,
@@ -405,7 +406,9 @@ export async function buildModuleGraph(input: {
 		}
 	}
 
-	const includeFiles = async (files: PackageFiles, toPath: (file: string) => string) => {
+	const includeFiles = async (packageFiles: PackageFiles, toPath: (file: string) => string) => {
+		// Binary files (images, fonts, wasm assets) never become modules; only `/_assets/*` reads them.
+		const files = packageTextFiles(packageFiles)
 		const jsx = jsxOptionsFromFiles(files)
 		// Register module paths first so relative-import checks see sibling
 		// modules; files that never become modules (docs, .d.ts) are not targets.

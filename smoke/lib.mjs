@@ -266,6 +266,7 @@ export class Browser {
 								),
 							),
 							setCookies: res.headers['set-cookie'] ?? [],
+							bytes: Buffer.concat(chunks),
 							text: Buffer.concat(chunks).toString('utf8'),
 						}),
 					)

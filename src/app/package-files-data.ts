@@ -16,6 +16,11 @@ import {
 import { type ServerTimingEntry } from '#worker/server-timing.ts'
 import { createInProcessHighlightFetcher } from '../highlight/binding.ts'
 import { packageFileViewMaxChars } from '../packages/install.ts'
+import type { PackageFiles } from '../packages/manifest.ts'
+import {
+	isBinaryPackageFile,
+	packageFileSize,
+} from '../packages/package-file-content.ts'
 
 /**
  * Server half of kody's files explorer (kody: packages/worker/src/app/package-files-data.ts).
@@ -28,18 +33,28 @@ export function inProcessHighlightEnv(): HighlightEnv {
 }
 
 /**
- * kody-celld: kody previews images, audio and video through its `/raw/` route. Packages here
- * hold UTF-8 text only and there is no raw route, so a file kody would show as media (a real
- * `.svg`, a text file named `.png`) is shown as text instead of hitting the explorer's media
- * branch, which requires a raw href.
+ * kody-celld: kody previews images, audio and video through its `/raw/` route. There is no
+ * raw route here, so a binary file (#85) shows kody's binary placeholder with its real size,
+ * and a text file kody would show as media (a real `.svg`, a text file named `.png`) is shown
+ * as text instead of hitting the explorer's media branch, which requires a raw href.
  */
 export function withoutMediaPreview(
 	view: PackageFilesView,
-	files: Record<string, string>,
+	files: PackageFiles,
 ): PackageFilesView {
-	if (!view.contentPath || !isPackageFilesMediaKind(view.contentKind))
-		return view
-	const content = files[view.contentPath] ?? ''
+	if (!view.contentPath) return view
+	const file = files[view.contentPath]
+	if (isBinaryPackageFile(file)) {
+		return {
+			...view,
+			content: null,
+			language: null,
+			contentKind: 'binary',
+			contentByteLength: packageFileSize(file),
+		}
+	}
+	if (!isPackageFilesMediaKind(view.contentKind)) return view
+	const content = file ?? ''
 	const language = languageFromFilePath(view.contentPath)
 	return {
 		...view,
@@ -47,6 +62,16 @@ export function withoutMediaPreview(
 		language,
 		contentKind: contentKindFromLanguage(language),
 	}
+}
+
+/** kody's explorer reads a path → text map; binary files enter it empty (only their path is shown). */
+function explorerFiles(files: PackageFiles): Record<string, string> {
+	return Object.fromEntries(
+		Object.entries(files).map(([path, content]) => [
+			path,
+			isBinaryPackageFile(content) ? '' : content,
+		]),
+	)
 }
 
 /**
@@ -126,7 +151,7 @@ async function toLoaderData(input: {
 
 export async function loadPackageFilesData(input: {
 	env: HighlightEnv
-	files: Record<string, string>
+	files: PackageFiles
 	selectedPath: string
 	title: string
 	backHref: string
@@ -141,7 +166,10 @@ export async function loadPackageFilesData(input: {
 		input.selectedPath.split('/').map(encodeURIComponent).join('/'),
 	)
 	if (selectedPath === null) return null
-	const view = buildPackageFilesView({ files: input.files, selectedPath })
+	const view = buildPackageFilesView({
+		files: explorerFiles(input.files),
+		selectedPath,
+	})
 	if (!view) return null
 	return toLoaderData({
 		...input,

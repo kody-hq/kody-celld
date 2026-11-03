@@ -49,6 +49,39 @@ Rules enforced by `src/packages/manifest.ts` on `packageSave`:
   time packages simply `import` each other via `kody:@scope/pkg/...` (there is
   no install step).
 
+## Binary files
+
+A package can hold binary files (images, fonts, wasm, icons) next to its text
+files, for example for [`kody.app.assets`](./package-apps.md#assets). In a file
+map a text file is a string and a binary file is `{ "base64": "<standard,
+padded base64>" }`:
+
+```json
+{
+  "package.json": "{ \"name\": \"@me/site\", ... }",
+  "public/logo.png": { "base64": "iVBORw0KGgoAAAANSUhEUgAA..." }
+}
+```
+
+- `packageSave`, JSON-map installs, and `packageGet({ includeFiles: true })`
+  use this shape, so a file map read back can be saved again unchanged.
+- Installs from a tarball or git keep any file that is not UTF-8 as a binary
+  file. A code or JSON module, `README.md` or `AGENTS.md` that is not UTF-8 is
+  skipped with a warning, and `packageSave` refuses `{ base64 }` for those
+  paths: binaries never enter the module graph.
+- The caps count bytes (UTF-8 for text, decoded bytes for binary files):
+  each file ≤ ~1.8 MiB, all files ≤ 4 MiB.
+- `packagePreview({ path })` and the files explorer describe a binary file by
+  its size (`binary: true`, no content).
+- An empty `{ "base64": "" }` is saved as an empty text file (zero bytes are
+  valid UTF-8).
+- Storage: the raw bytes sit in the `package_files.bytes` column (added by an
+  additive migration; text rows are unchanged). A `CHECK` keeps each row to
+  one kind of file: text in `content` with `bytes` NULL, or non-empty `bytes`
+  with `content` empty. An older image ignores that
+  column, so after a rollback binary files read as empty text files, and a
+  re-save from that image drops their bytes.
+
 ## Subscriptions
 
 Declare package event handlers under `kody.subscriptions`, keyed by topic.
@@ -281,13 +314,14 @@ The same preview → install / fork flow is on the account **Packages** page. Ru
   Names listed by name or `*.suffix` skip the lookup. The fast-rebinding limit
   in [mcp-servers.md](./mcp-servers.md) applies here too.
 - Limits: 8 MiB download, 24 MiB after gunzip / unpacked git tree, 400 files,
-  20 s. `.git/` and `node_modules/` are skipped, non-UTF-8 files are skipped
-  with a warning.
+  20 s. `.git/` and `node_modules/` are skipped; non-UTF-8 files are kept as
+  [binary files](#binary-files), except code and JSON modules, `README.md` and
+  `AGENTS.md`, which are skipped with a warning.
 - `packagePreview` returns declared surfaces (jobs, webhooks, subscriptions,
   secretProvider, dependencies) as "permissions" for human review — these are
   not a separate ACL, and installing still does not copy secrets.
 - Pass `path` (an entry of `fileList`) to `packagePreview` to read that file
-  before installing: the result gains `file: { path, bytes, content, truncated }`
+  before installing: the result gains `file: { path, bytes, content, truncated, binary }`
   (content capped at 200,000 characters; unknown paths fail with
   `package_file_not_found`). On the web Packages page, **Preview → Browse files** opens the package in the
   files explorer (tree, highlighted code, rendered Markdown) before you install

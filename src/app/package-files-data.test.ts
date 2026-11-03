@@ -5,6 +5,7 @@ import {
 	loadPackageFilesData,
 } from '#app/package-files-data.ts'
 import { packageFileViewMaxChars } from '../packages/install.ts'
+import type { PackageFiles } from '../packages/manifest.ts'
 
 const files = {
 	'README.md': '# Demo\n\nRun it:\n\n```ts\nconst x = 1\n```\n',
@@ -12,11 +13,13 @@ const files = {
 	'icons/logo.svg':
 		'<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0h1v1z"/></svg>\n',
 	'big.ts': 'export const x = 1\n'.repeat(3000),
+	'icons/logo.png': { base64: 'iVBORw0KGgoAAP8=' },
+	'data/blob.dat': { base64: 'AAEC/w==' },
 }
 
 function load(
 	selectedPath: string,
-	overrides: Partial<{ files: Record<string, string> }> = {},
+	overrides: Partial<{ files: PackageFiles }> = {},
 ) {
 	return loadPackageFilesData({
 		env: inProcessHighlightEnv(),
@@ -67,6 +70,8 @@ describe('loadPackageFilesData', () => {
 		assert.equal(data.contentFences?.[0]?.plain, false)
 		assert.deepEqual(data.paths, [
 			'big.ts',
+			'data/blob.dat',
+			'icons/logo.png',
 			'icons/logo.svg',
 			'README.md',
 			'src/index.ts',
@@ -90,6 +95,19 @@ describe('loadPackageFilesData', () => {
 		assert.ok(data?.content?.startsWith('<svg'))
 		assert.equal(data?.contentHighlighted?.plain, false)
 		assert.equal(data?.mediaHref, null)
+	})
+
+	it('binary files show the binary placeholder with their real size and no content', async () => {
+		for (const [path, bytes] of [
+			['icons/logo.png', 11],
+			['data/blob.dat', 4],
+		] as const) {
+			const data = await load(path)
+			assert.equal(data?.contentKind, 'binary', path)
+			assert.equal(data?.contentByteLength, bytes, path)
+			assert.equal(data?.content, null, path)
+			assert.equal(data?.mediaHref, null, path)
+		}
 	})
 
 	it('directory without README lists children', async () => {

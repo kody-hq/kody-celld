@@ -55,7 +55,7 @@ export function defaultPublisher(email: string) {
 /** Rewrites package.json#name so an installed copy can live beside the original. */
 export function renamePackageFiles(files: PackageFiles, name: string): PackageFiles {
 	const manifestText = files['package.json']
-	if (manifestText === undefined) throw new KodyError('invalid_package', 'Listing has no package.json.')
+	if (typeof manifestText !== 'string') throw new KodyError('invalid_package', 'Listing has no package.json.')
 	let parsed: unknown
 	try {
 		parsed = JSON.parse(manifestText)

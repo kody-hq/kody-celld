@@ -39,7 +39,9 @@ import {
 	countPackageFiles,
 	deletePackageFiles,
 	migrateUserPackageFiles,
+	normalizePackageFiles,
 	packageFilesSchema,
+	readPackageFileBytes,
 	readPackageFiles,
 	readUserPackageRow,
 	replacePackageFiles,
@@ -1222,13 +1224,7 @@ export class UserCell extends DurableObject<Env> {
 	// --------------------------------------------------------------- packages
 
 	async packageSave(input: { files: PackageFiles; source?: string | undefined }): Promise<PackageSummary> {
-		const files: PackageFiles = {}
-		for (const [path, content] of Object.entries(input.files ?? {})) {
-			if (typeof content !== 'string') {
-				throw new KodyError('invalid_package', `File "${path}" must be a string.`)
-			}
-			files[path.replace(/^\.\//, '')] = content
-		}
+		const files = normalizePackageFiles(input.files)
 		assertPackageFileSizes(files)
 		const manifest = parsePackageManifest(files)
 		for (const [jobName, job] of Object.entries(manifest.jobs)) {
@@ -1405,6 +1401,11 @@ export class UserCell extends DurableObject<Env> {
 		const meta = readPackageMeta(this.ctx.storage.sql, name)
 		if (!meta) return null
 		return { ...meta, files: readPackageFiles(this.ctx.storage.sql, meta.name) }
+	}
+
+	/** One file's bytes (UTF-8 for text) without reading the rest of the package: `/_assets/*`. */
+	async packageFileBytes(name: string, path: string): Promise<Uint8Array | null> {
+		return readPackageFileBytes(this.ctx.storage.sql, name, path)
 	}
 
 	async packageDelete(name: string) {

@@ -1,5 +1,6 @@
 import { KodyError } from '../lib/errors.ts'
 import type { PackageFiles } from './manifest.ts'
+import { archiveFileContent } from './package-file-content.ts'
 import { inflateZlibAt } from './zlib-inflate.ts'
 
 export type FetchLike = (input: string, init: RequestInit) => Promise<Response>
@@ -10,7 +11,6 @@ export type FetchLike = (input: string, init: RequestInit) => Promise<Response>
  * map — no working tree, no credentials, no push.
  */
 
-const utf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: false })
 const utf8Loose = new TextDecoder('utf-8')
 const encoder = new TextEncoder()
 
@@ -526,7 +526,7 @@ export function filesFromGitObjects(
 				walk(entry.sha, path)
 				continue
 			}
-			// Regular files / executable / symlink — package files are text blobs only.
+			// Regular files / executable / symlink.
 			if (!(entry.mode === '100644' || entry.mode === '100755' || entry.mode === '120000')) continue
 			const blob = objects.get(entry.sha)
 			if (!blob || blob.type !== OBJ_BLOB) {
@@ -544,11 +544,8 @@ export function filesFromGitObjects(
 			if (totalBytes > limits.maxTotalBytes) {
 				throw new KodyError('invalid_package', `Repository contents exceed ${limits.maxTotalBytes} bytes.`)
 			}
-			try {
-				files[path] = utf8.decode(blob.content)
-			} catch {
-				warnings.push(`Skipped ${path}: not UTF-8 text (packages hold text files only).`)
-			}
+			const content = archiveFileContent(path, blob.content, warnings)
+			if (content !== null) files[path] = content
 		}
 	}
 	walk(treeSha, '')
