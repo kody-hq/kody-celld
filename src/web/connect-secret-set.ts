@@ -84,12 +84,13 @@ export function isConnectSecretSetRoute(pathname: string) {
 }
 
 async function renderConnectSecretSet(
+	request: Request,
 	url: URL,
 	session: WebSession,
 	setup: ConnectSecretSetSetup,
 	input: { error?: string | null; saved?: boolean; canSubmit?: boolean; status?: number } = {},
 ) {
-	const { renderPage } = await import('#app/render.tsx')
+	const { renderStartDocument } = await import('#app/start-render.ts')
 	const data: ConnectSecretSetPageData = {
 		page: 'connectSecretSet',
 		csrf: session.csrf,
@@ -98,7 +99,7 @@ async function renderConnectSecretSet(
 		saved: input.saved ?? false,
 		canSubmit: input.canSubmit ?? true,
 	}
-	return renderPage({
+	return renderStartDocument(request, {
 		title: data.saved ? 'Secret saved' : 'Set secret',
 		pathname: url.pathname,
 		session: appSessionOf(session),
@@ -185,8 +186,8 @@ export async function handleConnectSecretSet(request: Request, env: Env, url: UR
 	if (parsed.kind === 'missing_name') {
 		return redirect(routes.accountSecrets.href(), clearSavedCookie ? { 'set-cookie': clearSavedCookie } : {})
 	}
-	const renderPage = async (setup: ConnectSecretSetSetup, input: Parameters<typeof renderConnectSecretSet>[3] = {}) =>
-		withSetCookie(await renderConnectSecretSet(url, session, setup, input), clearSavedCookie)
+	const renderPage = async (setup: ConnectSecretSetSetup, input: Parameters<typeof renderConnectSecretSet>[4] = {}) =>
+		withSetCookie(await renderConnectSecretSet(request, url, session, setup, input), clearSavedCookie)
 	if (parsed.error) {
 		return renderPage(parsed.setup, {
 			error: parsed.error,

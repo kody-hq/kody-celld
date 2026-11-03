@@ -26,7 +26,7 @@ function render(pathname = '/brand-guide', displayName?: string) {
 }
 
 describe('Start document renderer', () => {
-	it('renders native auth forms without site header or legacy scripts', async () => {
+	it('renders native auth and connect forms without site header or legacy scripts', async () => {
 		const cases: Array<{ path: string; data: AppLoaderData; text: string }> = [
 			{
 				path: '/signin',
@@ -57,6 +57,57 @@ describe('Start document renderer', () => {
 				},
 				text: 'Cannot authorize this client',
 			},
+			{
+				path: '/connect/oauth/fixture-user/fixture-connect',
+				data: {
+					page: 'connectOauth',
+					name: 'fixture',
+					provider: 'Fixture provider',
+					email: 'fixture@example.invalid',
+					hosts: ['api.example.invalid'],
+					scopes: ['read'],
+					description: 'Local fixture',
+					ticket: 'fixture-ticket',
+					expiresAt: '2026-01-01T00:00:00.000Z',
+				},
+				text: 'name="ticket"',
+			},
+			{
+				path: '/connect/oauth/callback',
+				data: {
+					page: 'connectOauthDone',
+					name: 'fixture',
+					provider: 'Fixture provider',
+					email: 'fixture@example.invalid',
+				},
+				text: 'Connected fixture',
+			},
+			{
+				path: '/connect/oauth/callback',
+				data: {
+					page: 'connectOauthError',
+					error: 'invalid_request',
+					message: 'Invalid provider',
+				},
+				text: 'Invalid provider',
+			},
+			{
+				path: '/connect/secret-set',
+				data: {
+					page: 'connectSecretSet',
+					csrf: 'fixture-csrf',
+					name: 'fixture',
+					description: null,
+					scope: 'user',
+					packageId: null,
+					hosts: [],
+					unsupportedNote: null,
+					error: null,
+					saved: false,
+					canSubmit: true,
+				},
+				text: 'type="password"',
+			},
 		]
 		for (const { path, data, text } of cases) {
 			const response = await renderStartDocument(
@@ -69,6 +120,16 @@ describe('Start document renderer', () => {
 			assert.ok(html.includes(text), path)
 			assert.ok(!html.includes('<header'), path)
 			assert.ok(!html.includes('/build/client-entry.js'), path)
+			if (data.page === 'connectOauth') {
+				assert.ok(html.includes('<form method="post"'), path)
+				assert.ok(html.includes('type="hidden" name="ticket"'), path)
+			}
+			if (data.page === 'connectSecretSet') {
+				assert.ok(html.includes('name="csrf"'), path)
+				const input = html.match(/<input\b[^>]*\bname="value"[^>]*>/)?.[0]
+				assert.ok(input, path)
+				assert.ok(!/\svalue=/.test(input), path)
+			}
 		}
 	})
 	it('preserves OAuth consent form-action and request nonce together', async () => {
