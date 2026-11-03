@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { describe, it } from 'node:test'
+import { describe, it, mock } from 'node:test'
 import { PendingAppGateway } from './pending-gateway.ts'
 
 const event = (n: number) => ({ n })
@@ -19,21 +19,27 @@ describe('PendingAppGateway', () => {
 		assert.deepEqual(pending.take('run_1'), [])
 	})
 
-	it('keeps the newest events per request and the newest requests', () => {
-		const pending = new PendingAppGateway<{ n: number }>({ maxRuns: 2, maxEvents: 2 })
-		for (const n of [1, 2, 3]) pending.hold('app_a', event(n))
-		pending.hold('app_b', event(1))
-		pending.hold('app_c', event(1))
-		assert.deepEqual(pending.take('app_a'), [], 'oldest request dropped')
-		assert.deepEqual(pending.take('app_b'), [event(1)])
-		assert.deepEqual(pending.take('app_c'), [event(1)])
+	it('keeps the newest 100 events per request and the newest 64 requests', () => {
+		const pending = new PendingAppGateway<{ n: number }>()
+		for (let n = 1; n <= 101; n++) pending.hold('app_a', event(n))
+		const kept = pending.take('app_a')
+		assert.equal(kept.length, 100)
+		assert.deepEqual(kept[0], event(2))
+		for (let id = 0; id <= 64; id++) pending.hold(`app_${id}`, event(id))
+		assert.deepEqual(pending.take('app_0'), [], 'oldest request dropped')
+		assert.deepEqual(pending.take('app_1'), [event(1)])
+		assert.deepEqual(pending.take('app_64'), [event(64)])
 	})
 
 	it('drops held events after the ttl', () => {
-		let now = 0
-		const pending = new PendingAppGateway<{ n: number }>({ ttlMs: 1000, now: () => now })
-		pending.hold('app_1', event(1))
-		now = 1001
-		assert.deepEqual(pending.take('app_1'), [])
+		mock.timers.enable({ apis: ['Date'] })
+		try {
+			const pending = new PendingAppGateway<{ n: number }>()
+			pending.hold('app_1', event(1))
+			mock.timers.tick(16 * 60_000 + 1)
+			assert.deepEqual(pending.take('app_1'), [])
+		} finally {
+			mock.timers.reset()
+		}
 	})
 })
