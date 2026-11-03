@@ -17,6 +17,7 @@ import {
 	type SecretScope,
 } from './placeholders.ts'
 import { normalizeProviderHosts } from './provider-store.ts'
+import { replaceBodyPlaceholders } from './body-placeholders.ts'
 import { LANDING_REDIRECTED_HEADER, LANDING_URL_HEADER } from './gateway-landing.ts'
 
 const RUN_HEADER = 'x-kody-run'
@@ -319,13 +320,14 @@ export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 					)
 				}
 			}
-			let injectedBody: BodyInit | null = hop.body
-			const text = bodyText
-			if (text !== null && [...replacements.keys()].some((placeholder) => text.includes(placeholder))) {
-				// A JSON body gets each value JSON-string-escaped, so a quote or a
-				// newline in a secret cannot break or extend the document.
-				injectedBody = replaceSecretPlaceholders(text, jsonBody ? jsonStringEscaped(replacements) : replacements)
-			}
+			// Placeholders are filled byte-wise, so every byte outside them (a
+			// binary multipart part, for example) is sent unchanged. A JSON body
+			// gets each value JSON-string-escaped, so a quote or a newline in a
+			// secret cannot break or extend the document.
+			const injectedBody: BodyInit | null =
+				hop.body !== null && bodyText !== null
+					? (replaceBodyPlaceholders(hop.body, jsonBody ? jsonStringEscaped(replacements) : replacements) ?? hop.body)
+					: hop.body
 			return forward(hop, injectedUrl, injectedHeaders, injectedBody)
 		}
 
