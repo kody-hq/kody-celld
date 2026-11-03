@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { appMountPath, appOrigin, appUrl, isAppOriginHost, matchAppRequest, readAppConfig } from './app-url.ts'
+import {
+	appMountPath,
+	appOrigin,
+	appReturnPath,
+	appUrl,
+	isAppOriginHost,
+	matchAppRequest,
+	readAppConfig,
+} from './app-url.ts'
 
 const publicUrl = 'https://kody.example.com'
 const uid = 'user_0123456789abcdef0123456789abcdef'
@@ -156,5 +164,36 @@ describe('matchAppRequest (subdomain mode)', () => {
 		assert.deepEqual(matchAppRequest(c, new URL('https://apps.example.com/packages/notes')), { kind: 'not-found' })
 		assert.deepEqual(matchAppRequest(c, new URL('https://bob.apps.example.com/packages/notes')), { kind: 'not-found' })
 		assert.deepEqual(matchAppRequest(c, new URL(`https://${label}.apps.example.com/mcp`)), { kind: 'not-found' })
+	})
+})
+
+describe('appReturnPath', () => {
+	const mount = `/u/${uid}/packages/notes`
+	it('keeps a mount-relative path and query, normalized', () => {
+		assert.equal(appReturnPath(mount, '/'), '/')
+		assert.equal(appReturnPath(mount, '/item/5?tab=2'), '/item/5?tab=2')
+		assert.equal(appReturnPath(mount, '/a/./b/../c'), '/a/c')
+		assert.equal(appReturnPath(mount, '/item#top'), '/item')
+		assert.equal(appReturnPath('/packages/@s/notes', '/x/y'), '/x/y')
+	})
+	it('refuses anything that is not a path under the mount', () => {
+		for (const raw of [
+			'',
+			'item/5',
+			'//evil.example/x',
+			'/\\evil.example',
+			'/a\\b',
+			'https://evil.example/',
+			'javascript:alert(1)',
+			'/..',
+			'/../notes-two/x',
+			'/%2e%2e/other',
+			'/a/../../x',
+			'/a\nb',
+			'/a\tb',
+			`/${'a'.repeat(2048)}`,
+		]) {
+			assert.equal(appReturnPath(mount, raw), null, JSON.stringify(raw))
+		}
 	})
 })

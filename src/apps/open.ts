@@ -4,7 +4,7 @@ import { KodyError } from '../lib/errors.ts'
 import { packageNamePattern } from '../packages/manifest.ts'
 import { redirect } from '../web/http.ts'
 import { readWebSession } from '../web/session.ts'
-import { appUrl, readAppConfig } from './app-url.ts'
+import { appMountPath, appReturnPath, appUrl, readAppConfig } from './app-url.ts'
 import { handoffParam } from './forward.ts'
 import { decideAppsOpen } from './open-decision.ts'
 import { mintHandoff } from './tokens.ts'
@@ -13,7 +13,10 @@ export function isAppsOpenRoute(pathname: string) {
 	return pathname === '/apps/open'
 }
 
-/** `GET /apps/open?package=<name>`: the only way into a package app (mints the handoff). */
+/**
+ * `GET /apps/open?package=<name>[&path=<mount-relative path>]`: the only way into a package app
+ * (mints the handoff). `path` is where the app opens; it is signed into the handoff.
+ */
 export async function handleAppsOpen(request: Request, env: Env, url: URL): Promise<Response> {
 	const apps = readAppConfig(env)
 	if (!apps) {
@@ -34,17 +37,30 @@ export async function handleAppsOpen(request: Request, env: Env, url: URL): Prom
 			status: 500,
 		})
 	}
+	const returnPath = appReturnPath(
+		appMountPath(apps.config, session.user.id, pkg.name),
+		url.searchParams.get('path') ?? '/',
+	)
+	if (!returnPath) {
+		throw new KodyError('invalid_app_path', 'path must be a path inside the app, starting with a single "/".', {
+			status: 400,
+		})
+	}
 	// The handoff is bound to the browser by the app origin's `kody_app_state` cookie (login-CSRF fix).
 	// Without a state, send the browser to the app first; the app origin sets the cookie and comes back here.
 	const state = url.searchParams.get('state') ?? ''
 	if (decideAppsOpen(state) === 'bounce') {
-		return new Response(null, { status: 302, headers: { location: `${base}/`, 'cache-control': 'no-store' } })
+		return new Response(null, {
+			status: 302,
+			headers: { location: `${base}${returnPath}`, 'cache-control': 'no-store' },
+		})
 	}
 	const token = await mintHandoff(env.KODY_MASTER_KEY, {
 		uid: session.user.id,
 		pkg: pkg.name,
 		sid: session.session.id,
 		st: state,
+		rp: returnPath,
 	})
 	return new Response(null, {
 		status: 302,

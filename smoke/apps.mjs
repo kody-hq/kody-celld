@@ -206,5 +206,91 @@ export async function smokeApps(ctx) {
 		headers: { host: appPath.host, origin: `http://${appPath.host}` },
 	})
 	assert(goneForm.status === 403, 'after sign-out a POST gets the open-from-Kody page', goneForm.status)
-	log('apps', 'handoff, session, isolation, storage, sign-out ok')
+
+	// 8. a deep link survives re-auth (#82)
+	const deepUrl = appPath.url.replace(/\/?$/, '/item/5?tab=2')
+	const goneDeep = await browser.get(deepUrl, { headers: { host: appPath.host } })
+	const goneDeepOpen = goneDeep.location ? new URL(goneDeep.location) : null
+	assert(
+		goneDeep.status === 302 && goneDeepOpen?.searchParams.get('path') === '/item/5?tab=2',
+		'after sign-out a deep link restarts the open flow carrying its path',
+		goneDeep,
+	)
+	const signin = await browser.get(goneDeepOpen.pathname + goneDeepOpen.search)
+	assert(
+		signin.location?.includes('/signin') && signin.location.includes(encodeURIComponent('path=')),
+		'sign-in keeps the path in next',
+		signin,
+	)
+	const again = await signedInBrowser(ctx.user.id)
+	const deepStart = await again.get(deepUrl, { headers: { host: appPath.host } })
+	assert(
+		deepStart.status === 302 && new URL(deepStart.location).searchParams.get('path') === '/item/5?tab=2',
+		'a browser without an app session starts the round trip with the deep path',
+		deepStart,
+	)
+	const deepMint = await again.get(new URL(deepStart.location).pathname + new URL(deepStart.location).search)
+	assert(
+		deepMint.status === 302 && deepMint.location?.includes('__kody_handoff='),
+		'deep open mints a handoff',
+		deepMint,
+	)
+	const deepHandoff = viaAppHost(deepMint.location)
+	const deepSwap = await again.get(deepHandoff.url, { headers: { host: deepHandoff.host } })
+	assert(
+		deepSwap.status === 302 && again.cookie('kody_app_session') && deepSwap.location?.endsWith('/item/5?tab=2'),
+		'the swap lands on the deep link',
+		deepSwap,
+	)
+	const deepTarget = viaAppHost(deepSwap.location)
+	const deepPage = await again.get(deepTarget.url, { headers: { host: deepTarget.host } })
+	const deepEcho = echoOf(deepPage)
+	assert(deepEcho.path === '/item/5' && deepEcho.search === '?tab=2', 'the app sees the deep path and query', deepEcho)
+	const linked = await again.get('/apps/open?package=hello-app&path=%2Fitem%2F7')
+	assert(
+		linked.status === 302 && linked.location === swap.location.replace(/\/?$/, '/item/7'),
+		'/apps/open?path= bounces to that path in the app',
+		linked,
+	)
+	for (const bad of ['//evil.example/', '/../hello-app-two/', 'https://evil.example/', '/a\\b']) {
+		const res = await again.get(`/apps/open?package=hello-app&path=${encodeURIComponent(bad)}`, {
+			accept: 'application/json',
+		})
+		assert(res.status === 400 && !res.location, `/apps/open refuses path ${bad}`, res.status)
+	}
+
+	// 9. two apps opened at once each keep their own state cookie (#82)
+	const twoFiles = { ...files }
+	twoFiles['package.json'] = JSON.stringify({ ...JSON.parse(files['package.json']), name: 'hello-app-two' })
+	const savedTwo = await ctx.mcp.call('packageSave', { files: twoFiles, source: 'examples/packages/hello-app' })
+	assert(savedTwo.name === 'hello-app-two', 'second app saved', savedTwo)
+	const fresh = await signedInBrowser(ctx.user.id)
+	const starts = []
+	for (const name of ['hello-app', 'hello-app-two']) {
+		const bounced = await fresh.get(`/apps/open?package=${name}`)
+		const target = viaAppHost(bounced.location)
+		const start = await fresh.get(target.url, { headers: { host: target.host } })
+		const mount = new URL(bounced.location).pathname.replace(/\/$/, '')
+		const stateCookie = start.setCookies.find((c) => c.startsWith('kody_app_state=')) ?? ''
+		assert(
+			start.status === 302 && new RegExp(`;\\s*Path=${mount}/(;|$)`, 'i').test(stateCookie),
+			`state cookie for ${name} is scoped to its mount`,
+			{ mount, stateCookie },
+		)
+		starts.push({ name, location: new URL(start.location), state: new URL(start.location).searchParams.get('state') })
+	}
+	assert(starts[0].state !== starts[1].state, 'each open has its own state', starts)
+	for (const { name, location, state } of starts) {
+		const minted = await fresh.get(location.pathname + location.search)
+		assert(minted.status === 302 && minted.location?.includes('__kody_handoff='), `mint for ${name}`, minted)
+		// A browser sends each mount only the state cookie scoped to it.
+		const swapJar = new Browser()
+		const swapped = await present(swapJar, viaAppHost(minted.location), `kody_app_state=${state}`)
+		assert(
+			swapped.status === 302 && swapJar.cookie('kody_app_session'),
+			`interleaved open of ${name} swaps its handoff`,
+			swapped,
+		)
+	}
+	log('apps', 'handoff, session, isolation, storage, sign-out, deep links, concurrent opens ok')
 }

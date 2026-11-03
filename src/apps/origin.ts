@@ -1,6 +1,6 @@
 import { readCookie, serializeCookie } from '../auth/cookies.ts'
 import type { UserRecord } from '../cells/registry-cell.ts'
-import { type AppOriginConfig, type AppRequestMatch, matchAppRequest } from './app-url.ts'
+import { type AppOriginConfig, type AppRequestMatch, appReturnPath, matchAppRequest } from './app-url.ts'
 import { appSessionCookieName, appStateCookieName, handoffParam, searchWithoutHandoff } from './forward.ts'
 import { appNotFoundPage, openFromKodyPage } from './pages.ts'
 import { appSessionMaxMs, consumeHandoff, newAppState, signAppSession, verifyAppSession } from './tokens.ts'
@@ -58,6 +58,9 @@ export async function handleAppOriginRequest(request: Request, url: URL, deps: A
 		secure: deps.config.protocol === 'https:',
 		path: deps.config.mode === 'path' ? `/u/${match.userId}/` : '/',
 	}
+	// One state per app mount, so opening two apps at once cannot overwrite the first round trip (#82).
+	// The swap always happens at `<mount>/`, which this path covers.
+	const stateCookieOptions = { ...cookieOptions, path: `${match.mountPath}/` }
 	const token = url.searchParams.get(handoffParam)
 	if (token) {
 		const state = (await readCookie(request, appStateCookieName)) ?? ''
@@ -74,8 +77,12 @@ export async function handleAppOriginRequest(request: Request, url: URL, deps: A
 				sid: result.claims.sid,
 				exp: now + appSessionMaxMs,
 			})
+			const returnPath = appReturnPath(match.mountPath, result.claims.rp)
 			const headers = new Headers({
-				location: `${deps.config.protocol}//${url.host}${url.pathname}${searchWithoutHandoff(url)}`,
+				location:
+					returnPath && returnPath !== '/'
+						? `${match.origin}${match.mountPath}${returnPath}`
+						: `${match.origin}${url.pathname}${searchWithoutHandoff(url)}`,
 				'cache-control': 'no-store',
 			})
 			headers.append(
@@ -84,7 +91,7 @@ export async function handleAppOriginRequest(request: Request, url: URL, deps: A
 			)
 			headers.append(
 				'set-cookie',
-				await serializeCookie(appStateCookieName, '', { ...cookieOptions, maxAgeSeconds: 0 }),
+				await serializeCookie(appStateCookieName, '', { ...stateCookieOptions, maxAgeSeconds: 0 }),
 			)
 			return new Response(null, { status: 302, headers })
 		}
@@ -96,13 +103,16 @@ export async function handleAppOriginRequest(request: Request, url: URL, deps: A
 		// A failed handoff must not loop back to Kody; only a plain navigation starts the dance.
 		if (!safeMethod || token) return openFromKodyPage(deps.publicUrl, match.packageName)
 		const state = newAppState()
+		// Keep the deep link: /apps/open signs it into the handoff and the swap lands there.
+		const returnPath = appReturnPath(match.mountPath, `${match.restPath}${searchWithoutHandoff(url)}`)
+		const pathParam = returnPath && returnPath !== '/' ? `&path=${encodeURIComponent(returnPath)}` : ''
 		const headers = new Headers({
-			location: `${deps.publicUrl}/apps/open?package=${encodeURIComponent(match.packageName)}&state=${state}`,
+			location: `${deps.publicUrl}/apps/open?package=${encodeURIComponent(match.packageName)}&state=${state}${pathParam}`,
 			'cache-control': 'no-store',
 		})
 		headers.append(
 			'set-cookie',
-			await serializeCookie(appStateCookieName, state, { ...cookieOptions, maxAgeSeconds: appStateMaxAgeSeconds }),
+			await serializeCookie(appStateCookieName, state, { ...stateCookieOptions, maxAgeSeconds: appStateMaxAgeSeconds }),
 		)
 		return new Response(null, { status: 302, headers })
 	}
