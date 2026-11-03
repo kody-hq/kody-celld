@@ -13,6 +13,8 @@ import {
 } from './git-smart-http.ts'
 import type { FetchLike } from './git-smart-http.ts'
 
+const logoBytes = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff])
+
 function makeBarePackage() {
 	const dir = mkdtempSync(join(tmpdir(), 'kody-git-http-'))
 	const work = join(dir, 'work')
@@ -32,6 +34,7 @@ function makeBarePackage() {
 	writeFileSync(join(work, 'README.md'), '# Hello\n')
 	writeFileSync(join(work, 'AGENTS.md'), 'agents\n')
 	writeFileSync(join(work, 'main.js'), 'export default async () => "hi"\n')
+	writeFileSync(join(work, 'logo.png'), logoBytes)
 	mkdirSync(join(work, 'nested'))
 	writeFileSync(
 		join(work, 'nested', 'package.json'),
@@ -90,7 +93,7 @@ describe('git-smart-http', () => {
 		const idx = packOut.indexOf(Buffer.from('PACK'))
 		const objects = await unpackGitPack(new Uint8Array(packOut.subarray(idx)))
 		const { files } = filesFromGitObjects(objects, sha, null)
-		assert.equal(files['package.json']?.includes('"@t/hello"'), true)
+		assert.equal((files['package.json'] as string).includes('"@t/hello"'), true)
 		assert.ok(files['README.md'])
 	})
 
@@ -107,12 +110,14 @@ describe('git-smart-http', () => {
 			fetch: fetchImpl,
 		})
 		assert.equal(root.commit, sha)
-		assert.equal(JSON.parse(root.files['package.json']!).name, '@t/hello')
+		assert.equal(JSON.parse(root.files['package.json'] as string).name, '@t/hello')
+		assert.deepEqual(root.files['logo.png'], { base64: Buffer.from(logoBytes).toString('base64') })
+		assert.deepEqual(root.warnings, [])
 		const nested = await cloneGitSmartHttp(gitUrl, {
 			subdir: 'nested',
 			assertAllowed: (u) => u,
 			fetch: fetchImpl,
 		})
-		assert.equal(JSON.parse(nested.files['package.json']!).name, '@t/nested')
+		assert.equal(JSON.parse(nested.files['package.json'] as string).name, '@t/nested')
 	})
 })

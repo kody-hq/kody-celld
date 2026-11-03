@@ -63,10 +63,15 @@ Its files are served by the host, not by your handler, at
 The same owner-only app session applies as for any other app request.
 
 - **Methods.** `GET` and `HEAD`; anything else is 405.
-- **Content types.** By extension: `css`, `js`/`mjs`, `json`/`map`,
-  `webmanifest`, `svg`, `html`, `txt`, `xml`. Anything else is
-  `text/plain; charset=utf-8`. Every response carries
-  `X-Content-Type-Options: nosniff`.
+- **Content types.** By extension, with hosted Kody's table: text (`css`,
+  `js`/`mjs`, `json`/`map`, `webmanifest`, `svg`, `html`/`htm`, `txt`, `md`,
+  `csv`, `xml`), images (`png`, `jpg`/`jpeg`, `gif`, `webp`, `avif`, `ico`),
+  fonts (`woff`, `woff2`, `ttf`, `otf`), `wasm`, `pdf`, audio and video
+  (`mp3`, `wav`, `ogg`/`oga`, `mp4`, `webm`, `ogv`). Anything else is
+  `application/octet-stream`. Every response carries
+  `X-Content-Type-Options: nosniff` and a `Content-Length`.
+- **Bytes.** The file is served exactly as stored: text as UTF-8, binary files
+  byte for byte (see [binary files](./packages.md#binary-files)).
 - **Caching.** `Cache-Control: private, max-age=300` and a strong `ETag` (the
   SHA-256 of the file). A matching `If-None-Match` (a list, a weak `W/`
   form, or `*`) gets `304`. Browsers cache assets for up to 5 minutes, so a
@@ -77,9 +82,6 @@ The same owner-only app session applies as for any other app request.
   `/_assets/*` request.
 - **Reserved names.** Root files named `__version.json` or `client.<16 hex>.js`
   are refused at save time; nest or rename them.
-- **Text only.** Packages hold UTF-8 text, so binary assets (images, fonts)
-  cannot be packaged yet. Inline SVG or data URIs work; see
-  [known-gaps.md](./known-gaps.md).
 
 ## Turning it on
 
@@ -221,8 +223,6 @@ sign-in, console and the rest are never reachable there.
 - **Server-rendered only.** `kody.app.client` is recorded on the manifest but
   not built; `packageSave` returns a warning and the app is served
   server-rendered.
-- **Text-only assets.** `/_assets/*` serves text files only (packages are
-  UTF-8 only); see [Assets](#assets).
 - No realtime or WebSockets, no `packageAppFetch`, no public or shared apps (see
   [known-gaps.md](./known-gaps.md)).
 - **Failures-only run records.** A request that succeeds writes nothing. A graph

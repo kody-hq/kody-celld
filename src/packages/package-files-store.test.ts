@@ -12,6 +12,8 @@ import {
 	migrateCommunityPackageFiles,
 	migrateUserPackageFiles,
 	packageFilesSchema,
+	normalizePackageFiles,
+	readPackageFileBytes,
 	readPackageFiles,
 	readUserPackageRow,
 	replacePackageFiles,
@@ -188,7 +190,7 @@ describe('package-files-store', () => {
 		sql.exec(packageFilesSchema)
 		migrateUserPackageFiles(sql)
 		assert.ok(!columnsOf(sql, 'packages').includes('files_json'))
-		assert.deepEqual(columnsOf(sql, 'package_files').sort(), ['content', 'package_name', 'path'])
+		assert.deepEqual(columnsOf(sql, 'package_files').sort(), ['bytes', 'content', 'package_name', 'path'])
 	})
 
 	it('assertPackageTotalBytes names the 4 MiB limit', () => {
@@ -217,6 +219,89 @@ describe('package-files-store', () => {
 				return true
 			},
 		)
+	})
+})
+
+/** Every byte value, so a lossy text round trip (UTF-8, windows-1252) shows up. */
+const pngBytes = Uint8Array.from([
+	0x89,
+	0x50,
+	0x4e,
+	0x47,
+	0x0d,
+	0x0a,
+	0x1a,
+	0x0a,
+	0x00,
+	...Array.from({ length: 256 }, (_, i) => i),
+])
+const pngFile = { base64: Buffer.from(pngBytes).toString('base64') }
+
+describe('binary package files', () => {
+	it('stores a binary file as bytes and reads it back byte-identical, text files unchanged', () => {
+		const sql = memorySql()
+		sql.exec(packageFilesSchema)
+		replacePackageFiles(sql, '@a/pkg', { 'main.js': 'export default 1', 'public/logo.png': pngFile })
+		const files = readPackageFiles(sql, '@a/pkg')
+		assert.equal(files['main.js'], 'export default 1')
+		assert.deepEqual(files['public/logo.png'], pngFile)
+		const row = sql
+			.exec<{ content: string; bytes: ArrayBuffer | null }>(
+				"SELECT content, bytes FROM package_files WHERE path = 'public/logo.png'",
+			)
+			.toArray()[0]
+		assert.equal(row?.content, '')
+		assert.deepEqual(new Uint8Array(row!.bytes!), pngBytes)
+		const text = sql
+			.exec<{ bytes: ArrayBuffer | null }>("SELECT bytes FROM package_files WHERE path = 'main.js'")
+			.toArray()[0]
+		assert.equal(text?.bytes, null)
+		assert.deepEqual(readPackageFileBytes(sql, '@a/pkg', 'public/logo.png'), pngBytes)
+		assert.deepEqual(readPackageFileBytes(sql, '@a/pkg', 'main.js'), new TextEncoder().encode('export default 1'))
+		assert.equal(readPackageFileBytes(sql, '@a/pkg', 'nope.png'), null)
+	})
+
+	it('adds the bytes column to an existing package_files table and keeps its rows', () => {
+		const sql = memorySql()
+		sql.exec(userPackagesTableDdl)
+		sql.exec(`
+			CREATE TABLE package_files (
+				package_name TEXT NOT NULL,
+				path TEXT NOT NULL,
+				content TEXT NOT NULL,
+				PRIMARY KEY (package_name, path)
+			);
+		`)
+		sql.exec('INSERT INTO package_files (package_name, path, content) VALUES (?, ?, ?)', '@a/old', 'README.md', '# old')
+		migrateUserPackageFiles(sql)
+		assert.deepEqual(columnsOf(sql, 'package_files').sort(), ['bytes', 'content', 'package_name', 'path'])
+		assert.deepEqual(readPackageFiles(sql, '@a/old'), { 'README.md': '# old' })
+		migrateUserPackageFiles(sql)
+		migrateCommunityPackageFiles(sql)
+		assert.deepEqual(readPackageFiles(sql, '@a/old'), { 'README.md': '# old' })
+	})
+
+	it('counts decoded bytes of binary files against the per-file and total caps', () => {
+		const exact = { base64: Buffer.alloc(maxPackageFileBytes).toString('base64') }
+		assertPackageFileSizes({ 'big.bin': exact })
+		assert.throws(
+			() =>
+				assertPackageFileSizes({ 'huge.bin': { base64: Buffer.alloc(maxPackageFileBytes + 1).toString('base64') } }),
+			/File "huge\.bin" is .*each package file must be at most/,
+		)
+		const third = { base64: Buffer.alloc(1_500_000).toString('base64') }
+		assert.throws(() => assertPackageFileSizes({ 'a.bin': third, 'b.bin': third, 'c.bin': third }), /at most 4 MiB/)
+	})
+})
+
+describe('normalizePackageFiles', () => {
+	it('strips ./ and keeps text and { base64 } entries, refusing anything else', () => {
+		assert.deepEqual(normalizePackageFiles({ './main.js': 'x', 'public/logo.png': pngFile }), {
+			'main.js': 'x',
+			'public/logo.png': pngFile,
+		})
+		assert.throws(() => normalizePackageFiles({ 'a.txt': 1 }), /must be a string, or \{ base64 \}/)
+		assert.throws(() => normalizePackageFiles({ './README.md': pngFile }), /"README\.md" must be UTF-8 text/)
 	})
 })
 

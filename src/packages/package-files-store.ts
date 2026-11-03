@@ -1,5 +1,12 @@
 import { KodyError } from '../lib/errors.ts'
 import type { PackageFiles } from './manifest.ts'
+import {
+	binaryPackageFile,
+	isBinaryPackageFile,
+	packageFileBytes,
+	packageFileSize,
+	readPackageFileInput,
+} from './package-file-content.ts'
 
 /** Documented packageSave / install total size cap. */
 export const maxPackageTotalBytes = 4 * 1024 * 1024
@@ -10,14 +17,30 @@ export const maxPackageTotalBytes = 4 * 1024 * 1024
  */
 export const maxPackageFileBytes = 1_800_000
 
+/**
+ * A text file is `content` with `bytes` NULL; a binary file (#85) is `content`
+ * '' with its raw bytes in `bytes`. An image without the column (before #85)
+ * reads binary files as empty text and keeps every text file.
+ */
 export const packageFilesSchema = `
 	CREATE TABLE IF NOT EXISTS package_files (
 		package_name TEXT NOT NULL,
 		path TEXT NOT NULL,
 		content TEXT NOT NULL,
+		bytes BLOB,
 		PRIMARY KEY (package_name, path)
 	);
 `
+
+/** Additive: tables created before #85 gain the nullable `bytes` column; existing rows stay text. */
+function ensurePackageFilesBytesColumn(sql: SqlStorage) {
+	sql.exec(packageFilesSchema)
+	const columns = sql
+		.exec<{ name: string }>(`SELECT name FROM pragma_table_info('package_files')`)
+		.toArray()
+		.map((row) => row.name)
+	if (!columns.includes('bytes')) sql.exec('ALTER TABLE package_files ADD COLUMN bytes BLOB')
+}
 
 /** UserCell `packages` table after the files_json → package_files migration. */
 export const userPackagesTableDdl = `
@@ -59,7 +82,7 @@ export const communityPackagesIndexesDdl = `
  * Corrupt `files_json` fails loudly; there is no dual-read fallback.
  */
 export function migrateUserPackageFiles(sql: SqlStorage) {
-	sql.exec(packageFilesSchema)
+	ensurePackageFilesBytesColumn(sql)
 	dropFilesJsonColumn(sql, {
 		table: 'packages',
 		keepColumns: ['name', 'version', 'manifest_json', 'source', 'created_at', 'updated_at'],
@@ -77,7 +100,7 @@ export function migrateUserPackageFiles(sql: SqlStorage) {
 }
 
 export function migrateCommunityPackageFiles(sql: SqlStorage) {
-	sql.exec(packageFilesSchema)
+	ensurePackageFilesBytesColumn(sql)
 	dropFilesJsonColumn(sql, {
 		table: 'community_packages',
 		keepColumns: [
@@ -194,22 +217,34 @@ export function assertPackageTotalBytes(totalBytes: number) {
 }
 
 /**
- * Enforce per-file and total size caps before any SQLite bind.
+ * A packageSave file map as given (strings, or `{ base64 }` for binary files)
+ * with leading `./` stripped; see `readPackageFileInput`.
+ */
+export function normalizePackageFiles(input: Record<string, unknown> | undefined): PackageFiles {
+	const files: PackageFiles = {}
+	for (const [path, content] of Object.entries(input ?? {})) {
+		const clean = path.replace(/^\.\//, '')
+		files[clean] = readPackageFileInput(clean, content)
+	}
+	return files
+}
+
+/**
+ * Enforce per-file and total size caps before any SQLite bind: string length
+ * for text files, decoded bytes for binary files.
  * Per-file failures name the path and the ~1.8 MiB celld bind limit.
  */
 export function assertPackageFileSizes(files: PackageFiles) {
 	let totalBytes = 0
 	for (const [path, content] of Object.entries(files)) {
-		if (typeof content !== 'string') {
-			throw new KodyError('invalid_package', `File "${path}" must be a string.`)
-		}
-		if (content.length > maxPackageFileBytes) {
+		const size = packageFileSize(readPackageFileInput(path, content))
+		if (size > maxPackageFileBytes) {
 			throw new KodyError(
 				'invalid_package',
-				`File "${path}" is ${formatMiB(content.length)}; each package file must be at most ${formatMiB(maxPackageFileBytes)} (Durable Object SQLite bind limit).`,
+				`File "${path}" is ${formatMiB(size)}; each package file must be at most ${formatMiB(maxPackageFileBytes)} (Durable Object SQLite bind limit).`,
 			)
 		}
-		totalBytes += content.length
+		totalBytes += size
 	}
 	assertPackageTotalBytes(totalBytes)
 }
@@ -223,7 +258,17 @@ function formatMiB(bytes: number): string {
 export function replacePackageFiles(sql: SqlStorage, packageName: string, files: PackageFiles) {
 	sql.exec('DELETE FROM package_files WHERE package_name = ?', packageName)
 	for (const [path, content] of Object.entries(files)) {
-		sql.exec('INSERT INTO package_files (package_name, path, content) VALUES (?, ?, ?)', packageName, path, content)
+		if (isBinaryPackageFile(content)) {
+			sql.exec(
+				'INSERT INTO package_files (package_name, path, content, bytes) VALUES (?, ?, ?, ?)',
+				packageName,
+				path,
+				'',
+				packageFileBytes(content),
+			)
+		} else {
+			sql.exec('INSERT INTO package_files (package_name, path, content) VALUES (?, ?, ?)', packageName, path, content)
+		}
 	}
 }
 
@@ -259,23 +304,46 @@ export function readUserPackageRow(sql: SqlStorage, packageName: string): UserPa
 	}
 }
 
+/** `bytes` is an ArrayBuffer on celld (node:sqlite in tests hands back a Uint8Array). */
+type PackageFileRow = { path: string; content: string; bytes: ArrayBuffer | null }
+
+function rowContent(packageName: string, row: PackageFileRow) {
+	if (row.bytes !== null && row.bytes !== undefined) return new Uint8Array(row.bytes)
+	if (typeof row.content !== 'string') {
+		throw new KodyError('internal_error', `Corrupt package_files row for "${packageName}" at "${row.path}".`, {
+			status: 500,
+		})
+	}
+	return row.content
+}
+
 export function readPackageFiles(sql: SqlStorage, packageName: string): PackageFiles {
 	const rows = sql
-		.exec<{ path: string; content: string }>(
-			'SELECT path, content FROM package_files WHERE package_name = ? ORDER BY path',
+		.exec<PackageFileRow>(
+			'SELECT path, content, bytes FROM package_files WHERE package_name = ? ORDER BY path',
 			packageName,
 		)
 		.toArray()
 	const files: PackageFiles = {}
 	for (const row of rows) {
-		if (typeof row.content !== 'string') {
-			throw new KodyError('internal_error', `Corrupt package_files row for "${packageName}" at "${row.path}".`, {
-				status: 500,
-			})
-		}
-		files[row.path] = row.content
+		const content = rowContent(packageName, row)
+		files[row.path] = typeof content === 'string' ? content : binaryPackageFile(content)
 	}
 	return files
+}
+
+/** One file as the bytes it is served as (UTF-8 for text), or null; `/_assets/*` reads only this. */
+export function readPackageFileBytes(sql: SqlStorage, packageName: string, path: string): Uint8Array | null {
+	const row = sql
+		.exec<PackageFileRow>(
+			'SELECT path, content, bytes FROM package_files WHERE package_name = ? AND path = ?',
+			packageName,
+			path,
+		)
+		.toArray()[0]
+	if (!row) return null
+	const content = rowContent(packageName, row)
+	return typeof content === 'string' ? new TextEncoder().encode(content) : content
 }
 
 export function countPackageFiles(sql: SqlStorage, packageName: string): number {

@@ -10,6 +10,13 @@ import {
 import { hostMatchesApproval } from '../secrets/host-policy.ts'
 import { cloneGitSmartHttp, normalizeGitUrl } from './git-smart-http.ts'
 import { parsePackageManifest, type PackageFiles, type PackageManifest } from './manifest.ts'
+import {
+	archiveFileContent,
+	isBinaryPackageFile,
+	packageFileSize,
+	packageTextFiles,
+	readPackageFileInput,
+} from './package-file-content.ts'
 import { gunzip, isGzip, readTar, type TarEntry } from './tar.ts'
 
 /**
@@ -481,11 +488,8 @@ export function filesFromTarEntries(entries: Array<TarEntry>, subdir: string | n
 		if (segments.at(-1) === 'package.json') manifestDirs.add(segments.slice(0, -1).join('/'))
 		if (!entry.path.startsWith(prefix)) continue
 		const relative = entry.path.slice(prefix.length)
-		try {
-			files[relative] = utf8.decode(entry.bytes)
-		} catch {
-			warnings.push(`Skipped ${relative}: not UTF-8 text (packages hold text files only).`)
-		}
+		const content = archiveFileContent(relative, entry.bytes, warnings)
+		if (content !== null) files[relative] = content
 	}
 	if (files['package.json'] === undefined) {
 		const candidates = [...manifestDirs].filter((d) => d !== '').sort()
@@ -525,12 +529,10 @@ export function filesFromJson(text: string, subdir: string | null) {
 	const files: PackageFiles = {}
 	const prefix = subdir ? `${subdir}/` : ''
 	for (const [path, content] of Object.entries(map)) {
-		if (typeof content !== 'string') {
-			throw new KodyError('invalid_package', `File "${path}" must be a string.`)
-		}
 		const clean = path.replace(/^\.\//, '')
+		const file = readPackageFileInput(clean, content)
 		if (!clean.startsWith(prefix)) continue
-		files[clean.slice(prefix.length)] = content
+		files[clean.slice(prefix.length)] = file
 	}
 	if (files['package.json'] === undefined) {
 		throw new KodyError('invalid_package', 'JSON source has no package.json at the package root.')
@@ -582,8 +584,8 @@ export function packagePreviewFromFetched(fetched: FetchedPackage): PackagePrevi
 		name: manifest.name,
 		version: manifest.version,
 		description: manifest.description,
-		readme: fetched.files['README.md'] ?? '',
-		agents: fetched.files['AGENTS.md'] ?? '',
+		readme: packageTextFiles(fetched.files)['README.md'] ?? '',
+		agents: packageTextFiles(fetched.files)['AGENTS.md'] ?? '',
 		fileList: Object.keys(fetched.files).sort(),
 		fileCount: Object.keys(fetched.files).length,
 		permissions: {
@@ -685,18 +687,25 @@ export async function previewPackageSource(
 /** Max characters of one package file (MCP `packagePreview` path, web explorer display). */
 export const packageFileViewMaxChars = 200_000
 
-export type PackageFileView = { path: string; bytes: number; content: string; truncated: boolean }
+export type PackageFileView = { path: string; bytes: number; content: string; truncated: boolean; binary: boolean }
 
-/** One file of a package (saved or previewed) for reading, truncated at packageFileViewMaxChars. */
+/**
+ * One file of a package (saved or previewed) for reading, truncated at packageFileViewMaxChars.
+ * A binary file has `binary: true`, its size and no content (packageGet `includeFiles` has the bytes).
+ */
 export function packageFileView(files: PackageFiles, path: string): PackageFileView {
 	if (!Object.hasOwn(files, path)) {
 		throw new KodyError('package_file_not_found', `Package file "${path}" was not found.`, { status: 404 })
 	}
 	const content = files[path]!
+	if (isBinaryPackageFile(content)) {
+		return { path, bytes: packageFileSize(content), content: '', truncated: false, binary: true }
+	}
 	return {
 		path,
 		bytes: new TextEncoder().encode(content).byteLength,
 		content: content.slice(0, packageFileViewMaxChars),
 		truncated: content.length > packageFileViewMaxChars,
+		binary: false,
 	}
 }

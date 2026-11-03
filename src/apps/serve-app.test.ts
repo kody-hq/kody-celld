@@ -4,12 +4,15 @@ import type { UserRecord } from '../cells/registry-cell.ts'
 import type { Env } from '../env.ts'
 import { randomId } from '../lib/crypto.ts'
 import { parsePackageManifest, type PackageFiles } from '../packages/manifest.ts'
+import { packageFileBytes } from '../packages/package-file-content.ts'
 import type { AppTarget } from './origin.ts'
 import { appRunIdempotencyKey } from './run-report.ts'
 import { serveApp } from './serve.ts'
 import { verifyAppRunToken } from './tokens.ts'
 
 const masterKey = 'test-master-key-0123456789abcdef0123456789'
+
+const logoBytes = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff])
 
 const appFiles: PackageFiles = {
 	'package.json': JSON.stringify({
@@ -22,6 +25,7 @@ const appFiles: PackageFiles = {
 	'AGENTS.md': 'app',
 	'src/app.js': "import dep from 'kody:@t/dep'\nexport default { fetch: () => new Response(String(dep())) }",
 	'public/style.css': 'body { color: red }',
+	'public/logo.png': { base64: Buffer.from(logoBytes).toString('base64') },
 }
 
 const depFiles: PackageFiles = {
@@ -50,6 +54,7 @@ function harness(options: HarnessOptions = {}) {
 	const calls = {
 		meta: [] as Array<string>,
 		get: [] as Array<string>,
+		file: [] as Array<string>,
 		stamps: 0,
 		isolates: 0,
 		runs: [] as Array<{ idempotencyKey: string | null; error?: { name: string; message: string } }>,
@@ -83,6 +88,11 @@ function harness(options: HarnessOptions = {}) {
 			const pkg = saved(name)
 			if (name === '@t/dep') options.onDepRead?.(store)
 			return pkg
+		},
+		async packageFileBytes(name: string, path: string) {
+			calls.file.push(`${name}:${path}`)
+			const content = store[name]?.files[path]
+			return content === undefined ? null : packageFileBytes(content)
 		},
 		async packageStamps(names: Array<string>) {
 			calls.stamps++
@@ -180,13 +190,17 @@ describe('serveApp package lookups', () => {
 		assert.deepEqual(calls.get, ['@t/app', '@t/dep'], 'a warm page request loads no package files')
 	})
 
-	it('loads the package files for /_assets/* and never reads metadata separately', async () => {
+	it('reads the metadata and only the requested file for /_assets/*, text or binary', async () => {
 		const { calls, request } = harness()
 		const response = await request('/_assets/style.css')
 		assert.equal(response.status, 200)
 		assert.equal(await response.text(), 'body { color: red }')
-		assert.deepEqual(calls.get, ['@t/app'])
-		assert.deepEqual(calls.meta, [])
+		const logo = await request('/_assets/logo.png')
+		assert.equal(logo.headers.get('content-type'), 'image/png')
+		assert.deepEqual(new Uint8Array(await logo.arrayBuffer()), logoBytes)
+		assert.deepEqual(calls.get, [])
+		assert.deepEqual(calls.meta, ['@t/app', '@t/app'])
+		assert.deepEqual(calls.file, ['@t/app:public/style.css', '@t/app:public/logo.png'])
 		assert.equal(calls.isolates, 0)
 	})
 

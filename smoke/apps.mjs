@@ -1,6 +1,6 @@
 // Package apps (docs/package-apps.md): /apps/open → handoff → app-origin cookie → app.
 // Needs KODY_APP_BASE_URL=http://apps.localhost:<port> (path mode) in .dev.vars.
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { assert, baseUrl, Browser, log, readPackageDir, signedInBrowser } from './lib.mjs'
@@ -29,6 +29,9 @@ export async function smokeApps(ctx) {
 	const appHost = new URL(health.apps.replace('*.', '')).host
 
 	const files = await readPackageDir(path.join(here, '..', 'examples', 'packages', 'hello-app'))
+	// A binary asset (#85): a PNG signature, a NUL and random bytes that are not UTF-8.
+	const pixel = Buffer.concat([Buffer.from('89504e470d0a1a0a00ff', 'hex'), randomBytes(512)])
+	files['public/pixel.png'] = { base64: pixel.toString('base64') }
 	const saved = await ctx.mcp.call('packageSave', { files, source: 'examples/packages/hello-app' })
 	assert(
 		saved.name === 'hello-app' && saved.manifest.app?.entry === 'app/server.js',
@@ -113,6 +116,17 @@ export async function smokeApps(ctx) {
 	assert(etag, 'asset carries an etag', asset.headers)
 	const revalidated = await browser.get(assetUrl, { headers: { host: appPath.host, 'if-none-match': etag } })
 	assert(revalidated.status === 304, 'matching If-None-Match → 304', revalidated.status)
+	const pixelAsset = await browser.get(appPath.url.replace(/\/?$/, '/_assets/pixel.png'), {
+		headers: { host: appPath.host },
+	})
+	const digest = (bytes) => createHash('sha256').update(bytes).digest('hex')
+	assert(
+		pixelAsset.status === 200 &&
+			pixelAsset.headers.get('content-type') === 'image/png' &&
+			digest(pixelAsset.bytes) === digest(pixel),
+		'/_assets/pixel.png served as image/png, byte-identical',
+		{ status: pixelAsset.status, type: pixelAsset.headers.get('content-type'), bytes: pixelAsset.bytes.length },
+	)
 	const versionJson = await browser.get(appPath.url.replace(/\/?$/, '/_assets/__version.json'), {
 		headers: { host: appPath.host },
 	})

@@ -1,5 +1,6 @@
 // Packages smoke: save a local package, run its exports (directly and via
 // kody:<pkg>/<export> imports), and prove packageStorage() isolation.
+import { randomBytes } from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { assert, log, readPackageDir, sha256, waitFor } from './lib.mjs'
@@ -293,6 +294,44 @@ export default async function main({ expect }) {
 	const largeRun = await mcp.run(`import m from 'kody:@kody-smoke/large-package'\nexport default async () => m()`)
 	assert(largeRun === 'large-ok', 'large package must still execute', largeRun)
 	log('large package', { bytes: largeTotal, files: largeSaved.fileCount, run: largeRun })
+
+	// Binary files (#85): { base64 } in, the same base64 out of packageGet, and a get-then-save round trip.
+	const logo = Buffer.concat([Buffer.from('89504e470d0a1a0a00ff', 'hex'), randomBytes(256)]).toString('base64')
+	const binaryFiles = {
+		'package.json': JSON.stringify({ name: '@kody-smoke/binary', version: '1.0.0', exports: './index.js' }),
+		'README.md': '# binary',
+		'AGENTS.md': 'Binary file smoke.',
+		'index.js': 'export default async () => "binary-ok"',
+		'public/logo.png': { base64: logo },
+	}
+	const binarySaved = await mcp.call('packageSave', { files: binaryFiles, source: 'smoke/packages.mjs' })
+	assert(binarySaved.fileCount === 5, 'binary package saved with all files', binarySaved)
+	const binaryGot = await mcp.call('packageGet', { name: '@kody-smoke/binary', includeFiles: true })
+	assert(binaryGot.files['public/logo.png']?.base64 === logo, 'packageGet returns the binary file byte-identical', {
+		got: binaryGot.files['public/logo.png'],
+	})
+	assert(
+		binaryGot.files['index.js'] === binaryFiles['index.js'],
+		'text files are unchanged next to binaries',
+		binaryGot,
+	)
+	await mcp.call('packageSave', { files: binaryGot.files, source: 'smoke/packages.mjs' })
+	const binaryRun = await mcp.run(`import m from 'kody:@kody-smoke/binary'\nexport default async () => m()`)
+	assert(binaryRun === 'binary-ok', 'a package with binary files still executes', binaryRun)
+	const binaryModule = await mcp.execute(
+		`import { kody } from 'kody:runtime'
+export default async function main({ files }) {
+  return await kody.packageSave({ files: { ...files, 'index.js': { base64: 'AA==' } } })
+}`,
+		{ files: binaryFiles },
+	)
+	assert(
+		!binaryModule.ok && /must be UTF-8 text/.test(binaryModule.error?.message ?? ''),
+		'a binary code module is refused',
+		binaryModule.error,
+	)
+	await mcp.call('packageDelete', { name: '@kody-smoke/binary' })
+	log('binary package', { bytes: Buffer.from(logo, 'base64').length, run: binaryRun })
 
 	// Over the 4 MiB total while each file stays under the ~1.8 MiB bind cap.
 	const overLimit = await mcp.execute(`import { kody } from 'kody:runtime'

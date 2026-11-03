@@ -49,7 +49,8 @@ const packageFiles = {
 	'main.js': 'export default async () => "hi"',
 	'.git/config': '[core]',
 	'node_modules/x/index.js': 'nope',
-	'image.png': new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0xff, 0xfe]),
+	'public/image.png': new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe]),
+	'legacy.js': new Uint8Array([0x2f, 0x2f, 0x20, 0xe9, 0x0a]),
 }
 
 const dnsResolverUrl = 'https://dns.test/dns-query'
@@ -422,7 +423,7 @@ describe('commit pin helpers', () => {
 })
 
 describe('fetchPackageSource', () => {
-	it('installs a GitHub tarball: strips the root dir, skips .git/node_modules/binary files', async () => {
+	it('installs a GitHub tarball: strips the root dir, skips .git/node_modules, keeps binary files', async () => {
 		const fetchImpl = fetchFor({
 			'https://codeload.github.com/o/hello/tar.gz/HEAD': tgzResponse(githubTarball(packageFiles)),
 		})
@@ -431,12 +432,23 @@ describe('fetchPackageSource', () => {
 			dnsResolverUrl,
 			fetch: fetchImpl,
 		})
-		assert.deepEqual(Object.keys(result.files).sort(), ['AGENTS.md', 'README.md', 'main.js', 'package.json'])
+		assert.deepEqual(Object.keys(result.files).sort(), [
+			'AGENTS.md',
+			'README.md',
+			'main.js',
+			'package.json',
+			'public/image.png',
+		])
+		assert.deepEqual(result.files['public/image.png'], {
+			base64: Buffer.from(packageFiles['public/image.png']).toString('base64'),
+		})
 		assert.equal(result.files['package.json'], manifest)
 		assert.equal(result.source, 'github:o/hello')
 		assert.equal(result.fetchedFrom, 'https://codeload.github.com/o/hello/tar.gz/HEAD')
 		assert.equal(result.commit, undefined)
-		assert.deepEqual(result.warnings, ['Skipped image.png: not UTF-8 text (packages hold text files only).'])
+		assert.deepEqual(result.warnings, [
+			'Skipped legacy.js: not UTF-8 text (code and JSON modules, README.md and AGENTS.md must be text).',
+		])
 	})
 
 	it('records the commit when codeload redirects HEAD to a SHA', async () => {
@@ -527,6 +539,19 @@ describe('fetchPackageSource', () => {
 		assert.throws(() => filesFromJson('garbage', null), /neither a tarball nor JSON/)
 	})
 
+	it('accepts { base64 } binary entries in JSON file maps (a packageGet includeFiles dump)', () => {
+		const logo = { base64: 'iVBORw0KGgo=' }
+		const { files } = filesFromJson(
+			JSON.stringify({ files: { 'package.json': manifest, 'public/logo.png': logo } }),
+			null,
+		)
+		assert.deepEqual(files['public/logo.png'], logo)
+		assert.throws(
+			() => filesFromJson(JSON.stringify({ 'package.json': manifest, 'main.js': logo }), null),
+			/must be UTF-8 text/,
+		)
+	})
+
 	it('fetches JSON sources from allowlisted URLs', async () => {
 		const fetchImpl = fetchFor({
 			'https://raw.githubusercontent.com/o/r/main/pkg.json': () =>
@@ -561,7 +586,18 @@ describe('fetchPackageSource', () => {
 describe('packageFileView', () => {
 	it('returns one file of a package with its UTF-8 byte size', () => {
 		const view = packageFileView({ 'package.json': manifest, 'main.js': 'export const é = 1\n' }, 'main.js')
-		assert.deepEqual(view, { path: 'main.js', bytes: 20, content: 'export const é = 1\n', truncated: false })
+		assert.deepEqual(view, {
+			path: 'main.js',
+			bytes: 20,
+			content: 'export const é = 1\n',
+			truncated: false,
+			binary: false,
+		})
+	})
+
+	it('describes a binary file by its size without content', () => {
+		const view = packageFileView({ 'logo.png': { base64: 'iVBORw==' } }, 'logo.png')
+		assert.deepEqual(view, { path: 'logo.png', bytes: 4, content: '', truncated: false, binary: true })
 	})
 
 	it('truncates content at 200,000 characters and says so', () => {

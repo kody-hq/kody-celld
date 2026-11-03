@@ -1,5 +1,6 @@
 import { KodyError } from '../lib/errors.ts'
 import type { PackageFiles, PackageManifest } from './manifest.ts'
+import { packageTextFiles } from './package-file-content.ts'
 import {
 	assertPackageFileSizes,
 	communityPackagesIndexesDdl,
@@ -101,7 +102,7 @@ function toPackage(sql: SqlStorage, row: Row): CommunityPackage & { userId: stri
 	return {
 		...listing,
 		files,
-		agents: files['AGENTS.md'] ?? '',
+		agents: packageTextFiles(files)['AGENTS.md'] ?? '',
 		fileCount: Object.keys(files).length,
 	}
 }

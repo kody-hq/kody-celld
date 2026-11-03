@@ -11,6 +11,7 @@ import {
 	previewPackageSource,
 } from '../packages/install.ts'
 import type { PackageFiles } from '../packages/manifest.ts'
+import { packageTextFiles } from '../packages/package-file-content.ts'
 import { parsePackageManifest } from '../packages/manifest.ts'
 import type { SavedPackage } from '../cells/user-cell.ts'
 import { communitySourcePrefix, renamePackageFiles } from './community.ts'
@@ -36,7 +37,8 @@ export const packageSave = defineCapability<{ files: PackageFiles; source?: stri
 		properties: {
 			files: {
 				type: 'object',
-				description: 'Relative path -> file contents. Must include package.json, README.md, AGENTS.md.',
+				description:
+					'Relative path -> file contents: a string for text, or { base64 } (standard, padded) for a binary file such as an image, font or wasm asset. Must include package.json, README.md, AGENTS.md; code and JSON modules must be text.',
 			},
 			source: { type: 'string', description: 'Where the files came from (e.g. "local", "npm:name@1.0.0").' },
 		},
@@ -107,8 +109,8 @@ export const packageGet = defineCapability<{ name: string; includeFiles?: boolea
 			name: pkg.name,
 			version: pkg.version,
 			manifest: pkg.manifest,
-			readme: pkg.files['README.md'] ?? '',
-			agents: pkg.files['AGENTS.md'] ?? '',
+			readme: packageTextFiles(pkg.files)['README.md'] ?? '',
+			agents: packageTextFiles(pkg.files)['AGENTS.md'] ?? '',
 			source: pkg.source,
 			createdAt: pkg.createdAt,
 			updatedAt: pkg.updatedAt,

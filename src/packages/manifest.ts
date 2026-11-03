@@ -8,6 +8,7 @@ import {
 } from '../execute/strip-types.ts'
 import { KodyError } from '../lib/errors.ts'
 import { listJsonSchemaSubsetProblems, type JsonObject } from '../lib/json-schema-subset.ts'
+import { packageTextFiles } from './package-file-content.ts'
 
 // Mirrors kody-hq/kody `package.json#kody` shapes for the surfaces this
 // runtime supports: exports, jobs, webhooks, subscriptions, emitted events,
@@ -158,7 +159,10 @@ export type PackageManifest = {
 	keywords: Array<string>
 }
 
-export type PackageFiles = Record<string, string>
+/** A binary package file (image, font, wasm): its bytes as standard base64. Text files are plain strings. */
+export type PackageBinaryFile = { base64: string }
+export type PackageFileContent = string | PackageBinaryFile
+export type PackageFiles = Record<string, PackageFileContent>
 
 export const packageNamePattern = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/
 const customPackageEventTopicPattern =
@@ -620,7 +624,8 @@ export function normalizeStoredManifest(
 }
 
 export function parsePackageManifest(files: PackageFiles): PackageManifest {
-	const source = files['package.json']
+	const text = packageTextFiles(files)
+	const source = text['package.json']
 	if (!source) throw new KodyError('invalid_manifest', 'package.json is required.')
 	let json: unknown
 	try {
@@ -716,8 +721,8 @@ export function parsePackageManifest(files: PackageFiles): PackageManifest {
 		}
 	}
 
-	const readme = files['README.md']?.trim() ?? ''
-	const agents = files['AGENTS.md']?.trim() ?? ''
+	const readme = text['README.md']?.trim() ?? ''
+	const agents = text['AGENTS.md']?.trim() ?? ''
 	if (!readme) throw new KodyError('invalid_manifest', 'A non-empty README.md is required.')
 	if (!agents) throw new KodyError('invalid_manifest', 'A non-empty AGENTS.md is required.')
 
@@ -743,7 +748,7 @@ export function parsePackageManifest(files: PackageFiles): PackageManifest {
 		hidden: kody.hidden === true,
 		keywords: Array.isArray(json.keywords) ? json.keywords.filter((k): k is string => typeof k === 'string') : [],
 	}
-	assertRelativeImportsResolve(files, [
+	assertRelativeImportsResolve(text, [
 		...Object.values(manifest.exports),
 		...Object.values(manifest.jobs).map((job) => job.entry),
 		...manifest.subscriptions.map((subscription) => subscription.handler),
@@ -815,7 +820,7 @@ function importSource(path: string, source: string, jsx: JsxOptions): string | n
  * checked compiled, as they run. Imports come from the lexer, so text in
  * strings and comments is never checked.
  */
-function assertRelativeImportsResolve(files: PackageFiles, entries: Array<string>) {
+function assertRelativeImportsResolve(files: Record<string, string>, entries: Array<string>) {
 	const jsx = jsxOptionsFromFiles(files)
 	const sources = new Map<string, string>()
 	for (const [file, source] of Object.entries(files)) {
