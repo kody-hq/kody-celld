@@ -220,7 +220,10 @@ export async function parseRawEmail(raw: string | Uint8Array | ArrayBuffer): Pro
 				contentBase64:
 					typeof attachment.content === 'string' ? attachment.content : bytesToBase64(toBytes(attachment.content)),
 				contentId: attachment.contentId ?? null,
-				disposition: attachment.disposition ?? (attachment.related ? 'inline' : 'attachment'),
+				disposition:
+					attachment.disposition === 'inline' || (attachment.disposition == null && attachment.related)
+						? 'inline'
+						: 'attachment',
 			},
 			index,
 		),

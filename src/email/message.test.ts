@@ -111,6 +111,36 @@ describe('attachmentFromInput', () => {
 })
 
 describe('parseRawEmail', () => {
+	it('normalizes arbitrary disposition tokens without changing inline/related behavior', async () => {
+		for (const [disposition, expected] of [
+			['inline', 'inline'],
+			['attachment', 'attachment'],
+			['custom-token', 'attachment'],
+			[null, 'inline'],
+		] as const) {
+			const raw = [
+				'From: fixture@example.invalid',
+				'MIME-Version: 1.0',
+				'Content-Type: multipart/related; boundary="fixture"',
+				'',
+				'--fixture',
+				'Content-Type: text/html',
+				'',
+				'<p>Fixture</p>',
+				'--fixture',
+				'Content-Type: image/png',
+				'Content-ID: <image>',
+				...(disposition ? [`Content-Disposition: ${disposition}`] : []),
+				'Content-Transfer-Encoding: base64',
+				'',
+				btoa('fixture'),
+				'--fixture--',
+				'',
+			].join('\r\n')
+			const parsed = await parseRawEmail(raw)
+			assert.equal(parsed.attachments[0]?.disposition, expected)
+		}
+	})
 	it('parses a multipart RFC 5322 message with an attachment', async () => {
 		const raw = [
 			'From: Ada <ada@example.com>',

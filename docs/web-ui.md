@@ -3,15 +3,16 @@
 kody-celld ships a server-rendered web UI so that people who self-host it do
 not have to drive everything with `curl` and an admin token. It is built on the
 design system of [kody-hq/kody](https://github.com/kody-hq/kody), using
-Remix 3 components and streaming SSR with a Vite-built browser bundle.
+TanStack Start, Redact, and Emotion for the public brand guide. The remaining
+pages still use Remix 3 components and streaming SSR during migration.
 Typed URL builders are framework-independent, matching hosted's
 `packages/worker/universal/routes.ts`; request handlers still own method
 dispatch. Hosted Kody uses TanStack Start with `@tanstack/redact` replacing
 React at build time, Emotion, and first-party components
-(`packages/worker/start/`), so upstream UI changes are currently translated rather
-than copied (see
+(`packages/worker/start/`). Migrated components are copied verbatim where
+possible; remaining Remix pages still need translation (see
 [Porting UI changes from kody](#porting-ui-changes-from-kody)). Every page is
-still a plain HTML form posted back to the same route and works with
+still uses native links and HTML forms posted back to the same route and works with
 JavaScript disabled; the browser bundle only hydrates small islands (copy
 buttons, double-confirm buttons, the header menu, toasts). The MCP surface is
 unchanged — the UI is a convenience layer over the same cells and
@@ -134,6 +135,7 @@ The layout mirrors `packages/worker/` in kody so files line up one-to-one:
 | kody-celld                            | kody (`packages/worker/`)   | What lives there                                                                                                              |
 | ------------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `client/`                             | `client/`                   | `remix/component` components: `app-root.tsx` (shell + route dispatch), `routes/*.tsx` (one per page), header, footer, islands |
+| `start/`                              | `start/`                    | TanStack Start routes, Redact/Emotion components, request context, and server/client entries for migrated pages               |
 | `universal/`                          | `universal/`                | code shared by Worker and browser: `routes.ts` (typed routes), `loader-data.ts` (page payloads), `styles/`, icons             |
 | `src/app/`                            | `src/app/`                  | Worker-side SSR: `render.tsx` (`renderPage`), `ssr-document.tsx`, `security-headers.ts`, `ssr-stubs/`                         |
 | `public/`                             | `public/`                   | static assets served by celld: `styles.css`, `fonts/`, `page-init.js`, `build/` (Vite output, git-ignored)                    |
@@ -148,7 +150,7 @@ copies (hosted's are Emotion/React). The lists live in
 close to hosted and put kody-celld-specific styling in the page components (page widths and
 gutters live in `client/page-layout.ts`, see [Page layout](#page-layout)).
 
-Rendering flow for a page:
+Rendering flow for a remaining Remix page:
 
 1. The handler (e.g. `src/web/account.ts`) authenticates, reads the form with
    `readForm()`, mutates, and builds a **serialisable** payload — one variant
@@ -179,7 +181,32 @@ never enters the Workers type-world; `tsconfig.client.json` checks `client/`
 with the DOM lib. celld's esbuild reads `tsconfig.json` (no stub) and bundles
 the real components for SSR.
 
-Build: `npm run build:client` (Vite → `public/build/`). `npm run dev`,
+The public brand guide instead calls `renderStartDocument()` after the same
+method and session handling. It supplies serializable document data and a
+fresh request nonce to Start's generated server. Start's root loader reads
+that request context; no authentication or cell access moves into browser
+code. The document retains celld's icons, fonts, stylesheet, header/footer,
+version, skip link, flash region, and noindex policy. Navigation uses native
+anchors, including the brand context menu. There are no client-side form
+submissions or new server-function endpoints.
+
+`vite.start.config.ts` matches hosted's `redact()`, `tanstackStart()`, and
+Emotion JSX pipeline. It explicitly keeps application routes at `/` while
+assets live under `/build/start/`. Framework dependencies are bundled for
+celld, rather than using hosted's Cloudflare Vite deployment plugin. The
+bundled server lives in `.start/server/`; it is built, not checked in. The
+generated route tree is checked in for clean-checkout typechecking. The
+Start DOM typecheck is separate from the Remix and Worker projects.
+
+Start's bootstrap scripts carry a per-document nonce authorized by its CSP;
+the legacy pages keep their existing CSP unchanged. Both renderers wait for
+a nonempty first chunk before returning a body, and emit exactly one doctype.
+The verbatim Emotion style-hoist script runs before module hydration, as it
+does on hosted. `npm test` builds Start first so SSR tests exercise the real
+production bundle.
+
+Build: `npm run build:client` builds Remix into `public/build/`, then Start
+into `public/build/start/` and `.start/server/`. `npm run dev`,
 `npm run fleet:deploy` and the Dockerfile run it for you; celld serves
 `public/` through `assets.directory` in `wrangler.jsonc`.
 

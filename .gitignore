@@ -8,3 +8,5 @@ node_modules/
 wrangler.fleet.jsonc
 .dev.vars
 public/build
+.start/
+.tanstack/
