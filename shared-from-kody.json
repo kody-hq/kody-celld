@@ -241,6 +241,21 @@
   ],
   "adapted": [
     {
+      "path": "start/pages/community.tsx",
+      "source": "packages/worker/start/pages/community.tsx",
+      "reason": "Celld retains its public catalog/detail contracts, native GET search and links, and text-only README/AGENTS rendering."
+    },
+    {
+      "path": "start/pages/record-table.tsx",
+      "source": "packages/worker/start/pages/record-table.tsx",
+      "reason": "Celld retains its responsive columns and full-document row anchors rather than hosted SPA navigation."
+    },
+    {
+      "path": "start/pages/account-management-components.tsx",
+      "source": "packages/worker/start/pages/account-management-components.tsx",
+      "reason": "Ports the celld header, panel and metadata contracts to Emotion while private account chrome remains on Remix."
+    },
+    {
       "path": "client/copy-text-button.tsx",
       "source": "packages/worker/start/components/copy-text-button.tsx",
       "reason": "Remix 3 component wrapped with clientEntry for celld island hydration (entry.tsx registers it); hosted is a React component under start/components."

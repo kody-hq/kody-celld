@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { renderStartDocument } from './start-render.ts'
 import { firstPartySecurityHeaders } from './security-headers.ts'
+import { getDocumentTimestampLocale } from '../../start/document-locale.ts'
 
 function render(pathname = '/brand-guide', displayName?: string) {
 	return renderStartDocument(new Request(`http://localhost${pathname}`), {
@@ -104,6 +105,7 @@ describe('Start document renderer', () => {
 					nonce: '',
 					document: {
 						title: 'Invalid',
+						timestampLocale: getDocumentTimestampLocale(),
 						pathname: '/brand-guide',
 						data: { page: 'brandGuide' },
 						session: null,

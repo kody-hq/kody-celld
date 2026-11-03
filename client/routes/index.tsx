@@ -22,8 +22,6 @@ import { AdminAudit } from './admin-audit.tsx'
 import { AdminConfig } from './admin-config.tsx'
 import { AdminUserDetail } from './admin-user-detail.tsx'
 import { AdminUsers } from './admin-users.tsx'
-import { BrandGuide } from './brand-guide.tsx'
-import { Community, CommunityDetail, CommunityNotFound } from './community.tsx'
 import {
 	ConnectOauth,
 	ConnectOauthDone,
@@ -115,13 +113,10 @@ export function RouteView(
 			case 'adminConfig':
 				return <AdminConfig data={data} pathname={pathname} />
 			case 'community':
-				return <Community data={data} />
 			case 'communityNotFound':
-				return <CommunityNotFound data={data} />
 			case 'communityDetail':
-				return <CommunityDetail data={data} />
 			case 'brandGuide':
-				return <BrandGuide data={data} />
+				throw new Error('Public pages require the Start document renderer')
 			case 'oauthAuthorize':
 				return <OauthAuthorize data={data} />
 			case 'oauthAuthorizeError':

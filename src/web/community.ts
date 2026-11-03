@@ -1,4 +1,4 @@
-import { renderPage } from '#app/render.tsx'
+import { renderStartDocument } from '#app/start-render.ts'
 import { type CommunityListingView } from '#universal/loader-data.ts'
 import type { Env } from '../env.ts'
 import type { CommunityListing } from '../packages/community-store.ts'
@@ -40,7 +40,7 @@ export async function handleCommunity(request: Request, env: Env, url: URL): Pro
 			registry.communitySearch({ query, limit: 50 }),
 			registry.communityStats(),
 		])
-		return renderPage({
+		return renderStartDocument(request, {
 			title: 'Community packages',
 			pathname: '/community',
 			session,
@@ -50,7 +50,7 @@ export async function handleCommunity(request: Request, env: Env, url: URL): Pro
 
 	const pkg = await registry.communityGet(name)
 	if (!pkg) {
-		return renderPage({
+		return renderStartDocument(request, {
 			title: 'Not found',
 			pathname: url.pathname,
 			session,
@@ -58,7 +58,7 @@ export async function handleCommunity(request: Request, env: Env, url: URL): Pro
 			data: { page: 'communityNotFound', name },
 		})
 	}
-	return renderPage({
+	return renderStartDocument(request, {
 		title: pkg.name,
 		pathname: url.pathname,
 		session,

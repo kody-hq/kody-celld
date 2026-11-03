@@ -83,8 +83,11 @@ mark, avatar, toaster, brand geometry, router-nonce reader, popover helper, and
 Emotion style-hoist script are pinned verbatim at the same `kodyCommit`.
 The new `start/` header, footer, brand menu, and public-asset helper are
 adapted for celld's links, clipboard fallback, asset layout, and native
-full-document navigation. The remaining Remix pages stay in the adapted
-list until their page-family migration.
+full-document navigation. The community catalog/detail pages, record table,
+and metadata primitives also use Start/Emotion, adapted for celld's public
+data contracts and native search/navigation. The old brand-guide and community
+Remix pages are deleted. The remaining Remix pages stay in the adapted list
+until their page-family migration.
 
 ## Interim contract modules (second lane)
 
