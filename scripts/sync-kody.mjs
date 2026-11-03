@@ -4,12 +4,10 @@
  *
  *   npm run sync:kody          # pull from kody main, copy verbatim files, rewrite pins
  *   npm run sync:kody -- --commit <sha>
- *   npm run sync:kody -- --commit <sha> --only <path>   # re-pin one verbatim file
  *   npm run sync:kody:check    # fail if any pinned file differs from upstream
  *
- * Manifest: shared-from-kody.json at the repo root. A file entry may carry its
- * own `kodyCommit` (set by `--only`) when it was re-pinned ahead of the rest;
- * a full sync re-pins every file and drops those per-file commits.
+ * Manifest: shared-from-kody.json at the repo root. Every verbatim file is
+ * pinned to the one top-level `kodyCommit`.
  */
 import { createHash } from 'node:crypto'
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
@@ -25,9 +23,6 @@ const args = process.argv.slice(2)
 const checkOnly = args.includes('--check')
 const commitFlag = args.indexOf('--commit')
 const commitOverride = commitFlag >= 0 ? args[commitFlag + 1] : null
-const onlyFlag = args.indexOf('--only')
-const onlyPath = onlyFlag >= 0 ? args[onlyFlag + 1] : null
-const fullCommitShaPattern = /^[0-9a-f]{40}$/
 
 function sha256(bytes) {
 	return createHash('sha256').update(bytes).digest('hex')
@@ -87,28 +82,32 @@ async function check(manifest) {
 			reports.push(`MISSING ${entry.path}: ${error.message}`)
 			continue
 		}
+		if (entry.kodyCommit) {
+			failed += 1
+			reports.push(`PER-FILE PIN ${entry.path}: per-file kodyCommit is not supported. Run npm run sync:kody`)
+			continue
+		}
 		const localHash = sha256(local)
 		if (localHash !== entry.sha256) {
 			failed += 1
 			reports.push(`DRIFT ${entry.path}: local sha256 ${localHash.slice(0, 12)}… != pin ${entry.sha256.slice(0, 12)}…`)
 			continue
 		}
-		const entryCommit = entry.kodyCommit ?? kodyCommit
-		const upstream = await fetchUpstream(entryCommit, entry.source)
+		const upstream = await fetchUpstream(kodyCommit, entry.source)
 		const upstreamHash = sha256(upstream)
 		if (upstreamHash !== entry.sha256) {
 			failed += 1
 			reports.push(
-				`STALE PIN ${entry.path}: upstream@${entryCommit.slice(0, 8)} is ${upstreamHash.slice(0, 12)}… (pin ${entry.sha256.slice(0, 12)}…). Run npm run sync:kody`,
+				`STALE PIN ${entry.path}: upstream@${kodyCommit.slice(0, 8)} is ${upstreamHash.slice(0, 12)}… (pin ${entry.sha256.slice(0, 12)}…). Run npm run sync:kody`,
 			)
 			continue
 		}
 		if (!local.equals(upstream)) {
 			failed += 1
-			reports.push(`CONTENT ${entry.path}: local bytes differ from upstream@${entryCommit.slice(0, 8)}`)
+			reports.push(`CONTENT ${entry.path}: local bytes differ from upstream@${kodyCommit.slice(0, 8)}`)
 			continue
 		}
-		reports.push(entry.kodyCommit ? `ok ${entry.path} @${entryCommit.slice(0, 8)}` : `ok ${entry.path}`)
+		reports.push(`ok ${entry.path}`)
 	}
 	for (const line of reports) {
 		console.log(line)
@@ -124,12 +123,17 @@ async function update(manifest) {
 	const commit = commitOverride ?? (await resolveMainCommit())
 	console.log(`Pinning ${kodyRepo}@${commit}`)
 
+	// Fetch every verbatim file first so a moved or deleted upstream path fails
+	// before anything is written.
+	const fetched = []
+	for (const entry of manifest.files) {
+		fetched.push({ entry, upstream: await fetchUpstream(commit, entry.source) })
+	}
+
 	const updatedFiles = []
 	const copied = []
 	const unchanged = []
-	for (const entry of manifest.files) {
-		const upstream = await fetchUpstream(commit, entry.source)
-		const hash = sha256(upstream)
+	for (const { entry, upstream } of fetched) {
 		const localPath = path.join(repoRoot, entry.path)
 		await mkdir(path.dirname(localPath), { recursive: true })
 		let previous = null
@@ -144,11 +148,9 @@ async function update(manifest) {
 		} else {
 			copied.push(entry.path)
 		}
+		// Drop any leftover per-file `kodyCommit`: every pin uses the top-level one.
 		const { kodyCommit: _filePin, ...rest } = entry
-		updatedFiles.push({
-			...rest,
-			sha256: hash,
-		})
+		updatedFiles.push({ ...rest, sha256: sha256(upstream) })
 	}
 
 	const adaptedReports = []
@@ -186,37 +188,10 @@ async function update(manifest) {
 	console.log(`\nWrote ${path.relative(repoRoot, manifestPath)} @ ${commit}`)
 }
 
-/** Re-pin one verbatim file to `--commit`, leaving every other pin alone. */
-async function updateOne(manifest, filePath) {
-	if (!filePath || filePath.startsWith('--')) {
-		throw new Error('--only needs a verbatim file path')
-	}
-	if (!commitOverride || !fullCommitShaPattern.test(commitOverride)) {
-		throw new Error('--only needs --commit <full 40-character commit sha>')
-	}
-	const index = manifest.files.findIndex((entry) => entry.path === filePath)
-	if (index < 0) {
-		throw new Error(`--only ${filePath}: not a verbatim file in the manifest`)
-	}
-	const entry = manifest.files[index]
-	const upstream = await fetchUpstream(commitOverride, entry.source)
-	const localPath = path.join(repoRoot, entry.path)
-	await mkdir(path.dirname(localPath), { recursive: true })
-	await writeFile(localPath, upstream)
-	const files = [...manifest.files]
-	files[index] = { ...entry, sha256: sha256(upstream), kodyCommit: commitOverride }
-	await writeFile(manifestPath, serializeManifest({ ...manifest, updatedAt: new Date().toISOString(), files }))
-	console.log(`Pinned ${entry.path} to ${kodyRepo}@${commitOverride}`)
-}
-
 async function main() {
 	const manifest = await readManifest()
 	if (checkOnly) {
 		await check(manifest)
-		return
-	}
-	if (onlyFlag >= 0) {
-		await updateOne(manifest, onlyPath)
 		return
 	}
 	await update(manifest)

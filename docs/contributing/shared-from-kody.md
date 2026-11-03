@@ -51,6 +51,31 @@ hosted Kody, 17 differed from kody main. Choices:
 `docs/principles/` (except the celld-owned index and celld-only pages) are
 verbatim.
 
+## Hosted moved to React (Nov 3, 2026)
+
+The full re-pin to kody-hq/kody@e3149c45 found that hosted Kody replaced its
+Remix 3 web UI with React + TanStack Start. Components moved to
+`packages/worker/start/components/` and are React + Emotion; markdown parses
+with `@tanstack/markdown`; code highlighting uses TanStack highlight. celld
+stays on Remix 3, so:
+
+- **Adapted** (hosted rewrote them for React, Emotion, `@tanstack/markdown` or
+  TanStack highlight): `client/copy-code-block.tsx`,
+  `client/doc-youtube-embed.tsx`, `client/markdown-first-party.ts`,
+  `client/markdown-heading-anchor.tsx`, `client/markdown-view.tsx`,
+  `client/syntax-highlight.tsx`, `client/youtube-light-player.tsx`,
+  `universal/highlighted-code.ts`, `universal/icon-glyphs.tsx`,
+  `universal/icon.tsx`, `universal/styles/style-primitives.ts`,
+  `universal/user-avatar.tsx`.
+- **Delisted** (deleted upstream): `client/double-check.ts`,
+  `client/event-mixin.ts`, `client/app-root.tsx`, `client/client-router.tsx`,
+  `client/entry.tsx`. They are celld-owned now.
+- **Still verbatim**: framework-neutral helpers, tokens, fonts, principles and
+  `src/lib` shared modules.
+
+Every verbatim file pins to the one top-level `kodyCommit`; there is no
+per-file pin.
+
 ## Interim contract modules (second lane)
 
 These three adapted copies are an interim second lane, not the end state:

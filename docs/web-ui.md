@@ -4,8 +4,10 @@ kody-celld ships a server-rendered web UI so that people who self-host it do
 not have to drive everything with `curl` and an admin token. It is built on the
 same stack and design system as [kody-hq/kody](https://github.com/kody-hq/kody)
 — Remix 3 (`remix/component` components, `remix/routes` typed routes,
-`remix/component/server` streaming SSR) with a Vite-built browser bundle — so that
-upstream UI changes can be ported with a path strip (see
+`remix/component/server` streaming SSR) with a Vite-built browser bundle. Hosted
+Kody has since moved its pages to React + TanStack Start
+(`packages/worker/start/`), so upstream UI changes are now translated rather
+than copied (see
 [Porting UI changes from kody](#porting-ui-changes-from-kody)). Every page is
 still a plain HTML form posted back to the same route and works with
 JavaScript disabled; the browser bundle only hydrates small islands (copy
@@ -137,10 +139,11 @@ The layout mirrors `packages/worker/` in kody so files line up one-to-one:
 
 Import aliases are the same as upstream: `#client/*`, `#universal/*`,
 `#app/*` (`tsconfig.json`, `vite.config.ts`). Design tokens
-(`universal/styles/tokens.ts`), style primitives
-(`universal/styles/style-primitives.ts`), `public/styles.css`, the self-hosted
-fonts and the icon glyphs are copied from kody verbatim; keep them that way
-and put kody-celld-specific styling in the page components (page widths and
+(`universal/styles/tokens.ts`) and the self-hosted fonts are copied from kody
+verbatim; style primitives, icon glyphs and `public/styles.css` are adapted
+copies (hosted's are Emotion/React). The lists live in
+[`shared-from-kody.json`](../shared-from-kody.json). Keep shared styling
+close to hosted and put kody-celld-specific styling in the page components (page widths and
 gutters live in `client/page-layout.ts`, see [Page layout](#page-layout)).
 
 Rendering flow for a page:
@@ -222,11 +225,13 @@ heading and the header brand should not move.
 
 ## Porting UI changes from kody
 
-1. Find the upstream change under `packages/worker/{client,universal,public,src/app}`.
-   The same relative path exists here (drop the `packages/worker/` prefix).
-2. Tokens, primitives, `styles.css`, fonts, icons, `SiteHeader`/`SiteFooter`,
-   `RecordTable`, `CopyTextButton`, `DoubleCheck`, `Toaster`, `UserAvatar`:
-   apply the diff as-is.
+1. Find the upstream change. Pages and components now live under
+   `packages/worker/start/{pages,components,routes}` (React + Emotion);
+   framework-neutral helpers stay under `packages/worker/{client,universal}`.
+   `shared-from-kody.json` maps each celld file to its hosted `source`.
+2. Verbatim files: run `npm run sync:kody`. Components (icons, `SiteHeader`/
+   `SiteFooter`, `CopyTextButton`, `Toaster`, `UserAvatar`, markdown view):
+   translate the visual diff from React/Emotion to `remix/component` + `css()`.
 3. Route components: apply the visual diff, then reconcile props against the
    matching `AppLoaderData` variant. kody's routes read from its D1/DO data
    model; ours come from the celld cells, so field names may differ — change

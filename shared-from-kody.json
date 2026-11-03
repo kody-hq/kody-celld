@@ -1,8 +1,8 @@
 {
   "kodyRepo": "kody-hq/kody",
-  "kodyCommit": "0bf31fb32793eedadd13b63aaf442408a37debec",
-  "updatedAt": "2026-10-27T18:35:43.611Z",
-  "notes": "Verbatim files must match upstream bytes at kodyCommit (or at the file entry's own kodyCommit when it has one). Adapted files share a path with hosted Kody but are intentionally different; sync:kody reports their diffs and does not overwrite them.",
+  "kodyCommit": "e3149c45fdb85f8c8831ed4dd8a5edded576484e",
+  "updatedAt": "2026-11-03T10:55:11.607Z",
+  "notes": "Verbatim files must match upstream bytes at kodyCommit. Adapted files share a path with hosted Kody but are intentionally different; sync:kody reports their diffs and does not overwrite them.",
   "files": [
     {
       "path": "client/clipboard.ts",
@@ -11,58 +11,15 @@
       "kind": "ui"
     },
     {
-      "path": "client/copy-code-block.tsx",
-      "source": "packages/worker/client/copy-code-block.tsx",
-      "sha256": "7594aeadd0be236153e6ff74f57e02e3776cc62cd90ec8aaea9870baa2947841",
-      "kind": "ui"
-    },
-    {
-      "path": "client/doc-youtube-embed.tsx",
-      "source": "packages/worker/client/doc-youtube-embed.tsx",
-      "sha256": "abfae1fe8f0cd054eb2b1b95de3efbf01ca04bbb5fe51629c01b659c2ef2dd26",
-      "kind": "ui"
-    },
-    {
-      "path": "client/double-check.ts",
-      "source": "packages/worker/client/double-check.ts",
-      "sha256": "c26042837bf4a00a47dbefd09c11c49cb304e372120f48457ed2be1d39fb9729",
-      "kind": "ui"
-    },
-    {
       "path": "client/email-html-preview.ts",
       "source": "packages/worker/client/email-html-preview.ts",
       "sha256": "b655714e00a9986bdf3bbe975f800decd59cc2566a7b499e996ef6faa0d3f877",
-      "kind": "ui",
-      "kodyCommit": "3d8f002d8eac12e0c80afd42f222583586855e59"
-    },
-    {
-      "path": "client/event-mixin.ts",
-      "source": "packages/worker/client/event-mixin.ts",
-      "sha256": "95857dde6dd572397b16ae648593ece182249fc6f57b57a53efac3c630d06cfb",
       "kind": "ui"
     },
     {
       "path": "client/format-timestamp.ts",
       "source": "packages/worker/client/format-timestamp.ts",
-      "sha256": "f3877e1cc7fa66cc595eaaf30ab9db4f157ecd0d5fc4a995acd7955fd94fe40b",
-      "kind": "ui"
-    },
-    {
-      "path": "client/markdown-first-party.ts",
-      "source": "packages/worker/client/markdown-first-party.ts",
-      "sha256": "477084ddf159e8db68a92bbf13059d1d780021a1c2badb04e9418cd7cdecd9d6",
-      "kind": "ui"
-    },
-    {
-      "path": "client/markdown-heading-anchor.tsx",
-      "source": "packages/worker/client/markdown-heading-anchor.tsx",
-      "sha256": "2a32014247c12307eb13890a0043d02705189f9e8896b4ab7cced28560df3f30",
-      "kind": "ui"
-    },
-    {
-      "path": "client/markdown-view.tsx",
-      "source": "packages/worker/client/markdown-view.tsx",
-      "sha256": "ece56db2298d9e1c80a017b1b008e325e68fc3d5de1caa6ef6202815860cd3fd",
+      "sha256": "4492aa5a4d6eda65c71484507a9df8bafeb3cd12cfc462e5538cec966fa95a86",
       "kind": "ui"
     },
     {
@@ -72,21 +29,9 @@
       "kind": "ui"
     },
     {
-      "path": "client/syntax-highlight.tsx",
-      "source": "packages/worker/client/syntax-highlight.tsx",
-      "sha256": "ede176f3a5c4dfedc1b8e93d55ac418a0b85b9aedeafe0951d30f9e898222433",
-      "kind": "ui"
-    },
-    {
       "path": "client/toast.ts",
       "source": "packages/worker/client/toast.ts",
       "sha256": "00323d90c3edfb4be38293063854075511886fa6df65c01dae57c0610730eb8c",
-      "kind": "ui"
-    },
-    {
-      "path": "client/youtube-light-player.tsx",
-      "source": "packages/worker/client/youtube-light-player.tsx",
-      "sha256": "e02f22bf1860e78824abca7a975a7d220100f451a1f68408aeedfcea3fca90d4",
       "kind": "ui"
     },
     {
@@ -104,7 +49,7 @@
     {
       "path": "docs/principles/examples-over-prose.md",
       "source": "docs/principles/examples-over-prose.md",
-      "sha256": "a6b95a19f6f40e43059cbaf0459c59a49435bb31d4395c88b09e40fd8815c496",
+      "sha256": "451443af675fdd68e6be883a7e34c1057ce2a3ba376bc20cb51d2c47291a627d",
       "kind": "principle"
     },
     {
@@ -128,7 +73,7 @@
     {
       "path": "docs/principles/lean-agent-context.md",
       "source": "docs/principles/lean-agent-context.md",
-      "sha256": "f534ad9bfac6ccc63fe416044a3d1c782c474dde673ded132674f16ec584c264",
+      "sha256": "4b1e8279dcb37e2d65050a7e6e6ab88a7137250e8f85ce927c4b9fda5b9c9262",
       "kind": "principle"
     },
     {
@@ -200,7 +145,7 @@
     {
       "path": "universal/highlight-cache-header.ts",
       "source": "packages/worker/universal/highlight-cache-header.ts",
-      "sha256": "77c6b2d749983314a53f19ab895ed600e836b1781f146e412fb598ab74c2c4dc",
+      "sha256": "411f68650eb6722a810e49e945efdc650636d5e62578f0149d1bdb26eef1d92b",
       "kind": "ui"
     },
     {
@@ -210,108 +155,61 @@
       "kind": "ui"
     },
     {
-      "path": "universal/highlighted-code.ts",
-      "source": "packages/worker/universal/highlighted-code.ts",
-      "sha256": "7051396a58821f58d464fe4ec66a6853969e80046506a7a8423907d0e00ebdb5",
-      "kind": "ui"
-    },
-    {
-      "path": "universal/icon-glyphs.tsx",
-      "source": "packages/worker/universal/icon-glyphs.tsx",
-      "sha256": "0fea8241d39aebbb03f4611f8297690aea1f0d8e6fc61b2c220f7a16fa50be65",
-      "kind": "ui"
-    },
-    {
-      "path": "universal/icon.tsx",
-      "source": "packages/worker/universal/icon.tsx",
-      "sha256": "5669bb0e417e6a6aaafb6a4410978165a577f03ff81293f206ff2cfa2c3aed5a",
-      "kind": "ui"
-    },
-    {
       "path": "universal/package-file-media.ts",
       "source": "packages/worker/universal/package-file-media.ts",
-      "sha256": "2cd50bebe012028bcb2c50e97eff90b68c006278da6a10ae59e154d1341c225c",
-      "kind": "ui"
-    },
-    {
-      "path": "universal/styles/style-primitives.ts",
-      "source": "packages/worker/universal/styles/style-primitives.ts",
-      "sha256": "b560a1f4df6e19c0de86046fc6d8b5703959d661d3111d1bad18529bc15d19e0",
+      "sha256": "e034116b5979d653b0fdbcf42a230b6e4ece0b8dcffa7b8e775f2b77d9f95fd0",
       "kind": "ui"
     },
     {
       "path": "universal/styles/tokens.ts",
       "source": "packages/worker/universal/styles/tokens.ts",
-      "sha256": "ebacb966ab62098737d53af90ebfd53e11e98cd9f8466185c53b31a74bad23df",
-      "kind": "ui"
-    },
-    {
-      "path": "universal/user-avatar.tsx",
-      "source": "packages/worker/universal/user-avatar.tsx",
-      "sha256": "814c0f4395cb0613007c7d9cac2705bf29c524b6c1fba4f65886e0af1303d4b4",
+      "sha256": "dc54e30dec7377c5d283f0dab17eff19c201862034739c0d54b37ee812e4cbe9",
       "kind": "ui"
     },
     {
       "path": "universal/youtube-watch.ts",
       "source": "packages/worker/universal/youtube-watch.ts",
-      "sha256": "348355fc94a4896ff41dda55160a7fed6f13141611c769cb0883c9816dfde50e",
+      "sha256": "7004a3fd7b1d8768a66f31730da6da4e73d7cc3289c862e138f5b40ebab7180d",
       "kind": "ui"
     },
     {
       "path": "src/lib/base64.ts",
       "source": "packages/shared/src/base64.ts",
       "sha256": "657e035fdf12f2769f614bca86b2e2f3dd59d71853a0d607a407fffffb6f32e2",
-      "kind": "shared",
-      "kodyCommit": "9e2e2d2d4e8768d636d90f513a43902f110ed5a6"
+      "kind": "shared"
     },
     {
       "path": "src/lib/api-token-format.ts",
       "source": "packages/shared/src/api-token-format.ts",
       "sha256": "fa9adc3fd37b1fff11cc260fcc85bfe6a3001e7c3dfef2b6817dd5d49e596ec9",
-      "kind": "shared",
-      "kodyCommit": "9e2e2d2d4e8768d636d90f513a43902f110ed5a6"
+      "kind": "shared"
     }
   ],
   "adapted": [
     {
-      "path": "client/app-root.tsx",
-      "source": "packages/worker/client/app-root.tsx",
-      "reason": "celld shell dispatches AppLoaderData route pages; hosted mounts a different App/router stack."
-    },
-    {
-      "path": "client/client-router.tsx",
-      "source": "packages/worker/client/client-router.tsx",
-      "reason": "celld keeps a small Navigation API helper; hosted has a full client-side router (~1.3k lines) this project does not use."
-    },
-    {
       "path": "client/copy-text-button.tsx",
-      "source": "packages/worker/client/copy-text-button.tsx",
-      "reason": "Wrapped with remix clientEntry for celld island hydration (entry.tsx registers it); hosted exports a plain component."
-    },
-    {
-      "path": "client/entry.tsx",
-      "source": "packages/worker/client/entry.tsx",
-      "reason": "Island registry and Navigation API stop for forms; hosted boots Sentry/frames and a different client stack."
+      "source": "packages/worker/start/components/copy-text-button.tsx",
+      "reason": "Remix 3 component wrapped with clientEntry for celld island hydration (entry.tsx registers it); hosted is a React component under start/components."
     },
     {
       "path": "client/package-files-explorer.tsx",
-      "source": "packages/worker/client/package-files-explorer.tsx",
+      "source": "packages/worker/start/components/package-files-explorer.tsx",
       "reason": "Adds an embedded prop so the package detail page can host the explorer without a second title/back link."
     },
     {
       "path": "client/site-footer.tsx",
-      "source": "packages/worker/client/site-footer.tsx",
+      "source": "packages/worker/start/components/site-footer.tsx",
       "reason": "Self-hosted footer nav and version string; hosted points at product marketing links."
     },
     {
       "path": "client/site-header.tsx",
-      "source": "packages/worker/client/site-header.tsx",
+      "source": "packages/worker/start/components/site-header.tsx",
       "reason": "Account/console nav for a single-node deploy; hosted header includes org switcher and billing chrome."
     },
     {
       "path": "client/toaster.tsx",
-      "source": "packages/worker/client/toaster.tsx",
-      "reason": "Wrapped with remix clientEntry for island hydration."
+      "source": "packages/worker/start/components/toaster.tsx",
+      "reason": "Remix 3 component wrapped with clientEntry for island hydration; hosted is a React component under start/components."
     },
     {
       "path": "universal/loader-data.ts",
@@ -357,6 +255,66 @@
       "path": "src/lib/json-schema-subset.ts",
       "source": "packages/shared/src/json-schema-subset.ts",
       "reason": "Adapted to inline canonical JSON and record helpers absent on celld, and to use a JSON object shape supported by Durable Object RPC types."
+    },
+    {
+      "path": "client/copy-code-block.tsx",
+      "source": "packages/worker/start/components/copy-code-block.tsx",
+      "reason": "Hosted rewrote this as a React + Emotion component under start/components (TanStack Start); celld keeps the Remix 3 component."
+    },
+    {
+      "path": "client/doc-youtube-embed.tsx",
+      "source": "packages/worker/start/components/doc-youtube-embed.tsx",
+      "reason": "Hosted rewrote this as a React + Emotion component under start/components (TanStack Start); celld keeps the Remix 3 component."
+    },
+    {
+      "path": "client/markdown-first-party.ts",
+      "source": "packages/worker/universal/markdown-first-party.ts",
+      "reason": "Hosted moved to universal/ and parses with @tanstack/markdown (BlockNode/InlineNode); celld keeps the marked token helpers its renderer uses."
+    },
+    {
+      "path": "client/markdown-heading-anchor.tsx",
+      "source": "packages/worker/start/components/markdown-heading-anchor.tsx",
+      "reason": "Hosted rewrote this as a React + Emotion component under start/components (TanStack Start); celld keeps the Remix 3 component."
+    },
+    {
+      "path": "client/markdown-view.tsx",
+      "source": "packages/worker/start/components/markdown-view.tsx",
+      "reason": "Hosted renders markdown with React + @tanstack/markdown under start/components; celld keeps the Remix 3 marked renderer."
+    },
+    {
+      "path": "client/syntax-highlight.tsx",
+      "source": "packages/worker/start/components/syntax-highlight.tsx",
+      "reason": "Hosted rewrote this as a React + Emotion component under start/components (TanStack Start); celld keeps the Remix 3 component."
+    },
+    {
+      "path": "client/youtube-light-player.tsx",
+      "source": "packages/worker/start/components/youtube-light-player.tsx",
+      "reason": "Hosted rewrote this as a React + Emotion component under start/components (TanStack Start); celld keeps the Remix 3 component."
+    },
+    {
+      "path": "universal/highlighted-code.ts",
+      "source": "packages/worker/universal/highlighted-code.ts",
+      "reason": "Hosted switched the tokenizer to TanStack highlight (version 2, tanstack-highlight pre class); celld keeps the Shiki tokenizer and its pre class."
+    },
+    {
+      "path": "universal/icon-glyphs.tsx",
+      "source": "packages/worker/start/components/icon-glyphs.tsx",
+      "reason": "Hosted glyphs are React JSX under start/components; celld keeps the Remix 3 JSX copy and the exported iconNames list."
+    },
+    {
+      "path": "universal/icon.tsx",
+      "source": "packages/worker/start/components/icon.tsx",
+      "reason": "Hosted rewrote this as a React + Emotion component under start/components (TanStack Start); celld keeps the Remix 3 component."
+    },
+    {
+      "path": "universal/styles/style-primitives.ts",
+      "source": "packages/worker/universal/styles/style-primitives.ts",
+      "reason": "Hosted types styles as Emotion CSSObject, drops mergeCss and imports surface.ts; celld keeps Remix 3 css objects and mergeCss."
+    },
+    {
+      "path": "universal/user-avatar.tsx",
+      "source": "packages/worker/start/components/user-avatar.tsx",
+      "reason": "Hosted rewrote this as a React + Emotion component under start/components (TanStack Start); celld keeps the Remix 3 component."
     }
   ]
 }

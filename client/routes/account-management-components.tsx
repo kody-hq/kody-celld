@@ -2,7 +2,7 @@ import { css, type Handle, type RemixNode } from 'remix/component'
 import { routes } from '#universal/routes.ts'
 import { CopyTextButton } from '#client/copy-text-button.tsx'
 import { on } from '#client/event-mixin.ts'
-import { formatNullableTimestamp } from '#client/format-timestamp.ts'
+import { formatTimestamp } from '#client/format-timestamp.ts'
 import {
 	colors,
 	radius,
@@ -774,10 +774,8 @@ export function TimestampValue(
 	handle: Handle<{ value: string | null; fallback?: string }>,
 ) {
 	return () => {
-		const label = formatNullableTimestamp(
-			handle.props.value,
-			handle.props.fallback ?? '—',
-		)
+		const { value, fallback = '—' } = handle.props
+		const label = value ? formatTimestamp(value) : fallback
 		return (
 			<span
 				title={label}
