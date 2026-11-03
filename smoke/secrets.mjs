@@ -125,6 +125,48 @@ export async function smokeSecrets({ mcp, user }) {
 		)
 		log('multipart image bytes preserved during header secret injection')
 
+		// #97: a body placeholder next to a binary part is filled byte-wise; the
+		// PNG bytes (not valid UTF-8) must arrive unchanged.
+		const multipartBody = await mcp.run(
+			`export default async function main({ url }) {
+  const image = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFElEQVR4nGP4TyJgGNUwqmH4agAAr639H708R/EAAAAASUVORK5CYII='), (c) => c.charCodeAt(0))
+  const form = new FormData()
+  form.append('filename', new Blob([image], { type: 'image/png' }), 'screenshot.png')
+  form.append('token', '{{secret:smoke-token}}')
+  const request = new Request(url + '/multipart-body-secret', { method: 'POST', body: form })
+  const original = new Uint8Array(await request.clone().arrayBuffer())
+  let binary = ''
+  for (const byte of original) binary += String.fromCharCode(byte)
+  const response = await fetch(request)
+  return { status: response.status, originalBase64: btoa(binary), received: await response.json() }
+}`,
+			{ url: echo.url },
+		)
+		assert(multipartBody.status === 200, 'multipart body-secret upload should reach the echo server', multipartBody)
+		const originalBody = Buffer.from(multipartBody.originalBase64, 'base64')
+		const placeholderBytes = Buffer.from('{{secret:smoke-token}}')
+		const at = originalBody.indexOf(placeholderBytes)
+		assert(
+			at > 0 && originalBody.includes(Buffer.from([0x89, 0x50, 0x4e, 0x47])),
+			'fixture needs PNG bytes and a placeholder',
+		)
+		const expectedBody = Buffer.concat([
+			originalBody.subarray(0, at),
+			Buffer.from(secretValue),
+			originalBody.subarray(at + placeholderBytes.length),
+		])
+		assert(
+			!multipartBody.received.bodyHadPlaceholder,
+			'multipart body placeholder was not replaced',
+			multipartBody.received,
+		)
+		assert(
+			multipartBody.received.bodySha256 === sha256(expectedBody),
+			'multipart binary part changed while filling the body placeholder',
+			multipartBody.received,
+		)
+		log('multipart body placeholder filled, binary part byte-identical')
+
 		const bodySecret = await mcp.run(
 			`export default async function main({ url }) {
   const response = await fetch(url + '/body-secret', {
