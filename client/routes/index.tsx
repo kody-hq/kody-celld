@@ -31,14 +31,7 @@ import { ConnectSecretSet } from './connect-secret-set.tsx'
 import { ErrorPage } from './error-page.tsx'
 import { PackageFiles } from './package-files.tsx'
 import { PackagePreviewFiles } from './package-preview-files.tsx'
-import {
-	AdminLogin,
-	Login,
-	Setup,
-	SigninLinkExpired,
-	SigninLinkPassword,
-} from './login.tsx'
-import { OauthAuthorize, OauthAuthorizeError } from './oauth-authorize.tsx'
+import { AdminLogin } from './login.tsx'
 
 /**
  * Server-side page dispatch: the handler decides which `AppLoaderData`
@@ -52,14 +45,6 @@ export function RouteView(
 	return () => {
 		const { data, pathname } = handle.props
 		switch (data.page) {
-			case 'login':
-				return <Login data={data} />
-			case 'setup':
-				return <Setup data={data} />
-			case 'signinLinkExpired':
-				return <SigninLinkExpired />
-			case 'signinLinkPassword':
-				return <SigninLinkPassword data={data} />
 			case 'error':
 				return <ErrorPage data={data} signedIn={handle.props.signedIn} />
 			case 'account':
@@ -117,10 +102,13 @@ export function RouteView(
 			case 'communityDetail':
 			case 'brandGuide':
 				throw new Error('Public pages require the Start document renderer')
+			case 'login':
+			case 'setup':
+			case 'signinLinkExpired':
+			case 'signinLinkPassword':
 			case 'oauthAuthorize':
-				return <OauthAuthorize data={data} />
 			case 'oauthAuthorizeError':
-				return <OauthAuthorizeError data={data} />
+				throw new Error('Auth pages require the Start document renderer')
 			case 'connectOauth':
 				return <ConnectOauth data={data} />
 			case 'connectOauthDone':

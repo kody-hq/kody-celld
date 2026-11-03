@@ -43,9 +43,16 @@ function buildContentSecurityPolicy(
 
 const contentSecurityPolicy = buildContentSecurityPolicy(formAction)
 
-export function contentSecurityPolicyWithNonce(nonce: string): string {
+export function contentSecurityPolicyWithNonce(
+	nonce: string,
+	policy = contentSecurityPolicy,
+): string {
 	if (!/^[a-f0-9]{32}$/.test(nonce)) throw new Error('Invalid document nonce')
-	return buildContentSecurityPolicy(formAction, nonce)
+	const script = policy
+		.split('; ')
+		.find((directive) => directive.startsWith('script-src '))
+	if (!script) throw new Error('Document policy requires script-src')
+	return policy.replace(script, `${script} 'nonce-${nonce}'`)
 }
 
 /** The first-party CSP with `origins` (bare http(s) origins or scheme sources like `alice:`) added to `form-action`. */

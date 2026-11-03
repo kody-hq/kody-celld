@@ -5,34 +5,44 @@ import { SiteHeader } from './components/site-header.tsx'
 import { SiteFooter } from './components/site-footer.tsx'
 import { Toaster } from './components/toaster.tsx'
 import { routes } from '#universal/routes.ts'
+import { isAuthShellPage } from '#universal/loader-data.ts'
 import { getAlertCardCss, visuallyHiddenUntilFocusedCss } from '#universal/styles/style-primitives.ts'
 import { getPageContainerCss } from '#client/page-layout.ts'
 import { spacing } from '#universal/styles/tokens.ts'
 
 export function AppShell({
-	document: { session, pathname, flash, version },
+	document: { session, pathname, data, flash, version },
 	children,
 }: {
 	document: StartDocumentData
 	children: ReactNode
 }) {
 	const loginHref = routes.login.href()
+	const authShell = isAuthShellPage(data.page)
 	return (
 		<div css={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
 			<a href="#main" css={visuallyHiddenUntilFocusedCss}>
 				Skip to content
 			</a>
-			<SiteHeader
-				loggedIn={session != null}
-				displayName={session?.displayName ?? ''}
-				avatarUrl={session?.avatarUrl ?? null}
-				showAdminLink={session?.isAdmin ?? false}
-				loginHref={loginHref}
-				currentPathname={pathname}
-			/>
+			{authShell ? null : (
+				<SiteHeader
+					loggedIn={session != null}
+					displayName={session?.displayName ?? ''}
+					avatarUrl={session?.avatarUrl ?? null}
+					showAdminLink={session?.isAdmin ?? false}
+					loginHref={loginHref}
+					currentPathname={pathname}
+				/>
+			)}
 			<main id="main" css={{ flex: '1 1 auto', width: '100%', boxSizing: 'border-box' }}>
 				{flash ? (
-					<div data-page-flash css={{ ...getPageContainerCss('app'), paddingTop: spacing.lg }}>
+					<div
+						data-page-flash
+						css={{
+							...getPageContainerCss(authShell ? 'auth' : 'app'),
+							paddingTop: authShell ? spacing.xl : spacing.lg,
+						}}
+					>
 						<p
 							className={`flash ${flash.kind}`}
 							role={flash.kind === 'error' ? 'alert' : 'status'}

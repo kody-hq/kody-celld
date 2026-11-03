@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { renderStartDocument } from './start-render.ts'
-import { firstPartySecurityHeaders } from './security-headers.ts'
+import {
+	contentSecurityPolicyWithFormAction,
+	firstPartySecurityHeaders,
+} from './security-headers.ts'
 import { getDocumentTimestampLocale } from '../../start/document-locale.ts'
+import type { AppLoaderData } from '#universal/loader-data.ts'
 
 function render(pathname = '/brand-guide', displayName?: string) {
 	return renderStartDocument(new Request(`http://localhost${pathname}`), {
@@ -22,6 +26,90 @@ function render(pathname = '/brand-guide', displayName?: string) {
 }
 
 describe('Start document renderer', () => {
+	it('renders native auth forms without site header or legacy scripts', async () => {
+		const cases: Array<{ path: string; data: AppLoaderData; text: string }> = [
+			{
+				path: '/signin',
+				data: {
+					page: 'login',
+					next: '/account',
+					email: 'fixture@example.invalid',
+					magicLinks: true,
+				},
+				text: 'name="intent"',
+			},
+			{
+				path: '/setup',
+				data: { page: 'setup', passwordMinLength: 12 },
+				text: 'name="adminToken"',
+			},
+			{
+				path: '/signin/link/expired',
+				data: { page: 'signinLinkExpired' },
+				text: 'Link expired',
+			},
+			{
+				path: '/oauth/authorize',
+				data: {
+					page: 'oauthAuthorizeError',
+					error: 'invalid_request',
+					description: 'Invalid client',
+				},
+				text: 'Cannot authorize this client',
+			},
+		]
+		for (const { path, data, text } of cases) {
+			const response = await renderStartDocument(
+				new Request(`http://localhost${path}`),
+				{ title: 'Auth', pathname: path, data },
+			)
+			assert.equal(response.status, 200, path)
+			const html = await response.text()
+			assert.ok(html.startsWith('<!DOCTYPE html>'), path)
+			assert.ok(html.includes(text), path)
+			assert.ok(!html.includes('<header'), path)
+			assert.ok(!html.includes('/build/client-entry.js'), path)
+		}
+	})
+	it('preserves OAuth consent form-action and request nonce together', async () => {
+		const response = await renderStartDocument(
+			new Request('http://localhost/oauth/authorize'),
+			{
+				title: 'Connect client',
+				pathname: '/oauth/authorize',
+				data: {
+					page: 'oauthAuthorize',
+					clientName: 'fixture',
+					clientUri: null,
+					redirectHost: 'alice:',
+					action: '/oauth/authorize',
+					csrf: 'fixture-csrf',
+					q: 'fixture-query',
+					sig: 'fixture-signature',
+				},
+				headers: {
+					'content-security-policy': contentSecurityPolicyWithFormAction([
+						'alice:',
+					]),
+				},
+			},
+		)
+		assert.equal(response.status, 200)
+		const policy = response.headers.get('content-security-policy')!
+		assert.ok(
+			policy.includes(
+				"form-action 'self' https: http://localhost:* http://127.0.0.1:* alice:",
+			),
+		)
+		const nonce = policy.match(/'nonce-([a-f0-9]{32})'/)?.[1]
+		assert.ok(nonce)
+		const html = await response.text()
+		assert.ok(html.includes('name="csrf"'))
+		assert.ok(html.includes('name="sig"'))
+		assert.ok(html.includes('name="decision"'))
+		assert.ok(html.includes(`nonce="${nonce}"`))
+		assert.ok(!html.includes('<header'))
+	})
 	it('renders the hosted brand guide with the celld document and native links', async () => {
 		for (const pathname of [
 			'/brand-guide',

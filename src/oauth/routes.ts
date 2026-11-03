@@ -5,7 +5,7 @@ import type { Env } from '../env.ts'
 import { recordAudit } from '../lib/audit.ts'
 import { mcpClientMetadataPath } from '../mcp-client/oauth.ts'
 import { cliClientId, cliClientMetadataPath, cliClientMetadataResponse } from './cli-client-metadata.ts'
-import { renderPage } from '#app/render.tsx'
+import { renderStartDocument } from '#app/start-render.ts'
 import { contentSecurityPolicyWithFormAction } from '#app/security-headers.ts'
 import { clientMetadataResponse } from './client-metadata.ts'
 import { appSessionOf, readForm, redirect } from '../web/http.ts'
@@ -160,9 +160,9 @@ function consentFormActionSource(redirectUri: string): string | null {
 	return url.protocol
 }
 
-function authorizeErrorPage(error: unknown) {
+function authorizeErrorPage(request: Request, error: unknown) {
 	const { body, status } = oauthErrorBody(error)
-	return renderPage({
+	return renderStartDocument(request, {
 		title: 'Cannot authorize this client',
 		pathname: oauthPaths.authorize,
 		status: status >= 400 && status < 600 ? status : 400,
@@ -196,6 +196,7 @@ async function handleAuthorize(request: Request, env: Env, url: URL) {
 		const expected = await sessionSignature(env.KODY_MASTER_KEY, session.session.id, 'authorize', form.q ?? '')
 		if (!form.sig || !constantTimeEqualString(form.sig, expected)) {
 			return authorizeErrorPage(
+				request,
 				new OAuthProtocolError('invalid_request', 'The consent form did not match the authorization request.'),
 			)
 		}
@@ -206,7 +207,7 @@ async function handleAuthorize(request: Request, env: Env, url: URL) {
 	try {
 		loaded = await loadAuthorizeRequest(env, params)
 	} catch (error) {
-		return authorizeErrorPage(error)
+		return authorizeErrorPage(request, error)
 	}
 	const { client, authorize } = loaded
 
@@ -219,7 +220,7 @@ async function handleAuthorize(request: Request, env: Env, url: URL) {
 		const q = params.toString()
 		// Approve / Deny redirect to the client: a private-use scheme or non-default loopback host must be in form-action.
 		const formActionSource = consentFormActionSource(authorize.redirectUri)
-		return renderPage({
+		return renderStartDocument(request, {
 			title: `Connect ${client.clientName}`,
 			pathname: oauthPaths.authorize,
 			session: appSessionOf(session),
