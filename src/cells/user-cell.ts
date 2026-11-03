@@ -1,3 +1,5 @@
+import { PendingAppGateway } from '../apps/pending-gateway.ts'
+import { appRunIdempotencyKey, appRunIdFromIdempotencyKey } from '../apps/run-report.ts'
 import { DurableObject } from 'cloudflare:workers'
 import { failStaleQueuedDeliveries, recordDelivery, type DeliveryUpdate } from '../email/delivery-store.ts'
 import { normalizeEmailAddress, snippetOf } from '../email/message.ts'
@@ -696,6 +698,8 @@ export class UserCell extends DurableObject<Env> {
 	private readonly mcpOAuth: McpOAuthStore
 	private readonly mcpServers: McpServerStore
 	private readonly runTriage: RunTriageStore
+	/** Gateway events of app requests that have no run row (yet); see pending-gateway.ts. */
+	private readonly pendingAppGateway = new PendingAppGateway<GatewayEvent>()
 
 	private keyringPromise: Promise<MasterKeyring> | undefined
 	private keyring() {
@@ -2309,6 +2313,11 @@ export class UserCell extends DurableObject<Env> {
 			`INSERT INTO usage_daily (day, runs) VALUES (?, 1) ON CONFLICT(day) DO UPDATE SET runs = runs + 1`,
 			day,
 		)
+		const appRunId = input.kind === 'app' ? appRunIdFromIdempotencyKey(input.idempotencyKey) : null
+		const heldEvents = appRunId ? this.pendingAppGateway.take(appRunId) : []
+		if (heldEvents.length > 0) {
+			this.ctx.storage.sql.exec('UPDATE runs SET gateway_json = ? WHERE id = ?', JSON.stringify(heldEvents), id)
+		}
 		this.pruneRuns()
 		const run = await this.runGet({ id })
 		if (!run) throw new KodyError('internal_error', 'Run insert failed.', { status: 500 })
@@ -2377,16 +2386,24 @@ export class UserCell extends DurableObject<Env> {
 	}
 
 	async runRecordGatewayEvent(input: { runId: string; event: GatewayEvent }) {
+		// An app request's run (if it failed) is keyed by its `app_<id>`, not by row id.
 		const row = this.ctx.storage.sql
-			.exec<{ gateway_json: string }>('SELECT gateway_json FROM runs WHERE id = ?', input.runId)
+			.exec<{ id: string; gateway_json: string }>(
+				'SELECT id, gateway_json FROM runs WHERE id = ? OR idempotency_key = ?',
+				input.runId,
+				appRunIdempotencyKey(input.runId),
+			)
 			.toArray()[0]
-		if (!row) return
+		if (!row) {
+			this.pendingAppGateway.hold(input.runId, input.event)
+			return
+		}
 		const events = JSON.parse(row.gateway_json) as Array<GatewayEvent>
 		events.push(input.event)
 		this.ctx.storage.sql.exec(
 			'UPDATE runs SET gateway_json = ? WHERE id = ?',
 			JSON.stringify(events.slice(-100)),
-			input.runId,
+			row.id,
 		)
 	}
 

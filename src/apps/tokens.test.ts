@@ -3,9 +3,11 @@ import { describe, it } from 'node:test'
 import {
 	appStatePattern,
 	consumeHandoff,
+	mintAppRunToken,
 	mintHandoff,
 	newAppState,
 	signAppSession,
+	verifyAppRunToken,
 	verifyAppSession,
 } from './tokens.ts'
 
@@ -107,5 +109,31 @@ describe('app session values', () => {
 		const value = await signAppSession(key, { uid: 'user_a', sid: 's', exp: now + 5000 })
 		assert.equal(await verifyAppSession(`${key}x`, value, now), null)
 		assert.equal(await verifyAppSession(key, 'nope', now), null)
+	})
+})
+
+describe('app run-report tokens', () => {
+	const claims = { uid: 'user_a', pkg: '@s/notes', rid: 'app_1', exp: now + 5000 }
+	it('verifies until exp and returns the bound run id', async () => {
+		const token = await mintAppRunToken(key, claims)
+		assert.deepEqual(await verifyAppRunToken(key, token, { uid: 'user_a', pkg: '@s/notes' }, now), {
+			v: 1,
+			...claims,
+		})
+		assert.equal(await verifyAppRunToken(key, token, { uid: 'user_a', pkg: '@s/notes' }, now + 5000), null)
+	})
+	it('is bound to the user and the package', async () => {
+		const token = await mintAppRunToken(key, claims)
+		assert.equal(await verifyAppRunToken(key, token, { uid: 'user_b', pkg: '@s/notes' }, now), null)
+		assert.equal(await verifyAppRunToken(key, token, { uid: 'user_a', pkg: '@s/other' }, now), null)
+	})
+	it('rejects session and handoff values, another key, and garbage', async () => {
+		const expect = { uid: 'user_a', pkg: '@s/notes' }
+		const session = await signAppSession(key, { uid: 'user_a', sid: 's', exp: now + 5000 })
+		assert.equal(await verifyAppRunToken(key, session, expect, now), null)
+		const handoff = await mintHandoff(key, { ...expected, sid: 's' }, now)
+		assert.equal(await verifyAppRunToken(key, handoff, expect, now), null)
+		assert.equal(await verifyAppRunToken(`${key}x`, await mintAppRunToken(key, claims), expect, now), null)
+		assert.equal(await verifyAppRunToken(key, 'nope', expect, now), null)
 	})
 })

@@ -5,7 +5,11 @@ import type { Env } from '../env.ts'
 import { randomId } from '../lib/crypto.ts'
 import { parsePackageManifest, type PackageFiles } from '../packages/manifest.ts'
 import type { AppTarget } from './origin.ts'
+import { appRunIdempotencyKey } from './run-report.ts'
 import { serveApp } from './serve.ts'
+import { verifyAppRunToken } from './tokens.ts'
+
+const masterKey = 'test-master-key-0123456789abcdef0123456789'
 
 const appFiles: PackageFiles = {
 	'package.json': JSON.stringify({
@@ -27,13 +31,31 @@ const depFiles: PackageFiles = {
 	'index.js': 'export default () => 1',
 }
 
-/** A user cell and env that count package reads; `onDepRead` runs after the dependency is read. */
-function harness(options: { onDepRead?: (store: Store) => void } = {}) {
+type HarnessOptions = {
+	/** Runs after the dependency is read. */
+	onDepRead?: (store: Store) => void
+	/** The app isolate's fetch; defaults to a 200 `page`. */
+	appFetch?: (request: Request) => Promise<Response>
+	/** The app package's files never arrive, so the graph build hangs. */
+	slowBuild?: boolean
+	vars?: Record<string, string>
+}
+
+/** A user cell and env that count package reads and record runs like the real cell (idempotency included). */
+function harness(options: HarnessOptions = {}) {
 	const store: Store = {
 		'@t/app': { files: appFiles, updatedAt: 'app-1' },
 		'@t/dep': { files: depFiles, updatedAt: 'dep-1' },
 	}
-	const calls = { meta: [] as Array<string>, get: [] as Array<string>, stamps: 0, isolates: 0 }
+	const calls = {
+		meta: [] as Array<string>,
+		get: [] as Array<string>,
+		stamps: 0,
+		isolates: 0,
+		runs: [] as Array<{ idempotencyKey: string | null; error?: { name: string; message: string } }>,
+		props: [] as Array<Record<string, unknown>>,
+		contexts: [] as Array<{ runId: string; reportToken: string }>,
+	}
 	const saved = (name: string) => {
 		const entry = store[name]
 		if (!entry) return null
@@ -57,6 +79,7 @@ function harness(options: { onDepRead?: (store: Store) => void } = {}) {
 		},
 		async packageGet(name: string) {
 			calls.get.push(name)
+			if (options.slowBuild && name === '@t/app') return new Promise<never>(() => {})
 			const pkg = saved(name)
 			if (name === '@t/dep') options.onDepRead?.(store)
 			return pkg
@@ -65,25 +88,45 @@ function harness(options: { onDepRead?: (store: Store) => void } = {}) {
 			calls.stamps++
 			return Object.fromEntries(names.flatMap((name) => (store[name] ? [[name, store[name].updatedAt] as const] : [])))
 		},
-		async runStart() {
-			return { run: { id: 'run_1' } }
+		async runStart(input: { idempotencyKey?: string | null }) {
+			const key = input.idempotencyKey ?? null
+			const existing = key === null ? undefined : calls.runs.find((run) => run.idempotencyKey === key)
+			if (existing) return { run: { id: 'run_existing' }, replayed: true }
+			calls.runs.push({ idempotencyKey: key })
+			return { run: { id: `run_${calls.runs.length}` }, replayed: false }
 		},
-		async runFinish() {},
+		async runFinish(input: { id: string; error?: { name: string; message: string } }) {
+			const run = calls.runs[Number(input.id.slice(4)) - 1]
+			if (run && input.error) run.error = input.error
+		},
 	}
 	const env = {
 		KODY_PUBLIC_URL: 'https://kody.example',
+		KODY_MASTER_KEY: masterKey,
 		KODY_NPM_IMPORTS: 'off',
+		...options.vars,
 		USER: { getByName: () => userCell },
 		NPM_CACHE: { idFromName: () => 'npm', get: () => ({}) },
 		LOADER: {
 			get(_name: string, factory: () => unknown) {
 				calls.isolates++
 				factory()
-				return { getEntrypoint: () => ({ fetch: async () => new Response('page') }) }
+				const fetch = async (request: Request) => {
+					calls.contexts.push(JSON.parse(request.headers.get('x-kody-app-context') ?? '{}'))
+					return options.appFetch ? options.appFetch(request) : new Response('page')
+				}
+				return { getEntrypoint: () => ({ fetch }) }
 			},
 		},
 	} as unknown as Env
-	const exports = { RuntimeHost: () => ({}), FetchGateway: () => ({}) } as unknown as ExecutionContext['exports']
+	const exports = {
+		RuntimeHost: (input: { props: Record<string, unknown> }) => {
+			calls.props.push(input.props)
+			return {}
+		},
+		FetchGateway: () => ({}),
+	} as unknown as ExecutionContext['exports']
+	const pending: Array<Promise<unknown>> = []
 	// A fresh user per harness keeps the module-level graph cache from leaking between tests.
 	const userId = randomId('user')
 	const user: UserRecord = { id: userId, email: 'a@example.com', createdAt: '' }
@@ -100,11 +143,23 @@ function harness(options: { onDepRead?: (store: Store) => void } = {}) {
 			request: new Request(`https://apps.example${target.mountPath}${restPath}`),
 			env,
 			exports,
+			waitUntil: (promise: Promise<unknown>) => pending.push(promise),
 			target,
 			user,
 		})
 	}
-	return { store, calls, request }
+	return { store, calls, request, userId, drain: () => Promise.all(pending) }
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/** A body that sends one chunk and then never finishes. */
+function stalledBody() {
+	return new ReadableStream<Uint8Array>({
+		start(controller) {
+			controller.enqueue(new TextEncoder().encode('<p>loading'))
+		},
+	})
 }
 
 type Store = Record<string, { files: PackageFiles; updatedAt: string }>
@@ -161,5 +216,70 @@ describe('serveApp package lookups', () => {
 		// Now the stamps match what is saved: warm again.
 		assert.equal((await request('/')).status, 200)
 		assert.deepEqual(calls.get, ['@t/app', '@t/dep', '@t/app', '@t/dep'])
+	})
+})
+
+describe('serveApp deadline and failure runs', () => {
+	const fast = { KODY_EXECUTE_TIMEOUT_MS: '1000' }
+
+	it('loads the isolate as an app and hands it a run-report token for this request only', async () => {
+		const { calls, request, userId } = harness()
+		assert.equal((await request('/')).status, 200)
+		assert.equal(calls.props[0]?.app, true)
+		const context = calls.contexts[0]
+		assert.ok(context)
+		const claims = await verifyAppRunToken(masterKey, context.reportToken, { uid: userId, pkg: '@t/app' })
+		assert.equal(claims?.rid, context.runId)
+	})
+
+	it('answers 504 and records one run when the graph build outlives the deadline', async () => {
+		const { calls, request } = harness({ slowBuild: true, vars: fast })
+		const started = Date.now()
+		const response = await request('/')
+		assert.equal(response.status, 504)
+		assert.ok(Date.now() - started < 3000)
+		assert.equal(calls.runs.length, 1)
+		assert.equal(calls.runs[0]?.error?.name, 'app_timeout')
+		assert.equal(calls.isolates, 0)
+		// The hung build is not cached: the next request starts a fresh one.
+		assert.equal((await request('/')).status, 504)
+		assert.deepEqual(calls.get, ['@t/app', '@t/app'])
+	})
+
+	it('errors a streamed body that outlives the deadline and records one run', async () => {
+		const { calls, request, drain } = harness({ vars: fast, appFetch: async () => new Response(stalledBody()) })
+		const response = await request('/')
+		assert.equal(response.status, 200)
+		await assert.rejects(response.text(), /did not finish its response within 1s/)
+		await drain()
+		assert.equal(calls.runs.length, 1)
+		assert.equal(calls.runs[0]?.error?.name, 'app_timeout')
+		assert.equal(calls.runs[0]?.idempotencyKey, appRunIdempotencyKey(calls.contexts[0]?.runId ?? ''))
+	})
+
+	it('errors a body over KODY_APP_RESPONSE_MAX_BYTES and records one run', async () => {
+		const { calls, request, drain } = harness({
+			vars: { KODY_APP_RESPONSE_MAX_BYTES: '1024' },
+			appFetch: async () => new Response('x'.repeat(4096)),
+		})
+		const response = await request('/')
+		await assert.rejects(response.text(), /more than 1024 bytes/)
+		await drain()
+		assert.equal(calls.runs.length, 1)
+		assert.equal(calls.runs[0]?.error?.name, 'app_response_too_large')
+	})
+
+	it('records one run when the handler fails after the 504', async () => {
+		const { calls, request } = harness({
+			vars: fast,
+			appFetch: async () => {
+				await sleep(1200)
+				throw new Error('late failure')
+			},
+		})
+		assert.equal((await request('/')).status, 504)
+		await sleep(400)
+		assert.equal(calls.runs.length, 1)
+		assert.equal(calls.runs[0]?.error?.name, 'app_timeout')
 	})
 })

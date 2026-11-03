@@ -27,6 +27,9 @@ describe('limits', () => {
 		)
 		assert.throws(() => limitsFromEnv({ KODY_EXECUTE_TIMEOUT_MS: '10' }), /between 1000 and 900000/)
 		assert.throws(() => quotasFromEnv({ KODY_QUOTA_RUNS_PER_DAY: '-1' }), /KODY_QUOTA_RUNS_PER_DAY/)
+		assert.equal(limitsFromEnv({}).appResponseMaxBytes, 10_485_760)
+		assert.equal(limitsFromEnv({ KODY_APP_RESPONSE_MAX_BYTES: '2048' }).appResponseMaxBytes, 2048)
+		assert.throws(() => limitsFromEnv({ KODY_APP_RESPONSE_MAX_BYTES: '10' }), /KODY_APP_RESPONSE_MAX_BYTES/)
 	})
 
 	it('validates per-user overrides', () => {

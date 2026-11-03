@@ -7,6 +7,7 @@
 const encoder = new TextEncoder()
 const handoffPurpose = 'kody-celld:app-handoff:v1'
 const sessionPurpose = 'kody-celld:app-session:v1'
+const runReportPurpose = 'kody-celld:app-run-report:v1'
 
 export const handoffTtlMs = 60_000
 export const appSessionMaxMs = 12 * 60 * 60 * 1000
@@ -33,6 +34,8 @@ export type HandoffResult =
 	| { ok: true; claims: HandoffClaims }
 	| { ok: false; reason: 'malformed' | 'signature' | 'expired' | 'mismatch' | 'replay' }
 export type AppSessionClaims = { v: 1; uid: string; sid: string; exp: number }
+/** Lets the app wrapper report a failure of one request (`rid`) for one user and package. */
+export type AppRunClaims = { v: 1; uid: string; pkg: string; rid: string; exp: number }
 
 function toBase64Url(bytes: Uint8Array) {
 	let binary = ''
@@ -161,4 +164,26 @@ export async function verifyAppSession(
 	const c = opened.claims
 	if (c.v !== 1 || !isText(c.uid) || !isText(c.sid) || !isTime(c.exp) || c.exp <= now) return null
 	return { v: 1, uid: c.uid, sid: c.sid, exp: c.exp }
+}
+
+export async function mintAppRunToken(
+	masterKey: string,
+	input: { uid: string; pkg: string; rid: string; exp: number },
+) {
+	const claims: AppRunClaims = { v: 1, ...input }
+	return seal(masterKey, runReportPurpose, claims)
+}
+
+export async function verifyAppRunToken(
+	masterKey: string,
+	value: string,
+	expected: { uid: string; pkg: string },
+	now = Date.now(),
+): Promise<AppRunClaims | null> {
+	const opened = await unseal(masterKey, runReportPurpose, value)
+	if (!opened.ok) return null
+	const c = opened.claims
+	if (c.v !== 1 || !isText(c.uid) || !isText(c.pkg) || !isText(c.rid) || !isTime(c.exp) || c.exp <= now) return null
+	if (c.uid !== expected.uid || c.pkg !== expected.pkg) return null
+	return { v: 1, uid: c.uid, pkg: c.pkg, rid: c.rid, exp: c.exp }
 }

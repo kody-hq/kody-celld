@@ -21,6 +21,14 @@ export async function handleAppOrigin(
 		burnHandoff: (jti, expiresAtMs) => registry.appHandoffBurn(jti, expiresAtMs),
 		sessionAlive: (userId, sessionId) => registry.sessionAlive(userId, sessionId),
 		getUser: (userId) => userCache.get(userId, (id) => registry.getUser(id)),
-		serve: (appRequest, target, user) => serveApp({ request: appRequest, env, exports: ctx.exports, target, user }),
+		serve: (appRequest, target, user) =>
+			serveApp({
+				request: appRequest,
+				env,
+				exports: ctx.exports,
+				waitUntil: (promise) => ctx.waitUntil(promise),
+				target,
+				user,
+			}),
 	})
 }
