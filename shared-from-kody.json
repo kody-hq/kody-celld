@@ -1,7 +1,7 @@
 {
   "kodyRepo": "kody-hq/kody",
   "kodyCommit": "e3149c45fdb85f8c8831ed4dd8a5edded576484e",
-  "updatedAt": "2026-11-03T10:55:11.607Z",
+  "updatedAt": "2026-11-03T17:36:27.969Z",
   "notes": "Verbatim files must match upstream bytes at kodyCommit. Adapted files share a path with hosted Kody but are intentionally different; sync:kody reports their diffs and does not overwrite them.",
   "files": [
     {
@@ -20,6 +20,12 @@
       "path": "client/format-timestamp.ts",
       "source": "packages/worker/client/format-timestamp.ts",
       "sha256": "4492aa5a4d6eda65c71484507a9df8bafeb3cd12cfc462e5538cec966fa95a86",
+      "kind": "ui"
+    },
+    {
+      "path": "client/popover-open.ts",
+      "source": "packages/worker/client/popover-open.ts",
+      "sha256": "1d7defe9775d70b67a8c9b407ab1afb609866ac2363cd4080182c1f97b95a9bc",
       "kind": "ui"
     },
     {
@@ -101,6 +107,12 @@
       "kind": "principle"
     },
     {
+      "path": "public/emotion-style-hoist.js",
+      "source": "packages/worker/public/emotion-style-hoist.js",
+      "sha256": "54c4cc1d2555155bee7bfb4c6dff6941faccdc296a8ffd12892dbabeb403d335",
+      "kind": "ui"
+    },
+    {
       "path": "public/fonts/bricolage-grotesque-latin-ext.woff2",
       "source": "packages/worker/public/fonts/bricolage-grotesque-latin-ext.woff2",
       "sha256": "1d04719f1325400ea4267e630dba29b02af87eb094d7d71d2e4d80a05479d07a",
@@ -137,6 +149,60 @@
       "kind": "asset"
     },
     {
+      "path": "src/lib/api-token-format.ts",
+      "source": "packages/shared/src/api-token-format.ts",
+      "sha256": "fa9adc3fd37b1fff11cc260fcc85bfe6a3001e7c3dfef2b6817dd5d49e596ec9",
+      "kind": "shared"
+    },
+    {
+      "path": "src/lib/base64.ts",
+      "source": "packages/shared/src/base64.ts",
+      "sha256": "657e035fdf12f2769f614bca86b2e2f3dd59d71853a0d607a407fffffb6f32e2",
+      "kind": "shared"
+    },
+    {
+      "path": "start/brand/kody-logo.ts",
+      "source": "packages/worker/start/brand/kody-logo.ts",
+      "sha256": "b0cc1bbac29d396b975651fb5394b063efa0be232052455d904b35587bac7bf9",
+      "kind": "ui"
+    },
+    {
+      "path": "start/brand/kody-mark-path.ts",
+      "source": "packages/worker/start/brand/kody-mark-path.ts",
+      "sha256": "1ee96ba45a38cad9ce0ee6b89dd736608779ff9967d655e1b79b9f5726dd926b",
+      "kind": "ui"
+    },
+    {
+      "path": "start/components/kody-mark.tsx",
+      "source": "packages/worker/start/components/kody-mark.tsx",
+      "sha256": "7e7455b852dc69cba5fd1a6bf4b63d604ba1a48288a295a555b82bb5e9ed438f",
+      "kind": "ui"
+    },
+    {
+      "path": "start/components/toaster.tsx",
+      "source": "packages/worker/start/components/toaster.tsx",
+      "sha256": "cb2891582e0736002d12cb45fb384cade61ea3da6d7d755a60b4b78fbca3ab33",
+      "kind": "ui"
+    },
+    {
+      "path": "start/components/user-avatar.tsx",
+      "source": "packages/worker/start/components/user-avatar.tsx",
+      "sha256": "0d73f11e5413c839cac04a5305e1ae767f84eb6fee1d64939cbace901acebca9",
+      "kind": "ui"
+    },
+    {
+      "path": "start/pages/brand-guide.tsx",
+      "source": "packages/worker/start/pages/brand-guide.tsx",
+      "sha256": "0eac1374b4cee48d2ac8a3155218750bbb290622b4ffb8b027c1fdcbd5116aa8",
+      "kind": "ui"
+    },
+    {
+      "path": "start/server/router-nonce.ts",
+      "source": "packages/worker/start/server/router-nonce.ts",
+      "sha256": "6777af3b176323838e9ae8ae1a2274a3cdf99e9e9f90d1155e97845fb2da405d",
+      "kind": "ui"
+    },
+    {
       "path": "universal/doc-youtube.ts",
       "source": "packages/worker/universal/doc-youtube.ts",
       "sha256": "61fa527e4060531da46a4b17f5bb40b5e222746b3de11f0d78f95fc47902bcb0",
@@ -171,18 +237,6 @@
       "source": "packages/worker/universal/youtube-watch.ts",
       "sha256": "7004a3fd7b1d8768a66f31730da6da4e73d7cc3289c862e138f5b40ebab7180d",
       "kind": "ui"
-    },
-    {
-      "path": "src/lib/base64.ts",
-      "source": "packages/shared/src/base64.ts",
-      "sha256": "657e035fdf12f2769f614bca86b2e2f3dd59d71853a0d607a407fffffb6f32e2",
-      "kind": "shared"
-    },
-    {
-      "path": "src/lib/api-token-format.ts",
-      "source": "packages/shared/src/api-token-format.ts",
-      "sha256": "fa9adc3fd37b1fff11cc260fcc85bfe6a3001e7c3dfef2b6817dd5d49e596ec9",
-      "kind": "shared"
     }
   ],
   "adapted": [
@@ -229,7 +283,7 @@
     {
       "path": "universal/routes.ts",
       "source": "packages/worker/universal/routes.ts",
-      "reason": "Typed route table covers celld paths only (/signin, /console, \u2026); hosted has many more public and org routes."
+      "reason": "Typed route table covers celld paths only (/signin, /console, …); hosted has many more public and org routes."
     },
     {
       "path": "public/styles.css",
@@ -315,6 +369,26 @@
       "path": "universal/user-avatar.tsx",
       "source": "packages/worker/start/components/user-avatar.tsx",
       "reason": "Hosted rewrote this as a React + Emotion component under start/components (TanStack Start); celld keeps the Remix 3 component."
+    },
+    {
+      "path": "start/components/site-header.tsx",
+      "source": "packages/worker/start/components/site-header.tsx",
+      "reason": "Celld retains its native full-document navigation, self-hosted links, clipboard fallback, and session/version shell."
+    },
+    {
+      "path": "start/components/site-footer.tsx",
+      "source": "packages/worker/start/components/site-footer.tsx",
+      "reason": "Celld retains its native full-document navigation, self-hosted links, clipboard fallback, and session/version shell."
+    },
+    {
+      "path": "start/components/brand-context-menu.tsx",
+      "source": "packages/worker/start/components/brand-context-menu.tsx",
+      "reason": "Celld retains its native full-document navigation, self-hosted links, clipboard fallback, and session/version shell."
+    },
+    {
+      "path": "start/public-assets.ts",
+      "source": "packages/worker/start/public-assets.ts",
+      "reason": "Celld serves public files at the origin root, outside the Start build namespace."
     }
   ]
 }

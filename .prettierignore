@@ -2,6 +2,19 @@ node_modules
 .celld
 package-lock.json
 public/build
+.start
+.tanstack
+start/routeTree.gen.ts
+# Start primitives copied verbatim from hosted Kody.
+start/components/kody-mark.tsx
+start/components/user-avatar.tsx
+start/components/toaster.tsx
+start/pages/brand-guide.tsx
+start/brand/kody-mark-path.ts
+start/brand/kody-logo.ts
+start/server/router-nonce.ts
+client/popover-open.ts
+public/emotion-style-hoist.js
 # CLA recorder serializes with tabs; keep that file stable for git diffs.
 .github/cla-signers.json
 # Synced verbatim from kody-hq/kody (see shared-from-kody.json).

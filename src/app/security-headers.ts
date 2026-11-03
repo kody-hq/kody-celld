@@ -22,7 +22,10 @@
 const formAction =
 	"form-action 'self' https: http://localhost:* http://127.0.0.1:*"
 
-function buildContentSecurityPolicy(formActionDirective: string) {
+function buildContentSecurityPolicy(
+	formActionDirective: string,
+	nonce?: string,
+) {
 	return [
 		"default-src 'none'",
 		"base-uri 'none'",
@@ -32,13 +35,18 @@ function buildContentSecurityPolicy(formActionDirective: string) {
 		"img-src 'self' data: https:",
 		"font-src 'self' data:",
 		"style-src 'self' 'unsafe-inline'",
-		"script-src 'self'",
+		`script-src 'self'${nonce ? ` 'nonce-${nonce}'` : ''}`,
 		"connect-src 'self'",
 		"manifest-src 'self'",
 	].join('; ')
 }
 
 const contentSecurityPolicy = buildContentSecurityPolicy(formAction)
+
+export function contentSecurityPolicyWithNonce(nonce: string): string {
+	if (!/^[a-f0-9]{32}$/.test(nonce)) throw new Error('Invalid document nonce')
+	return buildContentSecurityPolicy(formAction, nonce)
+}
 
 /** The first-party CSP with `origins` (bare http(s) origins or scheme sources like `alice:`) added to `form-action`. */
 export function contentSecurityPolicyWithFormAction(

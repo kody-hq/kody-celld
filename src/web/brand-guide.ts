@@ -1,4 +1,4 @@
-import { renderPage } from '#app/render.tsx'
+import { renderStartDocument } from '#app/start-render.ts'
 import type { Env } from '../env.ts'
 import { appSessionOf } from './http.ts'
 import { readWebSession } from './session.ts'
@@ -16,7 +16,7 @@ export async function handleBrandGuide(request: Request, env: Env): Promise<Resp
 		})
 	}
 	const session = appSessionOf(await readWebSession(request, env))
-	return renderPage({
+	return renderStartDocument(request, {
 		title: 'Brand guide',
 		pathname: '/brand-guide',
 		session,

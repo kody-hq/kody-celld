@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
 	contentSecurityPolicyWithFormAction,
+	contentSecurityPolicyWithNonce,
 	firstPartySecurityHeaders,
 	pageResponseHeaders,
 } from './security-headers.ts'
@@ -9,6 +10,37 @@ import {
 function directive(csp: string, name: string) {
 	return csp.split('; ').find((d) => d.startsWith(`${name} `)) ?? ''
 }
+
+describe('contentSecurityPolicyWithNonce', () => {
+	it('authorizes only this document nonce without widening other directives', () => {
+		const nonce = '0123456789abcdef0123456789abcdef'
+		const base = firstPartySecurityHeaders['content-security-policy']!
+		const policy = contentSecurityPolicyWithNonce(nonce)
+		assert.equal(
+			directive(policy, 'script-src'),
+			`script-src 'self' 'nonce-${nonce}'`,
+		)
+		assert.deepEqual(
+			policy.split('; ').filter((d) => !d.startsWith('script-src ')),
+			base.split('; ').filter((d) => !d.startsWith('script-src ')),
+		)
+		assert.ok(!policy.includes("script-src 'self' 'unsafe-inline'"))
+	})
+	it('rejects empty, malformed, and directive-injection nonces', () => {
+		for (const value of [
+			'',
+			'a',
+			'A'.repeat(32),
+			'a'.repeat(33),
+			"'; script-src *",
+		]) {
+			assert.throws(
+				() => contentSecurityPolicyWithNonce(value),
+				/Invalid document nonce/,
+			)
+		}
+	})
+})
 
 describe('contentSecurityPolicyWithFormAction', () => {
 	it('adds only the given origins to form-action and leaves every other directive as is', () => {

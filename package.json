@@ -6,6 +6,10 @@
   "description": "Self-hosted Kody core (MCP search/execute, packages, secrets, jobs) running on Deno celld.",
   "type": "module",
   "imports": {
+    "#start-server": {
+      "types": "./start/server-entry.d.ts",
+      "default": "./.start/server/server.js"
+    },
     "#app/*": "./src/app/*",
     "#client/*": "./client/*",
     "#universal/*": "./universal/*",
@@ -16,10 +20,11 @@
   },
   "scripts": {
     "dev": "node tools/dev/ensure-dev-vars.ts && npm run build:client && celld dev . --port 8787",
-    "typecheck": "tsc -p tsconfig.worker-typecheck.json && tsc -p tsconfig.client.json",
-    "lint": "oxlint src client universal smoke examples scripts tools mail-bridge",
+    "typecheck": "tsc -p tsconfig.worker-typecheck.json && tsc -p tsconfig.client.json && tsc -p tsconfig.start.json",
+    "lint": "oxlint src client start universal smoke examples scripts tools mail-bridge",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "pretest": "npm run build:start",
     "test": "node --test 'src/**/*.test.ts' 'tools/**/*.test.ts' 'universal/**/*.test.ts' 'docker/**/*.test.mjs' 'scripts/*.test.mjs' 'mail-bridge/*.test.mjs'",
     "smoke": "node smoke/run.mjs",
     "smoke:cron": "node smoke/run.mjs --wait-cron",
@@ -29,28 +34,39 @@
     "sync:kody:check": "node scripts/sync-kody.mjs --check",
     "fleet:render": "node scripts/render-fleet-config.mjs",
     "fleet:deploy": "npm run build:client && npm run fleet:render && celld deploy wrangler.fleet.jsonc",
-    "build:client": "vite build"
+    "build:client": "vite build && npm run build:start",
+    "build:start": "vite build --config vite.start.config.ts"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260918.1",
     "@types/node": "24.13.4",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
     "esbuild": "0.28.2",
     "oxlint": "1.81.0",
     "prettier": "3.9.6",
     "typescript": "^5.9.3",
-    "vite": "8.2.2"
+    "vite": "8.3.4"
   },
   "allowScripts": {
     "esbuild@0.28.2": true,
-    "esbuild@0.27.7": true
+    "esbuild@0.27.2": true
   },
   "dependencies": {
     "@cfworker/json-schema": "^4.1.1",
+    "@emotion/react": "11.14.0",
     "@modelcontextprotocol/sdk": "1.32.1",
+    "@tanstack/react-router": "1.170.41",
+    "@tanstack/react-start": "1.168.60",
+    "@tanstack/redact": "0.1.4",
+    "@tanstack/start-storage-context": "1.167.36",
     "es-module-lexer": "2.3.2",
     "marked": "^18.1.0",
     "pako": "3.0.2",
-    "postal-mime": "3.0.0",
+    "postal-mime": "4.2.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
     "remix": "3.0.0",
     "shiki": "^4.5.0",
     "strip-json-comments": "5.0.3",

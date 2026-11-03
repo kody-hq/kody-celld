@@ -10,3 +10,5 @@ wrangler.fleet.jsonc
 *.local
 .DS_Store
 public/build
+.start
+.tanstack

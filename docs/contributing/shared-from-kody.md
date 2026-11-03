@@ -57,7 +57,7 @@ The full re-pin to kody-hq/kody@e3149c45 found that hosted Kody replaced its
 Remix 3 web UI with React + TanStack Start. Components moved to
 `packages/worker/start/components/` and are React + Emotion; markdown parses
 with `@tanstack/markdown`; code highlighting uses TanStack highlight. celld
-stays on Remix 3, so:
+stayed on Remix 3 at that re-pin, so:
 
 - **Adapted** (hosted rewrote them for React, Emotion, `@tanstack/markdown` or
   TanStack highlight): `client/copy-code-block.tsx`,
@@ -75,6 +75,16 @@ stays on Remix 3, so:
 
 Every verbatim file pins to the one top-level `kodyCommit`; there is no
 per-file pin.
+
+## Start migration
+
+The public brand guide now uses hosted's Start/Redact/Emotion stack. Its page,
+mark, avatar, toaster, brand geometry, router-nonce reader, popover helper, and
+Emotion style-hoist script are pinned verbatim at the same `kodyCommit`.
+The new `start/` header, footer, brand menu, and public-asset helper are
+adapted for celld's links, clipboard fallback, asset layout, and native
+full-document navigation. The remaining Remix pages stay in the adapted
+list until their page-family migration.
 
 ## Interim contract modules (second lane)
 

@@ -11,18 +11,22 @@ const doctypeBytes = new TextEncoder().encode('<!DOCTYPE html>')
  * and shared caches can store). The remix/component renderer also emits markup
  * starting at `<html>`; without a doctype the browser parses the document in
  * quirks mode, so the doctype is prepended once the document is known to exist.
+ * Start already includes a doctype; its caller disables that prefix.
  */
 export async function openDocumentStream(
 	stream: ReadableStream<Uint8Array>,
+	{ prependDoctype = true }: { prependDoctype?: boolean } = {},
 ): Promise<ReadableStream<Uint8Array>> {
 	const reader = stream.getReader()
-	const first = await reader.read()
+	let first = await reader.read()
+	while (!first.done && first.value.byteLength === 0)
+		first = await reader.read()
 	if (first.done) {
 		throw new Error('SSR render produced no document')
 	}
 	return new ReadableStream<Uint8Array>({
 		start(controller) {
-			controller.enqueue(doctypeBytes)
+			if (prependDoctype) controller.enqueue(doctypeBytes)
 			controller.enqueue(first.value)
 		},
 		async pull(controller) {
