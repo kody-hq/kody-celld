@@ -227,6 +227,38 @@ export function replacePackageFiles(sql: SqlStorage, packageName: string, files:
 	}
 }
 
+/** A UserCell `packages` row without its files: the metadata-only read package apps use per request. */
+export type UserPackageRow = {
+	name: string
+	version: string
+	manifestJson: string
+	source: string
+	createdAt: string
+	updatedAt: string
+}
+
+export function readUserPackageRow(sql: SqlStorage, packageName: string): UserPackageRow | null {
+	const row = sql
+		.exec<{
+			name: string
+			version: string
+			manifest_json: string
+			source: string
+			created_at: string
+			updated_at: string
+		}>('SELECT name, version, manifest_json, source, created_at, updated_at FROM packages WHERE name = ?', packageName)
+		.toArray()[0]
+	if (!row) return null
+	return {
+		name: row.name,
+		version: row.version,
+		manifestJson: row.manifest_json,
+		source: row.source,
+		createdAt: row.created_at,
+		updatedAt: row.updated_at,
+	}
+}
+
 export function readPackageFiles(sql: SqlStorage, packageName: string): PackageFiles {
 	const rows = sql
 		.exec<{ path: string; content: string }>(

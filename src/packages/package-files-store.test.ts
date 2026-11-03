@@ -13,6 +13,7 @@ import {
 	migrateUserPackageFiles,
 	packageFilesSchema,
 	readPackageFiles,
+	readUserPackageRow,
 	replacePackageFiles,
 	userPackagesTableDdl,
 } from './package-files-store.ts'
@@ -216,5 +217,41 @@ describe('package-files-store', () => {
 				return true
 			},
 		)
+	})
+})
+
+describe('readUserPackageRow', () => {
+	it('reads the package row without touching package_files', () => {
+		const sql = memorySql()
+		sql.exec(packageFilesSchema)
+		sql.exec(userPackagesTableDdl)
+		sql.exec(
+			'INSERT INTO packages (name, version, manifest_json, source, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+			'@a/app',
+			'1.2.3',
+			'{"name":"@a/app","version":"1.2.3"}',
+			'test',
+			'2026-01-01T00:00:00.000Z',
+			'2026-01-02T00:00:00.000Z',
+		)
+		replacePackageFiles(sql, '@a/app', { 'index.js': 'export default 1' })
+		const queries: Array<string> = []
+		const recording = {
+			exec(query: string, ...params: Array<string | number | null>) {
+				queries.push(query)
+				return sql.exec(query, ...params)
+			},
+		} as unknown as SqlStorage
+		assert.deepEqual(readUserPackageRow(recording, '@a/app'), {
+			name: '@a/app',
+			version: '1.2.3',
+			manifestJson: '{"name":"@a/app","version":"1.2.3"}',
+			source: 'test',
+			createdAt: '2026-01-01T00:00:00.000Z',
+			updatedAt: '2026-01-02T00:00:00.000Z',
+		})
+		assert.equal(readUserPackageRow(recording, '@a/missing'), null)
+		assert.ok(queries.length > 0)
+		assert.ok(queries.every((query) => !/package_files/.test(query)))
 	})
 })

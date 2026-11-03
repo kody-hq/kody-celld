@@ -664,3 +664,33 @@ describe('buildModuleGraph', () => {
 		assert.doesNotMatch(runGraph.modules['wrapper.js'] ?? '', /x-kody-app-context/)
 	})
 })
+
+describe('buildModuleGraph package stamps', () => {
+	it('returns the updated_at it read for every included package', async () => {
+		const reads: Array<string> = []
+		const stampedCell = {
+			async packageGet(name: string) {
+				reads.push(name)
+				const pkg = await fakeUserCell.packageGet(name)
+				return pkg ? { ...pkg, updatedAt: `${name}@read-${reads.length}` } : null
+			},
+		} as unknown as DurableObjectStub<UserCell>
+		const graph = await buildModuleGraph({
+			entry: { kind: 'adhoc', code: "import inc from 'kody:@t/counter/increment'\nexport default async () => inc()" },
+			userCell: stampedCell,
+			allowNpm: false,
+		})
+		// One read per package (cached), and the stamp is the one from that read.
+		assert.deepEqual(reads, ['@t/counter'])
+		assert.deepEqual(graph.packageStamps, { '@t/counter': '@t/counter@read-1' })
+		assert.deepEqual(Object.keys(graph.packageStamps), graph.packages)
+	})
+	it('has no stamps for an ad hoc graph without package imports', async () => {
+		const graph = await buildModuleGraph({
+			entry: { kind: 'adhoc', code: 'export default () => 1' },
+			userCell: fakeUserCell,
+			allowNpm: false,
+		})
+		assert.deepEqual(graph.packageStamps, {})
+	})
+})
