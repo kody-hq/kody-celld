@@ -239,6 +239,40 @@ describe('Start document renderer', () => {
 		assert.ok(html.includes(`nonce="${nonce}"`))
 		assert.ok(!html.includes('<header'))
 	})
+	it('lets a long unbroken OAuth client name wrap in the consent title (#159)', async () => {
+		const clientName = 'A'.repeat(120)
+		const response = await renderStartDocument(
+			new Request('http://localhost/oauth/authorize'),
+			{
+				title: 'Connect client',
+				pathname: '/oauth/authorize',
+				data: {
+					page: 'oauthAuthorize',
+					clientName,
+					clientUri: null,
+					redirectHost: 'alice:',
+					action: '/oauth/authorize',
+					csrf: 'fixture-csrf',
+					q: 'fixture-query',
+					sig: 'fixture-signature',
+				},
+				headers: {},
+			},
+		)
+		const html = await response.text()
+		const heading = html.indexOf(`Connect ${clientName}</h1>`)
+		assert.ok(heading > 0)
+		const wrapper = [
+			...html.slice(0, heading).matchAll(/<div class="(css-[\w-]+)">/g),
+		].at(-1)?.[1]
+		assert.ok(wrapper, 'title wrapper div not found')
+		const rule = html.match(new RegExp(`\\.${wrapper}\\{([^}]*)\\}`))?.[1] ?? ''
+		assert.ok(
+			rule.includes('overflow-wrap:anywhere'),
+			`title wrapper must wrap long words: ${rule}`,
+		)
+	})
+
 	it('renders the hosted brand guide with the celld document and native links', async () => {
 		for (const pathname of [
 			'/brand-guide',
