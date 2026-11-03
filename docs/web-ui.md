@@ -2,11 +2,13 @@
 
 kody-celld ships a server-rendered web UI so that people who self-host it do
 not have to drive everything with `curl` and an admin token. It is built on the
-same stack and design system as [kody-hq/kody](https://github.com/kody-hq/kody)
-— Remix 3 (`remix/component` components, `remix/routes` typed routes,
-`remix/component/server` streaming SSR) with a Vite-built browser bundle. Hosted
-Kody has since moved its pages to React + TanStack Start
-(`packages/worker/start/`), so upstream UI changes are now translated rather
+design system of [kody-hq/kody](https://github.com/kody-hq/kody), using
+Remix 3 components and streaming SSR with a Vite-built browser bundle.
+Typed URL builders are framework-independent, matching hosted's
+`packages/worker/universal/routes.ts`; request handlers still own method
+dispatch. Hosted Kody uses TanStack Start with `@tanstack/redact` replacing
+React at build time, Emotion, and first-party components
+(`packages/worker/start/`), so upstream UI changes are currently translated rather
 than copied (see
 [Porting UI changes from kody](#porting-ui-changes-from-kody)). Every page is
 still a plain HTML form posted back to the same route and works with

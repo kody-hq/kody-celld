@@ -1,11 +1,3 @@
-import { createMatcher } from 'remix/route-pattern/match'
-import { routes } from '#universal/routes.ts'
-
-const packageMatcher = createMatcher(routes.accountPackageDetail.pattern)
-const packageFilesMatcher = createMatcher(routes.accountPackageFiles.pattern)
-const packagePreviewFilesMatcher = createMatcher(routes.accountPackagePreviewFiles.pattern)
-const jobMatcher = createMatcher(routes.accountJobDetail.pattern)
-
 export type AccountDetailPath =
 	| { kind: 'package'; name: string }
 	| { kind: 'packageFiles'; name: string; relativePath: string | null }
@@ -14,29 +6,29 @@ export type AccountDetailPath =
 
 export function matchAccountDetailPath(url: URL): AccountDetailPath | null {
 	try {
-		const previewFiles = packagePreviewFilesMatcher.match(url)
+		const previewFiles = /^\/account\/package-preview\/([^/]+)\/files(?:\/(.*))?$/.exec(url.pathname)
 		if (previewFiles) {
 			return {
 				kind: 'packagePreviewFiles',
-				source: previewFiles.params.source,
-				relativePath: previewFiles.params.relativePath ?? null,
+				source: decodeURIComponent(previewFiles[1]!),
+				relativePath: previewFiles[2] === undefined ? null : decodeURIComponent(previewFiles[2]),
 			}
 		}
 
-		const packageFiles = packageFilesMatcher.match(url)
+		const packageFiles = /^\/account\/packages\/([^/]+)\/files(?:\/(.*))?$/.exec(url.pathname)
 		if (packageFiles) {
 			return {
 				kind: 'packageFiles',
-				name: packageFiles.params.name,
-				relativePath: packageFiles.params.relativePath ?? null,
+				name: decodeURIComponent(packageFiles[1]!),
+				relativePath: packageFiles[2] === undefined ? null : decodeURIComponent(packageFiles[2]),
 			}
 		}
 
-		const job = jobMatcher.match(url)
-		if (job) return { kind: 'job', jobId: job.params.jobId }
+		const job = /^\/account\/jobs\/([^/]+)$/.exec(url.pathname)
+		if (job) return { kind: 'job', jobId: decodeURIComponent(job[1]!) }
 
-		const pkg = packageMatcher.match(url)
-		if (pkg) return { kind: 'package', name: pkg.params.name }
+		const pkg = /^\/account\/packages\/([^/]+)$/.exec(url.pathname)
+		if (pkg) return { kind: 'package', name: decodeURIComponent(pkg[1]!) }
 	} catch {
 		return null
 	}
