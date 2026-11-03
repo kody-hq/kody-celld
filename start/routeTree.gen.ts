@@ -10,33 +10,53 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as BrandGuideRouteImport } from './routes/brand-guide'
+import { Route as CommunityIndexRouteImport } from './routes/community.index'
+import { Route as CommunitySplatRouteImport } from './routes/community_.$'
 
 const BrandGuideRoute = BrandGuideRouteImport.update({
   id: '/brand-guide',
   path: '/brand-guide',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CommunityIndexRoute = CommunityIndexRouteImport.update({
+  id: '/community/',
+  path: '/community/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CommunitySplatRoute = CommunitySplatRouteImport.update({
+  id: '/community_/$',
+  path: '/community/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/brand-guide': typeof BrandGuideRoute
+  '/community/$': typeof CommunitySplatRoute
+  '/community/': typeof CommunityIndexRoute
 }
 export interface FileRoutesByTo {
   '/brand-guide': typeof BrandGuideRoute
+  '/community/$': typeof CommunitySplatRoute
+  '/community': typeof CommunityIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/brand-guide': typeof BrandGuideRoute
+  '/community_/$': typeof CommunitySplatRoute
+  '/community/': typeof CommunityIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/brand-guide'
+  fullPaths: '/brand-guide' | '/community/$' | '/community/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/brand-guide'
-  id: '__root__' | '/brand-guide'
+  to: '/brand-guide' | '/community/$' | '/community'
+  id: '__root__' | '/brand-guide' | '/community_/$' | '/community/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   BrandGuideRoute: typeof BrandGuideRoute
+  CommunitySplatRoute: typeof CommunitySplatRoute
+  CommunityIndexRoute: typeof CommunityIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +68,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BrandGuideRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/community/': {
+      id: '/community/'
+      path: '/community'
+      fullPath: '/community/'
+      preLoaderRoute: typeof CommunityIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/community_/$': {
+      id: '/community_/$'
+      path: '/community/$'
+      fullPath: '/community/$'
+      preLoaderRoute: typeof CommunitySplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   BrandGuideRoute: BrandGuideRoute,
+  CommunitySplatRoute: CommunitySplatRoute,
+  CommunityIndexRoute: CommunityIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

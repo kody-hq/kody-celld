@@ -1,4 +1,5 @@
 import type { StartDocumentData } from '../../start/request-context.ts'
+import { getDocumentTimestampLocale } from '../../start/document-locale.ts'
 import type { RenderPageOptions } from './render.tsx'
 import { KODY_CELLD_VERSION } from '../env.ts'
 import {
@@ -14,6 +15,7 @@ export async function renderStartDocument(
 	const nonce = crypto.randomUUID().replaceAll('-', '')
 	const document: StartDocumentData = {
 		title: `${options.title} · Kody`,
+		timestampLocale: getDocumentTimestampLocale(),
 		pathname: options.pathname,
 		data: options.data,
 		session: options.session ?? null,

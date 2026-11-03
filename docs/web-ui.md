@@ -3,18 +3,22 @@
 kody-celld ships a server-rendered web UI so that people who self-host it do
 not have to drive everything with `curl` and an admin token. It is built on the
 design system of [kody-hq/kody](https://github.com/kody-hq/kody), using
-TanStack Start, Redact, and Emotion for the public brand guide. The remaining
-pages still use Remix 3 components and streaming SSR during migration.
+TanStack Start, Redact, and Emotion for the public brand guide and community
+catalog/detail pages. The remaining pages still use Remix 3 components and
+streaming SSR during migration.
 Typed URL builders are framework-independent, matching hosted's
 `packages/worker/universal/routes.ts`; request handlers still own method
 dispatch. Hosted Kody uses TanStack Start with `@tanstack/redact` replacing
 React at build time, Emotion, and first-party components
 (`packages/worker/start/`). Migrated components are copied verbatim where
 possible; remaining Remix pages still need translation (see
-[Porting UI changes from kody](#porting-ui-changes-from-kody)). Every page is
-still uses native links and HTML forms posted back to the same route and works with
-JavaScript disabled; the browser bundle only hydrates small islands (copy
-buttons, double-confirm buttons, the header menu, toasts). The MCP surface is
+[Porting UI changes from kody](#porting-ui-changes-from-kody)). Every page
+uses native links and HTML forms posted back to the same route and works with
+JavaScript disabled. The legacy browser bundle hydrates small islands (copy
+buttons, double-confirm buttons, the header menu, toasts); Start hydrates its
+documents. Start serializes the server's timestamp locale and time zone so
+hydration preserves the existing server display even in a different browser
+locale. The MCP surface is
 unchanged — the UI is a convenience layer over the same cells and
 capabilities.
 
