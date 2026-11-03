@@ -10,6 +10,7 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { forwardedOperatorVars } from './fleet-vars.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outFile = path.join(root, 'wrangler.fleet.jsonc')
@@ -60,17 +61,7 @@ const rendered = {
 		KODY_MASTER_KEY: masterKey,
 		KODY_PUBLIC_URL: publicUrl,
 		...(process.env.KODY_MASTER_KEY_PREVIOUS ? { KODY_MASTER_KEY_PREVIOUS: process.env.KODY_MASTER_KEY_PREVIOUS } : {}),
-		// Runtime limits and quota defaults (docs/operations.md); unset/empty = built-in default.
-		...Object.fromEntries(
-			Object.entries(process.env).filter(
-				([name, value]) =>
-					/^KODY_(EXECUTE|RUN|APP_RESPONSE|RESPONSE|AUDIT|MCP|QUOTA|AI|SEARCH|VECTOR|QDRANT|BLOB|BROWSER|WEBHOOK|EMAIL|NPM|ESM|PACKAGE|DNS|PRIVATE)_/.test(
-						name,
-					) &&
-					value !== undefined &&
-					value !== '',
-			),
-		),
+		...forwardedOperatorVars(process.env),
 	},
 }
 
