@@ -73,8 +73,12 @@ padded base64>" }`:
   each file ≤ ~1.8 MiB, all files ≤ 4 MiB.
 - `packagePreview({ path })` and the files explorer describe a binary file by
   its size (`binary: true`, no content).
+- An empty `{ "base64": "" }` is saved as an empty text file (zero bytes are
+  valid UTF-8).
 - Storage: the raw bytes sit in the `package_files.bytes` column (added by an
-  additive migration; text rows are unchanged). An older image ignores that
+  additive migration; text rows are unchanged). A `CHECK` keeps each row to
+  one kind of file: text in `content` with `bytes` NULL, or non-empty `bytes`
+  with `content` empty. An older image ignores that
   column, so after a rollback binary files read as empty text files, and a
   re-save from that image drops their bytes.
 

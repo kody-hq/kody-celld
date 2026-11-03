@@ -281,6 +281,45 @@ describe('binary package files', () => {
 		assert.deepEqual(readPackageFiles(sql, '@a/old'), { 'README.md': '# old' })
 	})
 
+	it('a row holds exactly one of text content or binary bytes (CHECK), fresh and migrated tables alike', () => {
+		const legacy = memorySql()
+		legacy.exec(userPackagesTableDdl)
+		legacy.exec(`
+			CREATE TABLE package_files (
+				package_name TEXT NOT NULL,
+				path TEXT NOT NULL,
+				content TEXT NOT NULL,
+				PRIMARY KEY (package_name, path)
+			);
+		`)
+		migrateUserPackageFiles(legacy)
+		const fresh = memorySql()
+		fresh.exec(packageFilesSchema)
+		for (const sql of [fresh, legacy]) {
+			const insert = (path: string, content: string, bytes: Uint8Array | string | null) =>
+				sql.exec(
+					'INSERT INTO package_files (package_name, path, content, bytes) VALUES (?, ?, ?, ?)',
+					'@a/pkg',
+					path,
+					content,
+					bytes,
+				)
+			insert('text.txt', 'hello', null)
+			insert('empty.txt', '', null)
+			insert('logo.png', '', pngBytes)
+			assert.throws(() => insert('both.png', 'text', pngBytes), /CHECK constraint failed/)
+			assert.throws(() => insert('empty.png', '', new Uint8Array()), /CHECK constraint failed/)
+			assert.throws(() => insert('string.png', '', 'not a blob'), /CHECK constraint failed/)
+		}
+	})
+
+	it('treats an empty { base64 } as an empty text file (a binary row always has bytes)', () => {
+		const sql = memorySql()
+		sql.exec(packageFilesSchema)
+		replacePackageFiles(sql, '@a/pkg', normalizePackageFiles({ 'public/empty.bin': { base64: '' } }))
+		assert.deepEqual(readPackageFiles(sql, '@a/pkg'), { 'public/empty.bin': '' })
+	})
+
 	it('counts decoded bytes of binary files against the per-file and total caps', () => {
 		const exact = { base64: Buffer.alloc(maxPackageFileBytes).toString('base64') }
 		assertPackageFileSizes({ 'big.bin': exact })

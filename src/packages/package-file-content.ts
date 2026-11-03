@@ -69,7 +69,8 @@ export function readPackageFileInput(path: string, content: unknown): PackageFil
 					`File "${path}" must be UTF-8 text: code and JSON modules, README.md and AGENTS.md cannot be binary.`,
 				)
 			}
-			return { base64 }
+			// Zero bytes is valid UTF-8: store it as an empty text file, so a binary row always has bytes.
+			return base64 === '' ? '' : { base64 }
 		}
 	}
 	throw new KodyError('invalid_package', `File "${path}" must be a string, or { base64 } for a binary file.`)

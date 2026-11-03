@@ -18,16 +18,20 @@ export const maxPackageTotalBytes = 4 * 1024 * 1024
 export const maxPackageFileBytes = 1_800_000
 
 /**
- * A text file is `content` with `bytes` NULL; a binary file (#85) is `content`
- * '' with its raw bytes in `bytes`. An image without the column (before #85)
- * reads binary files as empty text and keeps every text file.
+ * Each row holds exactly one kind of file: text is `content` with `bytes`
+ * NULL (an empty text file is `''`); a binary file (#85) is non-empty `bytes`
+ * with `content` ''. The CHECK enforces it. `content` stays NOT NULL so an
+ * image without the column (before #85) reads binary files as empty text and
+ * keeps every text file.
  */
+const packageFilesBytesColumn = `bytes BLOB CHECK (bytes IS NULL OR (typeof(bytes) = 'blob' AND length(bytes) > 0 AND content = ''))`
+
 export const packageFilesSchema = `
 	CREATE TABLE IF NOT EXISTS package_files (
 		package_name TEXT NOT NULL,
 		path TEXT NOT NULL,
 		content TEXT NOT NULL,
-		bytes BLOB,
+		${packageFilesBytesColumn},
 		PRIMARY KEY (package_name, path)
 	);
 `
@@ -39,7 +43,7 @@ function ensurePackageFilesBytesColumn(sql: SqlStorage) {
 		.exec<{ name: string }>(`SELECT name FROM pragma_table_info('package_files')`)
 		.toArray()
 		.map((row) => row.name)
-	if (!columns.includes('bytes')) sql.exec('ALTER TABLE package_files ADD COLUMN bytes BLOB')
+	if (!columns.includes('bytes')) sql.exec(`ALTER TABLE package_files ADD COLUMN ${packageFilesBytesColumn}`)
 }
 
 /** UserCell `packages` table after the files_json → package_files migration. */

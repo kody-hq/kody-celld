@@ -10,7 +10,7 @@ describe('readPackageFileInput', () => {
 	it('keeps text as is and accepts { base64 } for a binary asset', () => {
 		assert.equal(readPackageFileInput('main.js', 'export default 1'), 'export default 1')
 		assert.deepEqual(readPackageFileInput('public/logo.png', { base64: 'iVBORw0KGgo=' }), { base64: 'iVBORw0KGgo=' })
-		assert.deepEqual(readPackageFileInput('empty.bin', { base64: '' }), { base64: '' })
+		assert.equal(readPackageFileInput('empty.bin', { base64: '' }), '', 'zero bytes is an empty text file')
 	})
 
 	it('refuses malformed base64, extra keys and other shapes', () => {
