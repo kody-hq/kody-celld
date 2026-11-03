@@ -138,22 +138,31 @@ Apps are opened from Kody; there is no separate login.
   `app_origin_misconfigured` (500), `app_origin_unmappable` (500, an account id that
   cannot become a subdomain label).
 - `GET /apps/open?package=<name>` on the main origin needs a Kody web session
-  (otherwise it redirects to sign-in and back).
+  (otherwise it redirects to sign-in and back). An optional
+  `&path=<path inside the app>` (for example `/item/5?tab=2`) opens the app
+  there; it must start with a single `/`, contain no `\`, scheme or control
+  characters, and stay under the app mount after normalization, or the answer
+  is 400 `invalid_app_path`.
 
 The flow, which the browser follows by itself:
 
-1. `/apps/open?package=<name>` without a valid `state` redirects to the bare
-   app URL, which starts the state round trip. The **Open app** link and
+1. `/apps/open?package=<name>` without a valid `state` redirects to the app
+   URL (plus `path`, if given), which starts the state round trip. The **Open app** link and
    `packageAppUrl().openUrl` both go this way.
 2. The app origin has no session, so it sets a short-lived `kody_app_state`
-   cookie (5 minutes) and redirects to `/apps/open?package=<name>&state=<state>`.
+   cookie (5 minutes, scoped to that app's mount) and redirects to
+   `/apps/open?package=<name>&state=<state>&path=<the requested path>` (`path`
+   is left out for the app root). A bookmarked deep link therefore survives a
+   new browser, an expired app session or a fresh sign-in.
 3. `/apps/open` mints a **handoff token** bound to the user, the package, the
-   Kody web session and that `state`, and redirects to the app URL with
-   `?__kody_handoff=<token>`.
+   Kody web session, that `state` and the return path, and redirects to the app
+   URL with `?__kody_handoff=<token>`.
 4. The app origin checks the signature, expiry, user and package, and that the
    `kody_app_state` cookie equals the token's state, then burns the token and
-   sets `kody_app_session`. It redirects to the same URL without the handoff
-   parameter (other query parameters survive).
+   sets `kody_app_session`. It redirects to the signed return path, checked
+   again against the mount (a path that leaves it lands on the app root), or,
+   for the app root, to the same URL without the handoff parameter (other query
+   parameters survive).
 
 The handoff is valid for 60 seconds and works once; a replay, an expired token
 or a token carried to a different browser is refused. The state round trip is
@@ -161,7 +170,9 @@ what stops someone else's link from signing your browser in to their app.
 
 `kody_app_session` lasts 12 hours, is `HttpOnly; SameSite=Lax`, host-only, and
 `Secure` when the app base URL is https. It is scoped to `/u/<userId>/` in path
-mode and `/` in subdomain mode, and covers all of that user's apps. **Every
+mode and `/` in subdomain mode, and covers all of that user's apps. The
+`kody_app_state` cookie is scoped to the app's own mount (`<mount path>/`), so
+opening two apps at once cannot overwrite the first round trip. **Every
 request** re-checks the parent Kody session, so signing out or revoking it ends
 app access immediately. Access is **owner-only**: the session's user must be
 the user in the URL. A GET or HEAD without a valid session, or with another
@@ -221,8 +232,6 @@ sign-in, console and the rest are never reachable there.
   not recorded as gateway events on a run; only failures write `app` runs.
 - **`packageContext.runId`** can be stale under concurrent requests in one
   isolate. Use it for log correlation only.
-- **Re-auth lands on the app root.** After signing in again the browser returns
-  to the app root, not the deep link it asked for (follow-up).
 - **Timeout** is `KODY_EXECUTE_TIMEOUT_MS` (default 60 s); exceeding it answers 504.
 
 ## Example and smoke test
@@ -245,6 +254,8 @@ checks the echo and storage, a handoff without a state cookie, with a wrong one
 and with the matching one, that Kody credentials are stripped in both
 directions, that first-party routes such as `/mcp` and `/api` are 404 on the
 app host, that the app path is 404 on the Kody host, a POST body and storage,
-and that signing out ends access. Handoff replay and foreign-session refusal
+that signing out ends access, that a deep link survives re-auth (and a bad
+`path` is 400), and that two apps opened at once each keep their own state
+cookie. Handoff replay and foreign-session refusal
 are covered by unit tests (`src/apps/tokens.test.ts`, `src/apps/origin.test.ts`),
 not by the smoke. Without `KODY_APP_BASE_URL` the scenario skips itself.

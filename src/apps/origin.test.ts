@@ -37,8 +37,8 @@ function harness(overrides: Partial<AppOriginDeps> = {}) {
 
 const stateCookie = (value = st) => `kody_app_state=${value}`
 const handoffQuery = (token: string) => `__kody_handoff=${encodeURIComponent(token)}`
-const mint = (state = st, pkg = 'notes', userId = uid) =>
-	mintHandoff(key, { uid: userId, pkg, sid: 'sess_live', st: state }, now)
+const mint = (state = st, pkg = 'notes', userId = uid, rp?: string) =>
+	mintHandoff(key, { uid: userId, pkg, sid: 'sess_live', st: state, ...(rp ? { rp } : {}) }, now)
 
 async function sessionCookie(sid = 'sess_live', userId = uid) {
 	const value = await signAppSession(key, { uid: userId, sid, exp: now + 60_000 })
@@ -67,7 +67,7 @@ describe('handleAppOriginRequest', () => {
 		assert.match(cookie, /SameSite=Lax/)
 		assert.match(cleared, /^kody_app_state=;/)
 		assert.match(cleared, /Max-Age=0/)
-		assert.match(cleared, new RegExp(`Path=/u/${uid}/`))
+		assert.match(cleared, new RegExp(`Path=/u/${uid}/packages/notes/;`))
 		assert.equal(served.length, 0)
 	})
 	it('swaps only when the state cookie equals the token state, without burning on mismatch', async () => {
@@ -108,7 +108,7 @@ describe('handleAppOriginRequest', () => {
 	})
 	it('starts the state dance for a GET without a session and without a handoff', async () => {
 		const { call, served } = harness()
-		const response = await call(`${base}/x`)
+		const response = await call(`${base}/`)
 		assert.equal(response.status, 302)
 		const location = response.headers.get('location') ?? ''
 		const match = new RegExp(`^${publicUrl}/apps/open\\?package=notes&state=([0-9a-f]{32})$`).exec(location)
@@ -119,9 +119,56 @@ describe('handleAppOriginRequest', () => {
 		assert.match(cookie, /SameSite=Lax/)
 		assert.match(cookie, /Secure/)
 		assert.match(cookie, /Max-Age=300/)
-		assert.match(cookie, new RegExp(`Path=/u/${uid}/`))
+		assert.match(cookie, new RegExp(`Path=/u/${uid}/packages/notes/;`))
 		assert.equal(response.headers.get('cache-control'), 'no-store')
 		assert.equal(served.length, 0)
+	})
+	it('keeps a deep link across re-auth: the return path rides the round trip and the signed handoff', async () => {
+		const { call } = harness()
+		const start = await call(`${base}/item/5?tab=2`)
+		assert.equal(start.status, 302)
+		const location = new URL(start.headers.get('location') ?? '')
+		assert.equal(location.searchParams.get('path'), '/item/5?tab=2')
+		const state = location.searchParams.get('state') ?? ''
+		const token = await mint(state, 'notes', uid, '/item/5?tab=2')
+		const swap = await call(`${base}/?${handoffQuery(token)}`, { headers: { cookie: stateCookie(state) } })
+		assert.equal(swap.status, 302)
+		assert.equal(swap.headers.get('location'), `${base}/item/5?tab=2`)
+		assert.match(swap.headers.getSetCookie()[0] ?? '', /^kody_app_session=/)
+	})
+	it('lands on the mount root when a signed return path leaves the mount', async () => {
+		const { call } = harness()
+		for (const rp of ['/../other/x', '//evil.example/', '/a\\b']) {
+			const token = await mint(st, 'notes', uid, rp)
+			const swap = await call(`${base}/?${handoffQuery(token)}`, { headers: { cookie: stateCookie() } })
+			assert.equal(swap.status, 302, rp)
+			assert.equal(swap.headers.get('location'), `${base}/`, rp)
+		}
+	})
+	it('scopes the state cookie per mount so two interleaved opens both succeed', async () => {
+		const { call } = harness()
+		const other = `https://apps.example.com/u/${uid}/packages/todo`
+		const states: Record<string, string> = {}
+		for (const [name, mount] of [
+			['notes', base],
+			['todo', other],
+		] as const) {
+			const start = await call(`${mount}/`)
+			const cookie = start.headers.get('set-cookie') ?? ''
+			assert.match(cookie, new RegExp(`Path=/u/${uid}/packages/${name}/;`), cookie)
+			states[name] = new URL(start.headers.get('location') ?? '').searchParams.get('state') ?? ''
+		}
+		assert.notEqual(states.notes, states.todo)
+		// A browser sends each mount only its own cookie, so the first round trip is not overwritten.
+		for (const [name, mount] of [
+			['notes', base],
+			['todo', other],
+		] as const) {
+			const token = await mint(states[name], name)
+			const swap = await call(`${mount}/?${handoffQuery(token)}`, { headers: { cookie: stateCookie(states[name]) } })
+			assert.equal(swap.status, 302, name)
+			assert.match(swap.headers.getSetCookie()[0] ?? '', /^kody_app_session=/, name)
+		}
 	})
 	it('does not redirect a dead or foreign session into serving, and 403s non-GET and failed handoffs', async () => {
 		const { call, served } = harness()

@@ -32,6 +32,14 @@ describe('handoff tokens', () => {
 		const second = await consumeHandoff({ masterKey: key, token, expected, burn, now: now + 1000 })
 		assert.deepEqual(second, { ok: false, reason: 'replay' })
 	})
+	it('carries a signed return path, defaulting to the mount root', async () => {
+		const withPath = await mintHandoff(key, { ...expected, sid: 's', rp: '/item/5?tab=2' }, now)
+		const first = await consumeHandoff({ masterKey: key, token: withPath, expected, burn: burner(), now })
+		assert.equal(first.ok && first.claims.rp, '/item/5?tab=2')
+		const plain = await mintHandoff(key, { ...expected, sid: 's' }, now)
+		const second = await consumeHandoff({ masterKey: key, token: plain, expected, burn: burner(), now })
+		assert.equal(second.ok && second.claims.rp, '/')
+	})
 	it('rejects expiry at exactly 60 s', async () => {
 		const token = await mintHandoff(key, { ...expected, sid: 's' }, now)
 		const result = await consumeHandoff({ masterKey: key, token, expected, burn: burner(), now: now + 60_000 })

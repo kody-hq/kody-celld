@@ -18,7 +18,17 @@ export function newAppState(): string {
 	return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
-export type HandoffClaims = { v: 1; uid: string; pkg: string; sid: string; st: string; exp: number; jti: string }
+/** `rp`: the mount-relative path to land on after the swap (signed, re-validated on swap). */
+export type HandoffClaims = {
+	v: 1
+	uid: string
+	pkg: string
+	sid: string
+	st: string
+	rp: string
+	exp: number
+	jti: string
+}
 export type HandoffResult =
 	| { ok: true; claims: HandoffClaims }
 	| { ok: false; reason: 'malformed' | 'signature' | 'expired' | 'mismatch' | 'replay' }
@@ -87,10 +97,16 @@ const isTime = (value: unknown): value is number => typeof value === 'number' &&
 
 export async function mintHandoff(
 	masterKey: string,
-	input: { uid: string; pkg: string; sid: string; st: string },
+	input: { uid: string; pkg: string; sid: string; st: string; rp?: string },
 	now = Date.now(),
 ): Promise<string> {
-	const claims: HandoffClaims = { v: 1, ...input, exp: now + handoffTtlMs, jti: crypto.randomUUID() }
+	const claims: HandoffClaims = {
+		v: 1,
+		...input,
+		rp: input.rp ?? '/',
+		exp: now + handoffTtlMs,
+		jti: crypto.randomUUID(),
+	}
 	return seal(masterKey, handoffPurpose, claims)
 }
 
@@ -109,8 +125,11 @@ export async function consumeHandoff(input: {
 	const opened = await unseal(input.masterKey, handoffPurpose, input.token)
 	if (!opened.ok) return opened
 	const c = opened.claims
+	// Tokens minted before #82 carry no `rp`: they land on the mount root.
+	const rp = c.rp === undefined ? '/' : c.rp
 	if (
 		c.v !== 1 ||
+		!isText(rp) ||
 		!isText(c.uid) ||
 		!isText(c.pkg) ||
 		!isText(c.sid) ||
@@ -124,7 +143,7 @@ export async function consumeHandoff(input: {
 	if (c.uid !== input.expected.uid || c.pkg !== input.expected.pkg || c.st !== input.expected.st)
 		return { ok: false, reason: 'mismatch' }
 	if (!(await input.burn(c.jti, c.exp))) return { ok: false, reason: 'replay' }
-	return { ok: true, claims: { v: 1, uid: c.uid, pkg: c.pkg, sid: c.sid, st: c.st, exp: c.exp, jti: c.jti } }
+	return { ok: true, claims: { v: 1, uid: c.uid, pkg: c.pkg, sid: c.sid, st: c.st, rp, exp: c.exp, jti: c.jti } }
 }
 
 export async function signAppSession(masterKey: string, input: { uid: string; sid: string; exp: number }) {

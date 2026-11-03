@@ -98,6 +98,33 @@ export function appUrl(config: AppOriginConfig, userId: string, packageName: str
 	return origin ? `${origin}${appMountPath(config, userId, packageName)}` : null
 }
 
+const maxReturnPathLength = 2048
+const returnPathBase = 'https://app.invalid'
+
+/**
+ * Where to land after a handoff (#82): a path plus query relative to the app
+ * mount, normalized, that stays under the mount. null for anything else
+ * (no leading `/`, `//`, `\\`, a scheme, control characters, or `..` that leaves the mount).
+ */
+export function appReturnPath(mountPath: string, raw: string): string | null {
+	if (raw.length > maxReturnPathLength || !raw.startsWith('/') || raw.startsWith('//') || raw.includes('\\')) {
+		return null
+	}
+	for (const char of raw) {
+		const code = char.charCodeAt(0)
+		if (code < 0x20 || code === 0x7f) return null
+	}
+	let url: URL
+	try {
+		url = new URL(`${mountPath}${raw}`, returnPathBase)
+	} catch {
+		return null
+	}
+	if (url.origin !== returnPathBase) return null
+	if (url.pathname !== mountPath && !url.pathname.startsWith(`${mountPath}/`)) return null
+	return `${url.pathname.slice(mountPath.length) || '/'}${url.search}`
+}
+
 export function matchAppRequest(config: AppOriginConfig, url: URL): AppRequestMatch | null {
 	if (!isAppOriginHost(config, url)) return null
 	const hostname = url.hostname.toLowerCase()
