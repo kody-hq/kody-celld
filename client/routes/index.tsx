@@ -18,14 +18,11 @@ import { AccountSecrets } from './account-secrets.tsx'
 import { AccountSecretsApprove } from './account-secrets-approve.tsx'
 import { AccountSessions } from './account-sessions.tsx'
 import { AccountWebhooks } from './account-webhooks.tsx'
-import { AdminAudit } from './admin-audit.tsx'
-import { AdminConfig } from './admin-config.tsx'
 import { AdminUserDetail } from './admin-user-detail.tsx'
 import { AdminUsers } from './admin-users.tsx'
 import { ErrorPage } from './error-page.tsx'
 import { PackageFiles } from './package-files.tsx'
 import { PackagePreviewFiles } from './package-preview-files.tsx'
-import { AdminLogin } from './login.tsx'
 
 /**
  * Server-side page dispatch: the handler decides which `AppLoaderData`
@@ -81,21 +78,18 @@ export function RouteView(
 				return <AccountEmail data={data} pathname={pathname} />
 			case 'accountSessions':
 				return <AccountSessions data={data} pathname={pathname} />
-			case 'adminLogin':
-				return <AdminLogin />
 			case 'adminUsers':
 				return <AdminUsers data={data} pathname={pathname} />
 			case 'adminUserDetail':
 				return <AdminUserDetail data={data} pathname={pathname} />
-			case 'adminAudit':
-				return <AdminAudit data={data} pathname={pathname} />
-			case 'adminConfig':
-				return <AdminConfig data={data} pathname={pathname} />
 			case 'community':
 			case 'communityNotFound':
 			case 'communityDetail':
 			case 'brandGuide':
 				throw new Error('Public pages require the Start document renderer')
+			case 'adminLogin':
+			case 'adminAudit':
+			case 'adminConfig':
 			case 'login':
 			case 'setup':
 			case 'signinLinkExpired':
@@ -107,7 +101,7 @@ export function RouteView(
 			case 'connectOauthError':
 			case 'connectSecretSet':
 				throw new Error(
-					'Auth and connect pages require the Start document renderer',
+					'Auth, connect and migrated console pages require the Start document renderer',
 				)
 			default: {
 				const _exhaustive: never = data

@@ -13,6 +13,7 @@ import { dispatchDueJobs } from '../jobs/dispatcher.ts'
 import { recordAudit } from '../lib/audit.ts'
 import { KodyError } from '../lib/errors.ts'
 import { renderPage } from '#app/render.tsx'
+import { renderStartDocument } from '#app/start-render.ts'
 import { type AppSession } from '#universal/app-session.ts'
 import { type AppLoaderData, type PageFlash } from '#universal/loader-data.ts'
 import { appSessionOf, readForm, redirect } from './http.ts'
@@ -26,16 +27,20 @@ export function isConsoleRoute(pathname: string) {
 }
 
 function view(
+	request: Request,
 	shellSession: AppSession | null,
 	input: { title: string; current: string; data: AppLoaderData; flash?: PageFlash | null },
 ) {
-	return renderPage({
+	const options = {
 		title: input.title,
 		pathname: input.current,
 		session: shellSession,
 		flash: input.flash ?? null,
 		data: input.data,
-	})
+	}
+	return input.data.page === 'adminAudit' || input.data.page === 'adminConfig'
+		? renderStartDocument(request, options)
+		: renderPage(options)
 }
 
 /**
@@ -51,14 +56,14 @@ export async function handleConsole(request: Request, env: Env, ctx: ExecutionCo
 	if (segments[0] === 'signin' && post) {
 		if (!constantTimeEqualString(form.token ?? '', env.KODY_ADMIN_TOKEN)) {
 			await recordAudit(env, { actor: 'anonymous', action: 'console.signin_failed', target: null, details: null })
-			return signinPage('Admin token does not match.')
+			return signinPage(request, 'Admin token does not match.')
 		}
 		await recordAudit(env, { actor: 'admin', action: 'console.signin', target: null, details: null })
 		return redirect('/console', { 'set-cookie': await startConsoleSession(env) })
 	}
 
 	const session = await readConsoleSession(request, env)
-	if (!session) return signinPage(null)
+	if (!session) return signinPage(request, null)
 	// The site header shows whoever is signed in as a user in this browser; the console cookie is separate.
 	const shellSession = appSessionOf(await readWebSession(request, env), { isAdmin: true })
 	if (post && !constantTimeEqualString(form.csrf ?? '', session.csrf)) {
@@ -103,7 +108,7 @@ export async function handleConsole(request: Request, env: Env, ctx: ExecutionCo
 			}
 		}
 		const users = await registry(env).listUsers()
-		return view(shellSession, {
+		return view(request, shellSession, {
 			title: 'Users',
 			current: '/console',
 			flash,
@@ -150,7 +155,7 @@ export async function handleConsole(request: Request, env: Env, ctx: ExecutionCo
 			registry(env).sessionList(user.id),
 			userCell.jobList(),
 		])
-		return view(shellSession, {
+		return view(request, shellSession, {
 			title: user.email,
 			current: '/console',
 			flash,
@@ -179,7 +184,7 @@ export async function handleConsole(request: Request, env: Env, ctx: ExecutionCo
 			actor: url.searchParams.get('actor') ?? undefined,
 			action: url.searchParams.get('action') ?? undefined,
 		})
-		return view(shellSession, {
+		return view(request, shellSession, {
 			title: 'Audit log',
 			current: '/console/audit',
 			data: {
@@ -205,7 +210,7 @@ export async function handleConsole(request: Request, env: Env, ctx: ExecutionCo
 			['email', describeEmailConfig(loadEmailConfig(env))],
 			['npm', describeNpmConfig(npmConfigFromEnv(env))],
 		]
-		return view(shellSession, {
+		return view(request, shellSession, {
 			title: 'Configuration',
 			current: '/console/config',
 			data: {
@@ -227,8 +232,8 @@ async function requireUser(env: Env, userId: string) {
 	return user
 }
 
-function signinPage(error: string | null) {
-	return renderPage({
+function signinPage(request: Request, error: string | null) {
+	return renderStartDocument(request, {
 		title: 'Admin console',
 		pathname: '/console',
 		status: error ? 401 : 200,

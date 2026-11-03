@@ -241,3 +241,27 @@ export function StackedForm(props: { action: string; method?: 'post' | 'get'; au
 		</form>
 	)
 }
+
+export const inlineFormCss = { display: 'inline-flex', margin: 0 }
+export function SignOutForm(props: { action: string; csrf: string }) {
+	return (
+		<form method="post" action={props.action} css={inlineFormCss}>
+			<CsrfInput token={props.csrf} />
+			<SubmitButton variant="secondary">Sign out</SubmitButton>
+		</form>
+	)
+}
+
+export function Lede(props: { children: Slot }) {
+	return (
+		<p
+			css={{
+				margin: 0,
+				color: colors.textMuted,
+				maxWidth: '64ch',
+			}}
+		>
+			{props.children}
+		</p>
+	)
+}
