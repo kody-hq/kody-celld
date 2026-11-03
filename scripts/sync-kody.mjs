@@ -24,6 +24,18 @@ const checkOnly = args.includes('--check')
 const commitFlag = args.indexOf('--commit')
 const commitOverride = commitFlag >= 0 ? args[commitFlag + 1] : null
 
+// Fail on anything else (including the removed `--only`) rather than silently
+// re-syncing every verbatim file.
+for (let i = 0; i < args.length; i++) {
+	if (args[i] === '--check') continue
+	if (args[i] === '--commit' && args[i + 1] && !args[i + 1].startsWith('--')) {
+		i++
+		continue
+	}
+	console.error(`sync-kody: unsupported argument ${args[i]} (use --check or --commit <sha>)`)
+	process.exit(2)
+}
+
 function sha256(bytes) {
 	return createHash('sha256').update(bytes).digest('hex')
 }
