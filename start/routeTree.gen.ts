@@ -10,11 +10,13 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as BrandGuideRouteImport } from './routes/brand-guide'
+import { Route as ConsoleRouteImport } from './routes/console'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as SigninRouteImport } from './routes/signin'
 import { Route as CommunityIndexRouteImport } from './routes/community.index'
 import { Route as CommunitySplatRouteImport } from './routes/community_.$'
 import { Route as ConnectSecretSetRouteImport } from './routes/connect.secret-set'
+import { Route as ConsoleSplatRouteImport } from './routes/console_.$'
 import { Route as OauthAuthorizeRouteImport } from './routes/oauth.authorize'
 import { Route as ConnectOauthSplatRouteImport } from './routes/connect.oauth.$'
 import { Route as SigninLinkTokenRouteImport } from './routes/signin_.link.$token'
@@ -22,6 +24,11 @@ import { Route as SigninLinkTokenRouteImport } from './routes/signin_.link.$toke
 const BrandGuideRoute = BrandGuideRouteImport.update({
   id: '/brand-guide',
   path: '/brand-guide',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConsoleRoute = ConsoleRouteImport.update({
+  id: '/console',
+  path: '/console',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SetupRoute = SetupRouteImport.update({
@@ -49,6 +56,11 @@ const ConnectSecretSetRoute = ConnectSecretSetRouteImport.update({
   path: '/connect/secret-set',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ConsoleSplatRoute = ConsoleSplatRouteImport.update({
+  id: '/console_/$',
+  path: '/console/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OauthAuthorizeRoute = OauthAuthorizeRouteImport.update({
   id: '/oauth/authorize',
   path: '/oauth/authorize',
@@ -67,10 +79,12 @@ const SigninLinkTokenRoute = SigninLinkTokenRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/brand-guide': typeof BrandGuideRoute
+  '/console': typeof ConsoleRoute
   '/setup': typeof SetupRoute
   '/signin': typeof SigninRoute
   '/community/$': typeof CommunitySplatRoute
   '/connect/secret-set': typeof ConnectSecretSetRoute
+  '/console/$': typeof ConsoleSplatRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/community/': typeof CommunityIndexRoute
   '/connect/oauth/$': typeof ConnectOauthSplatRoute
@@ -78,10 +92,12 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/brand-guide': typeof BrandGuideRoute
+  '/console': typeof ConsoleRoute
   '/setup': typeof SetupRoute
   '/signin': typeof SigninRoute
   '/community/$': typeof CommunitySplatRoute
   '/connect/secret-set': typeof ConnectSecretSetRoute
+  '/console/$': typeof ConsoleSplatRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/community': typeof CommunityIndexRoute
   '/connect/oauth/$': typeof ConnectOauthSplatRoute
@@ -90,10 +106,12 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/brand-guide': typeof BrandGuideRoute
+  '/console': typeof ConsoleRoute
   '/setup': typeof SetupRoute
   '/signin': typeof SigninRoute
   '/community_/$': typeof CommunitySplatRoute
   '/connect/secret-set': typeof ConnectSecretSetRoute
+  '/console_/$': typeof ConsoleSplatRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/community/': typeof CommunityIndexRoute
   '/connect/oauth/$': typeof ConnectOauthSplatRoute
@@ -103,10 +121,12 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/brand-guide'
+    | '/console'
     | '/setup'
     | '/signin'
     | '/community/$'
     | '/connect/secret-set'
+    | '/console/$'
     | '/oauth/authorize'
     | '/community/'
     | '/connect/oauth/$'
@@ -114,10 +134,12 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/brand-guide'
+    | '/console'
     | '/setup'
     | '/signin'
     | '/community/$'
     | '/connect/secret-set'
+    | '/console/$'
     | '/oauth/authorize'
     | '/community'
     | '/connect/oauth/$'
@@ -125,10 +147,12 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/brand-guide'
+    | '/console'
     | '/setup'
     | '/signin'
     | '/community_/$'
     | '/connect/secret-set'
+    | '/console_/$'
     | '/oauth/authorize'
     | '/community/'
     | '/connect/oauth/$'
@@ -137,10 +161,12 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   BrandGuideRoute: typeof BrandGuideRoute
+  ConsoleRoute: typeof ConsoleRoute
   SetupRoute: typeof SetupRoute
   SigninRoute: typeof SigninRoute
   CommunitySplatRoute: typeof CommunitySplatRoute
   ConnectSecretSetRoute: typeof ConnectSecretSetRoute
+  ConsoleSplatRoute: typeof ConsoleSplatRoute
   OauthAuthorizeRoute: typeof OauthAuthorizeRoute
   CommunityIndexRoute: typeof CommunityIndexRoute
   ConnectOauthSplatRoute: typeof ConnectOauthSplatRoute
@@ -154,6 +180,13 @@ declare module '@tanstack/react-router' {
       path: '/brand-guide'
       fullPath: '/brand-guide'
       preLoaderRoute: typeof BrandGuideRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/console': {
+      id: '/console'
+      path: '/console'
+      fullPath: '/console'
+      preLoaderRoute: typeof ConsoleRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/setup': {
@@ -191,6 +224,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConnectSecretSetRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/console_/$': {
+      id: '/console_/$'
+      path: '/console/$'
+      fullPath: '/console/$'
+      preLoaderRoute: typeof ConsoleSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/oauth/authorize': {
       id: '/oauth/authorize'
       path: '/oauth/authorize'
@@ -217,10 +257,12 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   BrandGuideRoute: BrandGuideRoute,
+  ConsoleRoute: ConsoleRoute,
   SetupRoute: SetupRoute,
   SigninRoute: SigninRoute,
   CommunitySplatRoute: CommunitySplatRoute,
   ConnectSecretSetRoute: ConnectSecretSetRoute,
+  ConsoleSplatRoute: ConsoleSplatRoute,
   OauthAuthorizeRoute: OauthAuthorizeRoute,
   CommunityIndexRoute: CommunityIndexRoute,
   ConnectOauthSplatRoute: ConnectOauthSplatRoute,

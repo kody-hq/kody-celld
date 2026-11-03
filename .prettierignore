@@ -9,6 +9,9 @@ start/routeTree.gen.ts
 start/components/kody-mark.tsx
 start/components/user-avatar.tsx
 start/components/toaster.tsx
+start/components/icon.tsx
+start/components/icon-glyphs.tsx
+universal/icon-names.ts
 start/pages/brand-guide.tsx
 start/brand/kody-mark-path.ts
 start/brand/kody-logo.ts

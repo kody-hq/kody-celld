@@ -26,6 +26,74 @@ function render(pathname = '/brand-guide', displayName?: string) {
 }
 
 describe('Start document renderer', () => {
+	it('renders console login and read-only documents with native forms and the correct shell', async () => {
+		const cases: Array<{
+			path: string
+			data: AppLoaderData
+			text: string
+			status?: number
+		}> = [
+			{ path: '/console', data: { page: 'adminLogin' }, text: 'name="token"' },
+			{
+				path: '/console/signin',
+				data: { page: 'adminLogin' },
+				text: 'name="token"',
+				status: 401,
+			},
+			{
+				path: '/console/audit',
+				data: {
+					page: 'adminAudit',
+					csrf: 'fixture-csrf',
+					entries: [
+						{
+							id: 'fixture-audit',
+							at: '2026-01-01T00:00:00.000Z',
+							actor: 'admin',
+							action: 'console.signin',
+							target: null,
+							details: null,
+						},
+					],
+				},
+				text: 'console.signin',
+			},
+			{
+				path: '/console/config',
+				data: {
+					page: 'adminConfig',
+					csrf: 'fixture-csrf',
+					version: 'fixture',
+					publicUrl: 'http://localhost',
+					sections: [{ name: 'email', json: '{"adapter":"noop"}' }],
+				},
+				text: 'Adapter settings',
+			},
+		]
+		for (const { path, data, text, status = 200 } of cases) {
+			const response = await renderStartDocument(
+				new Request('http://localhost' + path),
+				{ title: 'Console', pathname: path, data, status },
+			)
+			assert.equal(response.status, status, path)
+			const html = await response.text()
+			assert.ok(html.includes(text), path)
+			assert.equal(
+				html.includes('class="site-header'),
+				data.page !== 'adminLogin',
+				path,
+			)
+			assert.ok(html.includes('<form method="post"'), path)
+			assert.ok(!html.includes('/build/client-entry.js'), path)
+			if (data.page === 'adminLogin') {
+				const input = html.match(/<input\b[^>]*\bname="token"[^>]*>/)?.[0]
+				assert.ok(input, path)
+				assert.ok(input.includes('type="password"'), path)
+				assert.ok(!/\svalue=/.test(input), path)
+			} else assert.ok(html.includes('name="csrf"'), path)
+		}
+	})
+
 	it('renders native auth and connect forms without site header or legacy scripts', async () => {
 		const cases: Array<{ path: string; data: AppLoaderData; text: string }> = [
 			{

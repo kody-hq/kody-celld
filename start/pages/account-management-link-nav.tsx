@@ -1,0 +1,167 @@
+/** @jsxImportSource @emotion/react */
+import type { CSSObject } from '@emotion/react'
+import { renderIcon, type IconName } from '../components/icon.tsx'
+import { colors, transitions } from '#universal/styles/tokens.ts'
+import { hoverMq, pageGutter } from '#universal/styles/style-primitives.ts'
+
+/** Account nav collapses to a wrapping row below this width (prototype 860px). */
+export const accountManagementNarrowMq = '@media (max-width: 860px)'
+
+type AccountManagementLinkNavItem = {
+	href: string
+	label: string
+	active: boolean
+	icon?: IconName
+}
+
+type AccountManagementLinkNavProps = {
+	label: string
+	items: Array<AccountManagementLinkNavItem>
+}
+
+/** `.account-nav a` — quiet link pills; only the current one goes green. */
+const accountNavLinkCss: CSSObject = {
+	display: 'flex',
+	alignItems: 'center',
+	gap: '0.5rem',
+	padding: '0.5rem 0.7rem',
+	borderRadius: '10px',
+	color: colors.textMuted,
+	fontWeight: 550,
+	fontSize: '0.98rem',
+	textDecoration: 'none',
+	transition: `color ${transitions.fast}, background-color ${transitions.fast}`,
+	'& [data-icon]': {
+		flex: 'none',
+	},
+	[hoverMq]: {
+		'&:hover': { color: colors.text, backgroundColor: colors.surface },
+	},
+	'&[aria-current]': {
+		color: colors.primaryText,
+		backgroundColor: colors.primarySoft,
+	},
+}
+
+const accountMobileNavLinkCss: CSSObject = {
+	...accountNavLinkCss,
+	display: 'flex',
+	alignItems: 'center',
+	minHeight: '44px',
+	padding: '0.55rem 0.75rem',
+	borderRadius: '0.45rem',
+}
+
+const accountMobileMenuCss: CSSObject = {
+	display: 'none',
+	border: `1px solid ${colors.border}`,
+	borderRadius: '0.75rem',
+	background: colors.surface,
+	'& > summary': {
+		display: 'flex',
+		alignItems: 'center',
+		gap: '0.6rem',
+		minHeight: '44px',
+		padding: '0.7rem 1rem',
+		cursor: 'pointer',
+		fontWeight: 650,
+		color: colors.text,
+		listStyle: 'none',
+	},
+	'& > summary::-webkit-details-marker': { display: 'none' },
+	'& > summary::marker': { content: '""' },
+	'& > summary [data-icon]': {
+		flex: 'none',
+		color: colors.textMuted,
+	},
+	'& > nav': {
+		display: 'grid',
+		gap: '0.15rem',
+		padding: '0.4rem 0.6rem 0.7rem',
+		borderTop: `1px solid ${colors.border}`,
+	},
+	[accountManagementNarrowMq]: {
+		display: 'block',
+	},
+}
+
+const accountMobileMenuCurrentCss: CSSObject = {
+	color: colors.textMuted,
+	fontWeight: 500,
+	fontSize: '0.9rem',
+}
+
+function renderAccountNavLinks(items: Array<AccountManagementLinkNavItem>, linkCss: CSSObject) {
+	return items.map((item) => (
+		<a key={item.href} href={item.href} aria-current={item.active ? 'page' : undefined} css={linkCss}>
+			{item.icon ? renderIcon(item.icon, { size: '1.05em' }) : null}
+			{item.label}
+		</a>
+	))
+}
+
+export function AccountManagementLinkNav(props: AccountManagementLinkNavProps) {
+	const current = props.items.find((item) => item.active)
+	return (
+		<>
+			<nav
+				aria-label={props.label}
+				data-account-nav
+				css={{
+					// Prototype `.account-nav`: a 200px rail beside the
+					// content. The nav fills the shell's left track (top
+					// and bottom), so it is exactly as tall as the content
+					// and cannot paint over the footer. `overflow: clip`
+					// hides any link that would spill out without becoming
+					// a scroll container, which would trap the sticky
+					// column below. Named so a view transition lifts it out
+					// of `<main>` / `page`. Intra-shell tab clicks skip VT.
+					// Leaving/entering the shell fades this name
+					// (styles.css) so the old rail is not pinned as a ghost
+					// on the destination. The group stays still so
+					// account↔admin (rail on both sides) does not morph.
+					// Below 860px the rail hides and the details menu below
+					// takes over — wrapping twelve pills ate a screen of
+					// vertical room on a phone.
+					position: 'absolute',
+					left: pageGutter,
+					top: 0,
+					bottom: 0,
+					width: '200px',
+					overflow: 'clip',
+					viewTransitionName: 'account-nav',
+					[accountManagementNarrowMq]: {
+						display: 'none',
+					},
+				}}
+			>
+				<div
+					css={{
+						// Sticks under the site header on a long page. The
+						// cap is the shell (`100%`) and the viewport, so a
+						// short page scrolls the links inside the content
+						// box instead of growing a blank band under it.
+						position: 'sticky',
+						top: '5rem',
+						display: 'flex',
+						flexDirection: 'column',
+						gap: '0.15rem',
+						maxHeight: 'min(100%, calc(100dvh - 6.5rem))',
+						overflowY: 'auto',
+						overscrollBehavior: 'contain',
+					}}
+				>
+					{renderAccountNavLinks(props.items, accountNavLinkCss)}
+				</div>
+			</nav>
+			<details css={accountMobileMenuCss}>
+				<summary>
+					{renderIcon('menu', { size: '1.05em' })}
+					<span>{props.label}</span>
+					{current ? <span css={accountMobileMenuCurrentCss}>{current.label}</span> : null}
+				</summary>
+				<nav aria-label={props.label}>{renderAccountNavLinks(props.items, accountMobileNavLinkCss)}</nav>
+			</details>
+		</>
+	)
+}

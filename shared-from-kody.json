@@ -1,7 +1,7 @@
 {
   "kodyRepo": "kody-hq/kody",
   "kodyCommit": "e3149c45fdb85f8c8831ed4dd8a5edded576484e",
-  "updatedAt": "2026-11-03T17:36:27.969Z",
+  "updatedAt": "2026-11-03T22:44:27.932Z",
   "notes": "Verbatim files must match upstream bytes at kodyCommit. Adapted files share a path with hosted Kody but are intentionally different; sync:kody reports their diffs and does not overwrite them.",
   "files": [
     {
@@ -173,6 +173,18 @@
       "kind": "ui"
     },
     {
+      "path": "start/components/icon-glyphs.tsx",
+      "source": "packages/worker/start/components/icon-glyphs.tsx",
+      "sha256": "7ac0fd9b5307a8b1a8b357a27159a07bb55979cc628565b21247d7a9202bcd68",
+      "kind": "ui"
+    },
+    {
+      "path": "start/components/icon.tsx",
+      "source": "packages/worker/start/components/icon.tsx",
+      "sha256": "883285e5a9b4907d6b2dcdb0a05426e79b0971277b2a853f5fd8549022e63b2a",
+      "kind": "ui"
+    },
+    {
       "path": "start/components/kody-mark.tsx",
       "source": "packages/worker/start/components/kody-mark.tsx",
       "sha256": "7e7455b852dc69cba5fd1a6bf4b63d604ba1a48288a295a555b82bb5e9ed438f",
@@ -218,6 +230,12 @@
       "path": "universal/highlight-cache-request.ts",
       "source": "packages/worker/universal/highlight-cache-request.ts",
       "sha256": "1d1a774da85849c5a11573774ed25a215df9aac4b02c7f1bd48452dd705053bb",
+      "kind": "ui"
+    },
+    {
+      "path": "universal/icon-names.ts",
+      "source": "packages/worker/universal/icon-names.ts",
+      "sha256": "28ff0ce9eca56ba0ac8b5b66cdd1a5e5db2d6f7b2ea116d3bd813637484fd654",
       "kind": "ui"
     },
     {
@@ -298,7 +316,7 @@
     {
       "path": "universal/routes.ts",
       "source": "packages/worker/universal/routes.ts",
-      "reason": "Typed route table covers celld paths only (/signin, /console, …); hosted has many more public and org routes."
+      "reason": "Typed route table covers celld paths only (/signin, /console, \u2026); hosted has many more public and org routes."
     },
     {
       "path": "public/styles.css",
