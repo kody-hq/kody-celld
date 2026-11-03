@@ -58,6 +58,8 @@ export type ModuleGraph = {
 	mainModule: string
 	entryPath: string
 	packages: Array<string>
+	/** `updated_at` of each included package as this build read it (graph-cache stamps). */
+	packageStamps: Record<string, string>
 	npmModules: Array<string>
 	warnings: Array<string>
 }
@@ -486,6 +488,9 @@ export async function buildModuleGraph(input: {
 		mainModule: WRAPPER_MODULE_PATH,
 		entryPath,
 		packages: [...includedPackages],
+		packageStamps: Object.fromEntries(
+			[...includedPackages].map((name) => [name, packageCache.get(name)?.updatedAt ?? ''] as const),
+		),
 		npmModules: [...npmSpecifiers],
 		warnings,
 	}

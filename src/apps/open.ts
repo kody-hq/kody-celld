@@ -29,7 +29,7 @@ export async function handleAppsOpen(request: Request, env: Env, url: URL): Prom
 	const session = await readWebSession(request, env)
 	if (!session) return redirect(`/signin?next=${encodeURIComponent(`${url.pathname}${url.search}`)}`)
 	const name = url.searchParams.get('package') ?? ''
-	const pkg = packageNamePattern.test(name) ? await getUserCell(env, session.user.id).packageGet(name) : null
+	const pkg = packageNamePattern.test(name) ? await getUserCell(env, session.user.id).packageMeta(name) : null
 	if (!pkg?.manifest.app) throw new KodyError('not_an_app', `"${name}" is not a saved package app.`, { status: 404 })
 	const base = appUrl(apps.config, session.user.id, pkg.name)
 	if (!base) {

@@ -39,6 +39,7 @@ import {
 	migrateUserPackageFiles,
 	packageFilesSchema,
 	readPackageFiles,
+	readUserPackageRow,
 	replacePackageFiles,
 	userPackagesTableDdl,
 } from '../packages/package-files-store.ts'
@@ -120,7 +121,10 @@ export type SavedPackage = {
 	updatedAt: string
 }
 
-export type PackageSummary = Omit<SavedPackage, 'files'> & { fileCount: number; warnings?: Array<string> }
+/** A saved package without its files. */
+export type PackageMeta = Omit<SavedPackage, 'files'>
+
+export type PackageSummary = PackageMeta & { fileCount: number; warnings?: Array<string> }
 
 export type JobRecord = {
 	id: string
@@ -389,6 +393,19 @@ function nowIso() {
 function storedManifest(json: string): PackageManifest {
 	const manifest = JSON.parse(json) as Partial<PackageManifest> & Pick<PackageManifest, 'name' | 'version'>
 	return normalizeStoredManifest(manifest)
+}
+
+function readPackageMeta(sql: SqlStorage, name: string): PackageMeta | null {
+	const row = readUserPackageRow(sql, name)
+	if (!row) return null
+	return {
+		name: row.name,
+		version: row.version,
+		manifest: storedManifest(row.manifestJson),
+		source: row.source,
+		createdAt: row.createdAt,
+		updatedAt: row.updatedAt,
+	}
 }
 
 function constantTimeEqual(a: string, b: string) {
@@ -1374,27 +1391,16 @@ export class UserCell extends DurableObject<Env> {
 		return row ? storedManifest(row.manifest_json) : null
 	}
 
+	/** Manifest, version and `updatedAt` without the files (package-app page requests). */
+	async packageMeta(name: string): Promise<PackageMeta | null> {
+		return readPackageMeta(this.ctx.storage.sql, name)
+	}
+
 	async packageGet(name: string): Promise<SavedPackage | null> {
-		const row = this.ctx.storage.sql
-			.exec<{
-				name: string
-				version: string
-				manifest_json: string
-				source: string
-				created_at: string
-				updated_at: string
-			}>('SELECT name, version, manifest_json, source, created_at, updated_at FROM packages WHERE name = ?', name)
-			.toArray()[0]
-		if (!row) return null
-		return {
-			name: row.name,
-			version: row.version,
-			manifest: storedManifest(row.manifest_json),
-			files: readPackageFiles(this.ctx.storage.sql, row.name),
-			source: row.source,
-			createdAt: row.created_at,
-			updatedAt: row.updated_at,
-		}
+		// Synchronous reads: the row and its files come from one storage snapshot.
+		const meta = readPackageMeta(this.ctx.storage.sql, name)
+		if (!meta) return null
+		return { ...meta, files: readPackageFiles(this.ctx.storage.sql, meta.name) }
 	}
 
 	async packageDelete(name: string) {

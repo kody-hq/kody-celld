@@ -16,9 +16,9 @@ import { appIsolateName, appIsolateNameForGraph, stampsMatch } from './serve-nam
 export { appIsolateName }
 
 // Warm requests skip the graph build. An entry is reused only while every saved
-// package it pulled in still has the `updated_at` it was built from.
-type GraphEntry = { graph: Promise<ModuleGraph>; stamps: Promise<Record<string, string>> }
-const graphCache = new Map<string, GraphEntry>()
+// package it pulled in still has the `updated_at` the build read it at, so a
+// dependency re-saved mid-build is caught on the next request.
+const graphCache = new Map<string, Promise<ModuleGraph>>()
 const graphCacheLimit = 32
 
 async function cachedGraph(
@@ -29,13 +29,13 @@ async function cachedGraph(
 	const hit = graphCache.get(name)
 	if (hit) {
 		try {
-			const built = await hit.stamps
-			const now = await userCell.packageStamps(Object.keys(built))
-			if (stampsMatch(built, now) && graphCache.get(name) === hit) {
+			const built = await hit
+			const now = await userCell.packageStamps(Object.keys(built.packageStamps))
+			if (stampsMatch(built.packageStamps, now) && graphCache.get(name) === hit) {
 				// Re-insert so eviction drops the least recently used entry.
 				graphCache.delete(name)
 				graphCache.set(name, hit)
-				return await hit.graph
+				return built
 			}
 		} catch {
 			// A failed build or stamp read falls through to a fresh build.
@@ -43,16 +43,10 @@ async function cachedGraph(
 		if (graphCache.get(name) === hit) graphCache.delete(name)
 	}
 	const graph = build()
-	const entry: GraphEntry = {
-		graph,
-		stamps: graph.then((built) => userCell.packageStamps(built.packages)),
-	}
-	graphCache.set(name, entry)
-	const drop = () => {
-		if (graphCache.get(name) === entry) graphCache.delete(name)
-	}
-	entry.graph.catch(drop)
-	entry.stamps.catch(drop)
+	graphCache.set(name, graph)
+	graph.catch(() => {
+		if (graphCache.get(name) === graph) graphCache.delete(name)
+	})
 	while (graphCache.size > graphCacheLimit) {
 		const oldest = graphCache.keys().next().value
 		if (oldest === undefined) break
@@ -78,12 +72,21 @@ export async function serveApp(input: {
 	const { env, target, user } = input
 	const publicUrl = env.KODY_PUBLIC_URL.replace(/\/$/, '')
 	const userCell = getUserCell(env, user.id)
-	const pkg = await userCell.packageGet(target.packageName)
+	// Only /_assets/* needs the files; page requests read the metadata and build (or reuse) the graph.
+	if (isAssetPath(target.restPath)) {
+		const saved = await userCell.packageGet(target.packageName)
+		const assetApp = saved?.manifest.app
+		if (!saved || !assetApp) return appNotFoundPage()
+		return serveAppAsset({
+			request: input.request,
+			restPath: target.restPath,
+			files: saved.files,
+			assetsDir: assetApp.assets,
+		})
+	}
+	const pkg = await userCell.packageMeta(target.packageName)
 	const app = pkg?.manifest.app
 	if (!pkg || !app) return appNotFoundPage()
-	if (isAssetPath(target.restPath)) {
-		return serveAppAsset({ request: input.request, restPath: target.restPath, files: pkg.files, assetsDir: app.assets })
-	}
 	const hostedUrl = `${target.origin}${target.mountPath}`
 	const graphKey = await appIsolateName({
 		userId: user.id,
