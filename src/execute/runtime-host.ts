@@ -1,5 +1,5 @@
 import { WorkerEntrypoint } from 'cloudflare:workers'
-import { recordAppFailure } from '../apps/run-report.ts'
+import { acceptAppRunReport } from '../apps/run-report.ts'
 import type { CapabilityContext } from '../capabilities/define.ts'
 import { mcpDeps } from '../capabilities/mcp-servers.ts'
 import { runCapability } from '../capabilities/registry.ts'
@@ -10,7 +10,8 @@ import type { Env } from '../env.ts'
 import { errorToJson, KodyError } from '../lib/errors.ts'
 import { callMcpTool } from '../mcp-client/service.ts'
 
-export type RuntimeProps = { userId: string; email: string; packageName: string | null }
+/** `app: true` only for isolates `serveApp` loads (package apps). */
+export type RuntimeProps = { userId: string; email: string; packageName: string | null; app?: boolean }
 type CallContext = {
 	runId?: string
 	packageName?: string | null
@@ -217,21 +218,17 @@ export class RuntimeHost extends WorkerEntrypoint<Env, RuntimeProps> {
 		}
 	}
 
-	/** Package-app wrapper: a thrown handler or a >= 500 response becomes an `app` error run. */
-	async appRunReport(input: { status: number; error: { name: string; message: string } | null; logs: Array<unknown> }) {
-		const packageName = this.ctx.props.packageName
-		if (!packageName) return
-		const status = typeof input?.status === 'number' ? input.status : 500
-		const error =
-			input?.error && typeof input.error.name === 'string' && typeof input.error.message === 'string'
-				? { name: input.error.name.slice(0, 200), message: input.error.message.slice(0, 2000) }
-				: { name: 'app_http_error', message: `The app responded ${status}.` }
-		await recordAppFailure(this.env, {
-			userId: this.ctx.props.userId,
-			packageName,
-			error,
-			logs: Array.isArray(input?.logs) ? input.logs : [],
-		})
+	/**
+	 * Package-app wrapper: a thrown handler or a >= 500 response becomes an `app`
+	 * error run. Accepted only from isolates loaded as apps, with this request's token.
+	 */
+	async appRunReport(input: {
+		token: string
+		status: number
+		error: { name: string; message: string } | null
+		logs: Array<unknown>
+	}) {
+		await acceptAppRunReport(this.env, this.ctx.props, input)
 	}
 
 	async storageGet(packageName: string, key: string): Promise<unknown> {

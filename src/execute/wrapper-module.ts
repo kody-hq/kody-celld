@@ -164,7 +164,7 @@ export default {
 			logs: [],
 		}
 		const report = (status, error) => {
-			const pending = env.KODY.appRunReport({ status, error, logs: store.logs }).catch(() => {})
+			const pending = env.KODY.appRunReport({ token: context.reportToken, status, error, logs: store.logs }).catch(() => {})
 			if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(pending)
 		}
 		return __run(store, async () => {

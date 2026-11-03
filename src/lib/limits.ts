@@ -24,6 +24,8 @@ export type Limits = {
 	webhookMaxBodyBytes: number
 	/** Largest stored email (text + html + attachments) per message. */
 	emailMaxBytes: number
+	/** Largest response body one package-app request may stream. */
+	appResponseMaxBytes: number
 }
 
 export type Quotas = {
@@ -69,6 +71,7 @@ export type LimitEnv = Partial<
 		| 'KODY_MCP_CONTENT_LIMIT_BYTES'
 		| 'KODY_WEBHOOK_MAX_BODY_BYTES'
 		| 'KODY_EMAIL_MAX_BYTES'
+		| 'KODY_APP_RESPONSE_MAX_BYTES'
 		| 'KODY_QUOTA_RUNS_PER_DAY'
 		| 'KODY_QUOTA_EXECUTE_MS_PER_DAY'
 		| 'KODY_QUOTA_PACKAGES'
@@ -96,6 +99,7 @@ export const defaultLimits: Limits = {
 	mcpContentLimitBytes: 512_000,
 	webhookMaxBodyBytes: 1_048_576,
 	emailMaxBytes: 10_485_760,
+	appResponseMaxBytes: 10_485_760,
 }
 
 /** All zero: unlimited unless the operator says otherwise. */
@@ -165,6 +169,9 @@ export function limitsFromEnv(env: LimitEnv): Limits {
 		),
 		emailMaxBytes: read('KODY_EMAIL_MAX_BYTES', env, (raw) =>
 			integer(raw, defaultLimits.emailMaxBytes, { min: 10_000, max: 100_000_000 }),
+		),
+		appResponseMaxBytes: read('KODY_APP_RESPONSE_MAX_BYTES', env, (raw) =>
+			integer(raw, defaultLimits.appResponseMaxBytes, { min: 1_024, max: 100_000_000 }),
 		),
 	}
 }

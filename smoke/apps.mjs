@@ -292,5 +292,58 @@ export async function smokeApps(ctx) {
 			swapped,
 		)
 	}
-	log('apps', 'handoff, session, isolation, storage, sign-out, deep links, concurrent opens ok')
+
+	// 10. a failing request writes exactly one app run, with the gateway events it made (#84)
+	const failName = 'smoke-fail-app'
+	const failSaved = await ctx.mcp.call('packageSave', {
+		source: 'smoke/apps.mjs',
+		files: {
+			'package.json': JSON.stringify({
+				name: failName,
+				version: '1.0.0',
+				exports: { '.': './app.js' },
+				kody: { app: { entry: './app.js' } },
+			}),
+			'README.md': 'An app whose requests fail.',
+			'AGENTS.md': 'Smoke fixture.',
+			'app.js': `export default {
+	async fetch(request) {
+		console.log('failing', new URL(request.url).pathname)
+		// Refused by the gateway without touching the network: one denied event.
+		await fetch('http://insecure.invalid/?k={{secret:nope}}').catch(() => {})
+		throw new Error('smoke app failure')
+	},
+}
+`,
+		},
+	})
+	assert(failSaved.name === failName, 'failing app saved', failSaved)
+	const failUrl = appPath.url.replace('/packages/hello-app', `/packages/${failName}`)
+	const appRunsOf = async () =>
+		(await ctx.mcp.call('runList', { limit: 200 })).runs.filter((r) => r.kind === 'app' && r.packageName === failName)
+	for (const attempt of [1, 2]) {
+		const failed = await again.get(failUrl, { headers: { host: appPath.host } })
+		assert(failed.status === 500, `failing app answers 500 (request ${attempt})`, failed.status)
+	}
+	let failRuns = []
+	for (let i = 0; i < 20 && failRuns.length < 2; i++) {
+		await new Promise((resolve) => setTimeout(resolve, 250))
+		failRuns = await appRunsOf()
+	}
+	assert(failRuns.length === 2, 'two failing requests write exactly two app runs', failRuns)
+	const failRun = await ctx.mcp.call('runGet', { id: failRuns[0].id })
+	assert(
+		failRun.status === 'error' &&
+			failRun.error?.message === 'smoke app failure' &&
+			/^app:app_/.test(failRun.idempotencyKey ?? '') &&
+			failRun.logs.some((entry) => JSON.stringify(entry).includes('failing')),
+		'the app run carries the error, the logs and the request id',
+		failRun,
+	)
+	assert(
+		failRun.gateway.some((event) => event.outcome === 'denied' && event.host === 'insecure.invalid'),
+		'the app run carries the gateway event of its request',
+		failRun.gateway,
+	)
+	log('apps', 'handoff, session, isolation, storage, sign-out, deep links, concurrent opens, failure runs ok')
 }

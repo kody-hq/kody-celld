@@ -18,7 +18,8 @@ export type AppPackageContext = {
 	assetBasePath: string
 }
 
-export type AppRequestContext = { runId: string; packageContext: AppPackageContext }
+/** `reportToken` lets the wrapper report this request's failure; package code never receives it. */
+export type AppRequestContext = { runId: string; reportToken: string; packageContext: AppPackageContext }
 
 function cookieName(pair: string) {
 	const eq = pair.indexOf('=')

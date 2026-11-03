@@ -10,6 +10,7 @@ import {
 
 const context = {
 	runId: 'app_1',
+	reportToken: 'token',
 	packageContext: {
 		packageName: 'notes',
 		version: '1.0.0',

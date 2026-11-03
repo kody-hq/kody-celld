@@ -82,7 +82,7 @@ upstream.
 
 | Variable                       | Default    | Range           | Effect                                                                                                                                                                                          |
 | ------------------------------ | ---------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `KODY_EXECUTE_TIMEOUT_MS`      | `60000`    | 1 s … 15 min    | Wall-clock cap per run (`execute`, `packageRun`, jobs). Exceeding it → `execute_timeout` (504).                                                                                                 |
+| `KODY_EXECUTE_TIMEOUT_MS`      | `60000`    | 1 s … 15 min    | Wall-clock cap per run (`execute`, `packageRun`, jobs) and per package-app request. Exceeding it → `execute_timeout` (504).                                                                     |
 | `KODY_RUN_RETENTION_COUNT`     | `500`      | 10 … 100 000    | Newest runs kept per user; older finished rows are pruned as runs start and finish.                                                                                                             |
 | `KODY_RUN_RETENTION_DAYS`      | `0`        | 0 … 3650        | Also drop runs older than N days (`0` = count-only).                                                                                                                                            |
 | `KODY_RUN_LOG_LIMIT`           | `200`      | 0 … 10 000      | Console entries persisted per run (the run response is capped the same way).                                                                                                                    |
@@ -91,6 +91,7 @@ upstream.
 | `KODY_MCP_CONTENT_LIMIT_BYTES` | `512000`   | 10 KB … 50 MB   | Serialized cap for `__mcpContent` blocks (images/audio) an `execute` run may return ([browser.md](./browser.md)).                                                                               |
 | `KODY_MCP_CALL_TIMEOUT_MS`     | `30000`    | 1 s … 10 min    | Timeout for each MCP request of `kody.mcp[server].tool()` and discovery (connect, each tools/list page, the call); exceeding it → `mcp_call_failed` (502) ([mcp-servers.md](./mcp-servers.md)). |
 | `KODY_BLOB_MAX_BYTES`          | `26214400` | 1 KB … 1 GiB    | Per-object size cap for blob uploads ([blobs.md](./blobs.md)).                                                                                                                                  |
+| `KODY_APP_RESPONSE_MAX_BYTES`  | `10485760` | 1 KB … 100 MB   | Largest response body one package-app request may stream; past it the body is cut off and an `app` error run is recorded ([package-apps.md](./package-apps.md)).                                |
 
 `GET /admin/limits` returns the effective limits and quota defaults so you can
 confirm what a node actually loaded.

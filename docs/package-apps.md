@@ -41,7 +41,7 @@ imports, npm specifiers and `kody.dependencies` behave as in
 | --------------- | ------------------------------------------------------------------------------------------------------------------ |
 | `packageName`   | the package's name                                                                                                 |
 | `version`       | the saved version                                                                                                  |
-| `runId`         | an ephemeral `app_<id>` for this request                                                                           |
+| `runId`         | `app_<id>` for this request; a failure run of the request has idempotency key `app:app_<id>`                       |
 | `hostedUrl`     | the app's absolute mount URL, no trailing `/`                                                                      |
 | `appBasePath`   | the mount path (`/u/<userId>/packages/<name>` in path mode, `/packages/<name>` in subdomain mode), no trailing `/` |
 | `assetBasePath` | `appBasePath + '/_assets'`                                                                                         |
@@ -226,13 +226,34 @@ sign-in, console and the rest are never reachable there.
 - No realtime or WebSockets, no `packageAppFetch`, no public or shared apps (see
   [known-gaps.md](./known-gaps.md)).
 - **Failures-only run records.** A request that succeeds writes nothing. A graph
-  build error, a handler that throws or returns 5xx, or a timeout writes a
-  `kind: app` run with its logs; find it in run history.
+  build error, a handler that throws or returns 5xx, a timeout, or a body over
+  the byte cap writes a `kind: app` run with its logs; find it in run history.
+  A request writes **at most one** run: every report for it (the host's 504, a
+  late throw from the still-running handler, a cut-off body) carries the
+  request's `app_<id>` as the run's idempotency key (`app:app_<id>`).
 - **Gateway events.** Outbound fetches made while serving an app request are
-  not recorded as gateway events on a run; only failures write `app` runs.
+  attached to that request's failure run (newest 100, as for other runs). The
+  node holds them in memory until the request fails or ages out, so a restart
+  in between loses them; a request that succeeds records none.
+- **Who can write `app` runs.** Only an isolate the host loaded as an app (a
+  flag in its props), presenting the signed token the host minted for that one
+  request (valid until the deadline plus 5 s). Package code in `execute`, jobs or
+  `packageRun` cannot write them, and app code can at most report a failure of
+  its own current request.
 - **`packageContext.runId`** can be stale under concurrent requests in one
   isolate. Use it for log correlation only.
-- **Timeout** is `KODY_EXECUTE_TIMEOUT_MS` (default 60 s); exceeding it answers 504.
+- **Timeout** is `KODY_EXECUTE_TIMEOUT_MS` (default 60 s), and one deadline
+  covers the whole request: the graph build (npm resolution on a cold start
+  included), the response headers and the streamed body. Past it before the
+  headers, the answer is 504; past it while the body streams, the body is cut
+  off (the browser sees a truncated response). Either way an `app_timeout` run
+  is recorded. A graph build that timed out is not cached, so the next request
+  starts a fresh one. Long-lived streams (server-sent events) end at the
+  deadline.
+- **Response size** is capped at `KODY_APP_RESPONSE_MAX_BYTES` (default 10 MB)
+  per response body; past it the body is cut off and an
+  `app_response_too_large` run is recorded. A body that errors mid-stream
+  records `app_stream_error`. A browser that disconnects records nothing.
 
 ## Example and smoke test
 
@@ -255,7 +276,8 @@ and with the matching one, that Kody credentials are stripped in both
 directions, that first-party routes such as `/mcp` and `/api` are 404 on the
 app host, that the app path is 404 on the Kody host, a POST body and storage,
 that signing out ends access, that a deep link survives re-auth (and a bad
-`path` is 400), and that two apps opened at once each keep their own state
-cookie. Handoff replay and foreign-session refusal
+`path` is 400), that two apps opened at once each keep their own state
+cookie, and that each failing request writes one `app` run carrying its logs and
+gateway events. Handoff replay and foreign-session refusal
 are covered by unit tests (`src/apps/tokens.test.ts`, `src/apps/origin.test.ts`),
 not by the smoke. Without `KODY_APP_BASE_URL` the scenario skips itself.
