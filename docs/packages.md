@@ -69,7 +69,8 @@ padded base64>" }`:
   file. A code or JSON module, `README.md` or `AGENTS.md` that is not UTF-8 is
   skipped with a warning, and `packageSave` refuses `{ base64 }` for those
   paths: binaries never enter the module graph.
-- The caps count decoded bytes: each file ≤ ~1.8 MiB, all files ≤ 4 MiB.
+- The caps count bytes (UTF-8 for text, decoded bytes for binary files):
+  each file ≤ ~1.8 MiB, all files ≤ 4 MiB.
 - `packagePreview({ path })` and the files explorer describe a binary file by
   its size (`binary: true`, no content).
 - Storage: the raw bytes sit in the `package_files.bytes` column (added by an

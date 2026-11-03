@@ -550,6 +550,12 @@ describe('fetchPackageSource', () => {
 			() => filesFromJson(JSON.stringify({ 'package.json': manifest, 'main.js': logo }), null),
 			/must be UTF-8 text/,
 		)
+		assert.throws(
+			() => filesFromJson(JSON.stringify({ 'pkg/package.json': manifest, 'pkg/README.md': logo }), 'pkg'),
+			/"README\.md" must be UTF-8 text/,
+		)
+		const outside = filesFromJson(JSON.stringify({ 'pkg/package.json': manifest, 'other/x': 1 }), 'pkg')
+		assert.deepEqual(Object.keys(outside.files), ['package.json'])
 	})
 
 	it('fetches JSON sources from allowlisted URLs', async () => {

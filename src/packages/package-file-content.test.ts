@@ -48,6 +48,7 @@ describe('package file bytes', () => {
 		assert.deepEqual(packageFileBytes(file), bytes)
 		assert.equal(packageFileSize(file), 256)
 		assert.deepEqual(packageFileBytes('é'), Uint8Array.from([0xc3, 0xa9]))
+		assert.equal(packageFileSize('é漢'), 5)
 		for (const length of [0, 1, 2, 3, 4]) {
 			assert.equal(packageFileSize({ base64: Buffer.alloc(length).toString('base64') }), length)
 		}

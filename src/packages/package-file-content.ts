@@ -42,9 +42,9 @@ export function packageFileBytes(content: PackageFileContent): Uint8Array {
 	return typeof content === 'string' ? new TextEncoder().encode(content) : base64ToBytes(content.base64)
 }
 
-/** Size counted against the package caps: string length for text (as before), decoded bytes for binaries. */
+/** Size counted against the package caps (byte limits): UTF-8 bytes for text, decoded bytes for binaries. */
 export function packageFileSize(content: PackageFileContent): number {
-	if (typeof content === 'string') return content.length
+	if (typeof content === 'string') return new TextEncoder().encode(content).byteLength
 	const { base64 } = content
 	const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0
 	return (base64.length / 4) * 3 - padding

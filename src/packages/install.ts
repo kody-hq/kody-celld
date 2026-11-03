@@ -530,9 +530,9 @@ export function filesFromJson(text: string, subdir: string | null) {
 	const prefix = subdir ? `${subdir}/` : ''
 	for (const [path, content] of Object.entries(map)) {
 		const clean = path.replace(/^\.\//, '')
-		const file = readPackageFileInput(clean, content)
 		if (!clean.startsWith(prefix)) continue
-		files[clean.slice(prefix.length)] = file
+		const relative = clean.slice(prefix.length)
+		files[relative] = readPackageFileInput(relative, content)
 	}
 	if (files['package.json'] === undefined) {
 		throw new KodyError('invalid_package', 'JSON source has no package.json at the package root.')
