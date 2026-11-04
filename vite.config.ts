@@ -1,36 +1,36 @@
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
+import { tanstackStart } from '@tanstack/react-start/plugin/vite'
+import { redact } from '@tanstack/redact/vite'
+import react from '@vitejs/plugin-react'
 
-// Builds the browser hydration bundle (client/entry.tsx) into public/build/, which
-// celld serves as static assets (wrangler.jsonc `assets`). The Worker itself is
-// bundled by celld's esbuild, so this config only covers the client side.
 const root = fileURLToPath(new URL('.', import.meta.url))
 
 export default defineConfig({
 	root,
+	base: '/build/start/',
 	publicDir: false,
 	resolve: {
 		alias: [
-			{ find: /^#app\//, replacement: `${root}src/app/` },
 			{ find: /^#client\//, replacement: `${root}client/` },
 			{ find: /^#universal\//, replacement: `${root}universal/` },
 		],
 	},
-	oxc: {
-		jsx: { runtime: 'automatic', importSource: 'remix/component' },
-	},
-	build: {
-		outDir: 'public/build',
-		emptyOutDir: true,
-		sourcemap: true,
-		target: 'es2022',
-		rollupOptions: {
-			input: `${root}client/entry.tsx`,
-			output: {
-				entryFileNames: 'client-entry.js',
-				chunkFileNames: 'chunks/[name]-[hash].js',
-				assetFileNames: 'assets/[name]-[hash][extname]',
-			},
-		},
+	plugins: [
+		redact(),
+		tanstackStart({
+			srcDirectory: 'start',
+			router: { basepath: '/' },
+			server: { entry: 'server.ts' },
+		}),
+		react({
+			include: /\/start\/.*\.[jt]sx?$/,
+			jsxImportSource: '@emotion/react',
+		}),
+	],
+	ssr: { noExternal: true },
+	environments: {
+		client: { build: { outDir: `${root}public/build/start` } },
+		ssr: { build: { outDir: `${root}.start/server` } },
 	},
 })

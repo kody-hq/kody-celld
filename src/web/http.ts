@@ -1,5 +1,5 @@
 // Request/response helpers shared by the browser routes. Pages themselves are
-// rendered by `src/app/render.tsx` (Remix SSR); nothing here builds markup.
+// rendered by `src/app/start-render.ts` (TanStack Start SSR); nothing here builds markup.
 
 import { type AppSession } from '#universal/app-session.ts'
 import type { WebSession } from './session.ts'

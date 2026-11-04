@@ -5,7 +5,7 @@ import { type PackageFilesContentKind } from '#universal/package-file-media.ts'
  * Page payloads the Worker renders and the browser hydrates. Everything here
  * must be plain JSON: it is serialized into the document for `clientEntry`
  * islands. Mirrors kody's `universal/loader-data.ts` — one discriminated
- * union keyed by page, so `client/routes/*` stays free of cell/RPC types and
+ * union keyed by page, so `start/pages/*` stays free of cell/RPC types and
  * the same component can render on both sides.
  */
 
@@ -347,7 +347,7 @@ type PackageFilesChildLoaderData = {
 	kind: 'file' | 'directory'
 }
 
-/** Ported from kody's loader-data.ts — the shape `client/package-files-explorer.tsx` renders. */
+/** Ported from kody's loader-data.ts — the shape `start/components/package-files-explorer.tsx` renders. */
 export type PackageFilesLoaderData = {
 	ok: true
 	title: string

@@ -1,4 +1,4 @@
-import { createCookie } from 'remix/cookie'
+import { createCookie } from '@remix-run/cookie'
 import { KodyError } from '../lib/errors.ts'
 
 /**

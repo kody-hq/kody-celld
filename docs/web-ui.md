@@ -1,44 +1,20 @@
 # Web UI: sign-in, account, operator console
 
-kody-celld ships a server-rendered web UI so that people who self-host it do
-not have to drive everything with `curl` and an admin token. It is built on the
-design system of [kody-hq/kody](https://github.com/kody-hq/kody), using
-TanStack Start, Redact, and Emotion for the public brand guide, community
-catalog/detail pages, sign-in, setup, one-time links, MCP OAuth consent,
-integration connect, secret-set handoffs, every operator-console page,
-and the account overview, browser-session, API-token, MCP-client, secret,
-package-access approval, Memories, and Activity pages.
-The remaining account/private/package pages still use Remix 3 components and
-streaming SSR during migration.
-Typed URL builders are framework-independent, matching hosted's
-`packages/worker/universal/routes.ts`; request handlers still own method
-dispatch. Hosted Kody uses TanStack Start with `@tanstack/redact` replacing
-React at build time, Emotion, and first-party components
-(`packages/worker/start/`). Migrated components are copied verbatim where
-possible; remaining Remix pages still need translation (see
-[Porting UI changes from kody](#porting-ui-changes-from-kody)). Every page
-uses native links and HTML forms posted back to the same route and works with
-JavaScript disabled. The legacy browser bundle hydrates small islands (copy
-buttons, double-confirm buttons, the header menu, toasts); Start hydrates its
-documents. Start serializes the server's timestamp locale and time zone so
-hydration preserves the existing server display even in a different browser
-locale. Auth pages retain their native forms and server-owned session,
-CSRF, and OAuth validation. Console documents preserve the separate operator
-cookie, native forms, one-time credential reveal, clipboard controls, and
-two-click destructive confirmation. Without JavaScript, confirmation remains
-an enhancement rather than a gate: native mutation forms still submit as before.
-The Start clipboard button is copied verbatim from hosted; the celld ID-value
-wrapper retains its compact segment sizing. The account overview reuses the
-Start password form; session revocation keeps native POST forms and progressive
-confirmation. Password/session policy and audit writes remain in the Worker.
-API-token issuance uses the existing one-time reveal and clipboard controls;
-token and OAuth-grant revocation retain native forms and Worker-owned policy.
-Memories retain native GET filtering and CSRF-protected deletion forms;
-per-user lookup, ordering, search semantics, and audit writes stay in the Worker.
-Activity retains native errors/recent navigation and CSRF-protected triage
-forms, including expanded-detail retention after triage. Run details keep logs,
-results, warnings, gateway entries, package/job links, and copyable fix prompts.
-Run summaries, listing, triage mutations, and audit writes stay in the Worker.
+All web documents use hosted Kody's TanStack Start, TanStack Router,
+React-compatible `@tanstack/redact`, Emotion and first-party primitives.
+Redact is hosted's build-time renderer replacement; no Preact substitution
+is used. Pages/components live in `start/`; framework-neutral helpers stay
+in `client/` and `universal/`.
+
+Worker handlers retain method dispatch, authentication, owner isolation,
+CSRF, OAuth, auditing and storage. Every page uses native anchors and HTML
+forms, including with JavaScript disabled. Hydration adds clipboard controls,
+file filtering, directory toggles, menus, toasts, pending labels and progressive
+confirmation; no form handling moves into client code. Without JavaScript,
+confirmation remains an enhancement, not a mutation gate.
+Server timestamp locale/time zone are serialized for matching hydration.
+Operator-console and browser-session cookies remain separate.
+
 Start credential receipts and account secret-entry forms install a blocking lifecycle
 guard before the body is parsed. It clears marked sensitive fields and hides
 the document on departure, then replaces a back/forward-cache restoration with
@@ -50,7 +26,7 @@ operator-console cookie is left alone. Cookie changes let
 [Chrome](https://developer.chrome.com/docs/web-platform/bfcache-ccns) evict stale
 `no-store` history entries even when page scripts are disabled; valid session
 lifetimes and authentication policy are unchanged.
-Both renderers share the same account-navigation data while migration continues.
+All account pages share the same account-navigation data.
 Request-scoped CSP nonces also preserve the
 consent page's validated redirect `form-action` source. The MCP surface is
 unchanged — the UI is a convenience layer over the same cells and
@@ -168,85 +144,47 @@ log with `via: 'console'`.
 
 ## How it is built
 
-The layout mirrors `packages/worker/` in kody so files line up one-to-one:
+The layout mirrors hosted's `packages/worker/`:
 
-| kody-celld                            | kody (`packages/worker/`)   | What lives there                                                                                                              |
-| ------------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `client/`                             | `client/`                   | `remix/component` components: `app-root.tsx` (shell + route dispatch), `routes/*.tsx` (one per page), header, footer, islands |
-| `start/`                              | `start/`                    | TanStack Start routes, Redact/Emotion components, request context, and server/client entries for migrated pages               |
-| `universal/`                          | `universal/`                | code shared by Worker and browser: `routes.ts` (typed routes), `loader-data.ts` (page payloads), `styles/`, icons             |
-| `src/app/`                            | `src/app/`                  | Worker-side SSR: `render.tsx` (`renderPage`), `ssr-document.tsx`, `security-headers.ts`, `ssr-stubs/`                         |
-| `public/`                             | `public/`                   | static assets served by celld: `styles.css`, `fonts/`, `page-init.js`, `build/` (Vite output, git-ignored)                    |
-| `src/web/*.ts`, `src/oauth/routes.ts` | `src/app/routes/*` handlers | request handling: auth gates, form parsing, mutations; they build an `AppLoaderData` and call `renderPage()`                  |
+| Path         | Role                                                              |
+| ------------ | ----------------------------------------------------------------- |
+| `start/`     | Start routes, React/Emotion pages, primitives, shell and entries  |
+| `client/`    | Framework-neutral browser helpers, including email preview        |
+| `universal/` | Shared routes, loader data, styles and package-file contracts     |
+| `src/app/`   | Worker document bridge, headers, highlighting and file data       |
+| `public/`    | First-party assets, lifecycle helpers and generated browser files |
 
-Import aliases are the same as upstream: `#client/*`, `#universal/*`,
-`#app/*` (`tsconfig.json`, `vite.config.ts`). Design tokens
-(`universal/styles/tokens.ts`) and the self-hosted fonts are copied from kody
-verbatim; style primitives, icon glyphs and `public/styles.css` are adapted
-copies (hosted's are Emotion/React). The lists live in
-[`shared-from-kody.json`](../shared-from-kody.json). Keep shared styling
-close to hosted and put kody-celld-specific styling in the page components (page widths and
-gutters live in `client/page-layout.ts`, see [Page layout](#page-layout)).
+1. The Worker authenticates, handles native forms and builds an `AppLoaderData`
+   variant containing only data the page may show.
+2. `renderStartDocument()` in `src/app/start-render.ts` provides request context
+   and a CSP nonce to the bundled Start server, preserving status and headers.
+   It waits for the first nonempty stream chunk before returning a response.
+   Only the internal render pathname is canonicalized. Router rewrites retain
+   the public pathname and query spelling, so URI decoding and search
+   serialization cannot turn hydration into a client navigation.
+3. The root loader reads request context; the root shell retains icons, fonts,
+   styles, skip link, noindex policy, flash, self-hosted navigation and version.
+   Root error dispatch also handles errors at otherwise-valid page URLs.
+4. Start hydrates the document. Forms remain native POSTs, not server functions;
+   browser components perform no authentication, cell access or client fetching.
 
-Rendering flow for a remaining Remix page:
+`vite.config.ts` uses hosted's `redact()`, `tanstackStart()` and Emotion JSX
+pipeline. Routes remain at `/`, assets at `/build/start/`, and the bundled
+server in `.start/server/`. Dependencies are bundled for celld instead of
+using hosted's Cloudflare Vite deployment plugin. The generated route tree is
+checked in for clean-checkout typechecking. Worker, shared-browser and Start
+typechecks are separate; no renderer type stubs remain.
 
-1. The handler (e.g. `src/web/account.ts`) authenticates, reads the form with
-   `readForm()`, mutates, and builds a **serialisable** payload — one variant
-   of the `AppLoaderData` union in `universal/loader-data.ts`. Only data the
-   page may show goes in there (never token values after issuance, never
-   secret values, never session ids).
-2. `renderPage()` (`src/app/render.tsx`) streams `<AppRoot>` inside
-   `SsrDocument` with `renderToStream` from `remix/component/server`, prepends the
-   doctype, applies the security headers, and lets the handler override
-   status / headers.
-3. `client/app-root.tsx` renders the shell (skip link, `SiteHeader`, flash,
-   `<main>`, `SiteFooter`, `Toaster`) and dispatches on `data.page` to the
-   route component in `client/routes/`.
-4. In the browser, `client/entry.tsx` hydrates only the islands the page
-   embedded (`clientEntry()` → `/build/client-entry.js#ExportName`); no data
-   fetching happens client-side and every form still round-trips. `run()`
-   would otherwise replay same-origin links and forms as `fetch()` frame
-   navigations; the entry stops the Navigation API event first so they stay
-   native document navigations (OAuth consent and connect flows redirect
-   cross-origin, which a fetch under `connect-src 'self'` cannot follow).
-   Do not name a form field `method` or `enctype`: the runtime reads those
-   `HTMLFormElement` properties on submit and a field of that name shadows
-   them with the element.
-
-The Worker typecheck (`tsconfig.worker-typecheck.json`) maps
-`#client/app-root.tsx` to `src/app/ssr-stubs/app-root.ts` so DOM-only code
-never enters the Workers type-world; `tsconfig.client.json` checks `client/`
-with the DOM lib. celld's esbuild reads `tsconfig.json` (no stub) and bundles
-the real components for SSR.
-
-The public brand guide instead calls `renderStartDocument()` after the same
-method and session handling. It supplies serializable document data and a
-fresh request nonce to Start's generated server. Start's root loader reads
-that request context; no authentication or cell access moves into browser
-code. The document retains celld's icons, fonts, stylesheet, header/footer,
-version, skip link, flash region, and noindex policy. Navigation uses native
-anchors, including the brand context menu. There are no client-side form
-submissions or new server-function endpoints.
-
-`vite.start.config.ts` matches hosted's `redact()`, `tanstackStart()`, and
-Emotion JSX pipeline. It explicitly keeps application routes at `/` while
-assets live under `/build/start/`. Framework dependencies are bundled for
-celld, rather than using hosted's Cloudflare Vite deployment plugin. The
-bundled server lives in `.start/server/`; it is built, not checked in. The
-generated route tree is checked in for clean-checkout typechecking. The
-Start DOM typecheck is separate from the Remix and Worker projects.
-
-Start's bootstrap scripts carry a per-document nonce authorized by its CSP;
-the legacy pages keep their existing CSP unchanged. Both renderers wait for
-a nonempty first chunk before returning a body, and emit exactly one doctype.
-The verbatim Emotion style-hoist script runs before module hydration, as it
-does on hosted. `npm test` builds Start first so SSR tests exercise the real
-production bundle.
-
-Build: `npm run build:client` builds Remix into `public/build/`, then Start
-into `public/build/start/` and `.start/server/`. `npm run dev`,
-`npm run fleet:deploy` and the Dockerfile run it for you; celld serves
-`public/` through `assets.directory` in `wrangler.jsonc`.
+Bootstrap scripts carry the request nonce. The verbatim Emotion style-hoist
+runs before hydration; every document has one doctype and no-store headers.
+`npm test` builds the real Start bundle before renderer tests.
+`npm run build:client` builds both Start environments in one Vite pipeline;
+`build:start` is a compatibility alias. Dev, fleet and Docker use that pipeline.
+The aggregate Remix dependency, SSR renderer, island registry and legacy
+build lane are removed. Standalone `@remix-run/cookie` retains the exact codec
+previously re-exported by `remix/cookie`; cookie format, signing and expiry
+policy do not change. Package execution can still resolve author-selected
+JSX runtimes independently of the web UI.
 
 ## Page layout
 
@@ -259,7 +197,7 @@ pages.
 | -------------------- | -------- | ----------------------------------------------------------------------- |
 | `app`                | 72rem    | header, footer, `AccountManagementShell` (account + console), community |
 | `article`            | 46rem    | one thing to read: a community package, a package miss                  |
-| `message`            | 48rem    | illustrated 404 / 500 (`client/routes/error-page.tsx`)                  |
+| `message`            | 48rem    | illustrated 404 / 500 (`start/pages/error-page.tsx`)                    |
 | `auth` / `authWide`  | 28/40rem | `AuthShell`: sign-in, setup, invite links / consent, connect            |
 
 - **Use a shell, not a container.** Account and console pages render
@@ -292,50 +230,36 @@ heading and the header brand should not move.
 
 ## Porting UI changes from kody
 
-1. Find the upstream change. Pages and components now live under
-   `packages/worker/start/{pages,components,routes}` (React + Emotion);
-   framework-neutral helpers stay under `packages/worker/{client,universal}`.
-   `shared-from-kody.json` maps each celld file to its hosted `source`.
-2. Verbatim files: run `npm run sync:kody`. Components (icons, `SiteHeader`/
-   `SiteFooter`, `CopyTextButton`, `Toaster`, `UserAvatar`, markdown view):
-   translate the visual diff from React/Emotion to `remix/component` + `css()`.
-3. Route components: apply the visual diff, then reconcile props against the
-   matching `AppLoaderData` variant. kody's routes read from its D1/DO data
-   model; ours come from the celld cells, so field names may differ — change
-   the loader data (and the handler that fills it) rather than fetching in the
-   component.
-4. Anything that needs new browser behaviour becomes a small island exported
-   from `client/entry.tsx`; do not move form handling into the client.
-5. Run `npm run validate`, `npm run dev` + `node smoke/run.mjs --only web`
-   (and `oauth-server`, `community` when touching those pages).
+1. Find the hosted change under `packages/worker/start/` or its framework-neutral
+   `client/` and `universal/` helpers. The sync manifest records source paths.
+2. Keep verbatim files exact; use `npm run sync:kody` rather than editing them.
+   Reconcile adapted pages with celld's existing loaders and native forms.
+3. Keep authentication, ownership, CSRF, OAuth, storage and audits in the Worker.
+   Do not substitute hosted's data model or add SPA navigation.
+4. Run `npm run validate` and the relevant web/OAuth/community smoke scenarios.
+   Run cron smoke when touching jobs.
 
-The package files explorer is a port of kody's
-(`client/package-files-explorer.tsx` + `markdown-view`, `syntax-highlight`,
-`src/app/highlight-code.ts`, `packages/highlight-worker`) at
-kody-hq/kody@2bfeb29. kody reaches Shiki through the `HIGHLIGHT` service
-binding; here `src/highlight/binding.ts` runs the same handler in-process.
-Differences are marked `// kody-celld:` (no community repo chrome, no media
-or raw routes — media-named files show as text).
+The explorer in `start/components/package-files-explorer.tsx` retains celld's
+loader, embedded mode, native file links, accessible selection, search,
+directory toggles and copy controls. Its Markdown adapter uses Marked's lexer,
+never its HTML renderer. Raw HTML is escaped; arbitrary resources stay blocked;
+first-party media and absolute links retain their narrow allowlists.
+The syntax adapter renders serialized Shiki spans as JSX text and inline
+styles, preserving the existing theme classes rather than adopting hosted's
+different Markdown/highlight data model.
 
-Not ported on purpose: kody's client-side router / no-flash navigation, the
-landing page and marketing sections, Cloudflare Turnstile, OG image rendering.
+Not ported: hosted SPA/no-flash navigation, marketing pages, Turnstile and
+OG-image rendering.
 
 ## Security notes
 
-- Responses set `Content-Security-Policy: default-src 'none'; …`,
-  `X-Frame-Options: DENY`, `Referrer-Policy: same-origin`, `Cache-Control:
-no-store` (`src/app/security-headers.ts`). `remix/component` escapes all
-  interpolated text and neutralises `javascript:` URLs in `href`, `src`,
-  `action` and `formaction`.
-  Raw HTML (`innerHTML`, `srcdoc`) only renders through an explicit
-  `unsafeHTML()`. The one caller is the Email page's message body, which
-  uses hosted Kody's renderer (`client/email-html-preview.ts`, synced
-  verbatim): `<script>` blocks stripped, per-link `target` and `rel`
-  dropped, a `no-referrer` meta and `<base target="_blank">` added first in
-  the head, then shown via `srcdoc` in an
-  `<iframe sandbox="allow-popups allow-popups-to-escape-sandbox">`. Scripts,
-  forms and same-origin access stay blocked; links open in a normal new tab
-  with no opener and no referrer.
+- Documents retain first-party CSP, frame denial, referrer and no-store
+  headers from `src/app/security-headers.ts`. Text is escaped by JSX; the
+  package Markdown renderer never renders arbitrary HTML.
+- Email HTML uses the verbatim `client/email-html-preview.ts` sanitizer:
+  scripts are stripped and link targets/relations normalized. The no-referrer
+  preview document is passed as React `srcDoc` to an iframe allowing only
+  popups and popup escape, never scripts, forms or same-origin access.
 - Secrets, token values, master keys and admin tokens never appear on a page
   except the one-time token reveal after creation.
 - Failed sign-ins (password, token, console) are audited with the method but

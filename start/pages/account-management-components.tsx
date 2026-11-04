@@ -412,15 +412,41 @@ export function AdminPageHeader(props: AdminPageHeaderProps) {
 		</>
 	)
 }
-export function IdValue(props: { value: string; label: string }) {
+/**
+ * An identifier is a copy target, not a sentence. Value + Copy share one
+ * bordered control (input-group).
+ *
+ * Default (`copy: 'chip'`, or omitted): one-line ellipsis — table
+ * `primaryAccessory` beside an email/name must stay a single chip.
+ *
+ * `copy: 'ghost'`: wrapping metadata field (job detail) with a normal sm
+ * ghost Copy that fills the segment height.
+ *
+ * The whole string stays in the DOM — wrapping is CSS, never a truncated
+ * substring — so a screen reader still reads the id in full, and `user-select:
+ * all` turns one click into a whole-value selection for anyone the clipboard
+ * button does not work for. `title` is the mouse-hover convenience on top of
+ * that, not the mechanism.
+ */
+export function IdValue(props: {
+	value: string
+	/** Field name, so the copy button says which id it takes. */
+	label: string
+	copy?: 'chip' | 'ghost'
+}) {
+	const wrap = props.copy === 'ghost'
+	// Soft-wrap at `/` and `#` only when the field is allowed to wrap.
+	const displayValue = wrap
+		? props.value.replaceAll('-', '\u2011').replaceAll('/', '/\u200B').replaceAll('#', '#\u200B')
+		: props.value
 	return (
 		<span
 			css={{
 				display: 'flex',
 				alignItems: 'stretch',
-				minWidth: '8rem',
-				maxWidth: '12rem',
-				flex: '0 1 12rem',
+				minWidth: wrap ? 0 : '8rem',
+				maxWidth: wrap ? '100%' : '12rem',
+				flex: wrap ? undefined : '0 1 12rem',
 				borderRadius: radius.sm,
 				border: `1px solid ${colors.border}`,
 				backgroundColor: colors.background,
@@ -429,43 +455,97 @@ export function IdValue(props: { value: string; label: string }) {
 		>
 			<code
 				title={props.value}
-				css={{
-					flex: '1 1 auto',
-					minWidth: 0,
-					display: 'block',
-					overflow: 'hidden',
-					textOverflow: 'ellipsis',
-					whiteSpace: 'nowrap',
-					userSelect: 'all',
-					fontFamily: 'monospace',
-					fontSize: typography.fontSize.sm,
-					lineHeight: 1.35,
-					padding: '0.4rem 0.55rem',
-					border: 'none',
-					backgroundColor: 'transparent',
-					color: colors.text,
-				}}
+				css={
+					wrap
+						? {
+								flex: '1 1 auto',
+								minWidth: 0,
+								display: 'flex',
+								alignItems: 'center',
+								overflowWrap: 'break-word',
+								hyphens: 'none',
+								whiteSpace: 'normal' as const,
+								userSelect: 'all' as const,
+								fontFamily: 'monospace',
+								fontSize: typography.fontSize.sm,
+								lineHeight: 1.35,
+								// Extra end pad so `#` / last glyph clear the
+								// Copy segment divider.
+								padding: '0.55rem 0.9rem 0.55rem 0.65rem',
+								border: 'none',
+								backgroundColor: 'transparent',
+								color: colors.text,
+							}
+						: {
+								flex: '1 1 auto',
+								minWidth: 0,
+								display: 'block',
+								overflow: 'hidden',
+								textOverflow: 'ellipsis',
+								whiteSpace: 'nowrap' as const,
+								userSelect: 'all' as const,
+								fontFamily: 'monospace',
+								fontSize: typography.fontSize.sm,
+								lineHeight: 1.35,
+								padding: '0.4rem 0.55rem',
+								border: 'none',
+								backgroundColor: 'transparent',
+								color: colors.text,
+							}
+				}
 			>
-				{props.value}
+				{displayValue}
 			</code>
+
 			<span
-				css={{
-					display: 'flex',
-					alignItems: 'center',
-					flex: 'none',
-					borderLeft: `1px solid ${colors.border}`,
-					backgroundColor: colors.surface,
-					paddingInline: '0.35rem',
-					'& > button': {
-						width: '2.85rem',
-						boxSizing: 'border-box',
-						overflow: 'hidden',
-						paddingInline: '0.25rem',
-					},
-				}}
+				css={
+					wrap
+						? {
+								display: 'flex',
+								alignItems: 'stretch',
+								flex: 'none',
+								borderLeft: `1px solid ${colors.border}`,
+								backgroundColor: colors.surface,
+								'& > button': { width: '4.5rem', height: '100%', border: 0, borderRadius: 0 },
+							}
+						: {
+								display: 'flex',
+								alignItems: 'center',
+								flex: 'none',
+								borderLeft: `1px solid ${colors.border}`,
+								backgroundColor: colors.surface,
+								paddingInline: '0.35rem',
+								'& > button': {
+									width: '2.85rem',
+									boxSizing: 'border-box',
+									overflow: 'hidden',
+									paddingInline: '0.25rem',
+								},
+							}
+				}
 			>
-				<CopyTextButton value={props.value} variant="chip" ariaLabel={`Copy ${props.label}`} />
+				<CopyTextButton
+					value={props.value}
+					variant={wrap ? 'ghost' : 'chip'}
+					size={wrap ? 'sm' : undefined}
+					ariaLabel={`Copy ${props.label}`}
+				/>
 			</span>
 		</span>
+	)
+}
+
+export function AccountManagementMessage(props: { children: ReactNode; tone?: 'info' | 'error' }) {
+	return (
+		<p
+			role={props.tone === 'error' ? 'alert' : 'status'}
+			aria-live={props.tone === 'error' ? 'assertive' : 'polite'}
+			css={{
+				color: props.tone === 'error' ? colors.error : colors.text,
+				margin: 0,
+			}}
+		>
+			{props.children}
+		</p>
 	)
 }

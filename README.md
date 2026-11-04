@@ -390,9 +390,10 @@ src/index.ts              Worker entry: /health, /mcp, /api/*, /admin/*, OAuth +
 src/lib/                  KodyError, limits/quotas from env, audit helper
 src/auth/                 bearer authentication (API + OAuth tokens), passwords (PBKDF2), cookies/CSRF, account store
 src/oauth/                MCP OAuth 2.1 authorization server: protocol rules, registry-cell store, routes
-src/web/                  browser route handlers: sign-in/setup, account pages, operator console, community (build loader data → renderPage)
-src/app/                  SSR: renderPage (remix/component/server), document shell, security headers — mirrors kody's packages/worker/src/app
-client/                   remix/component page components, shell, hydration islands — mirrors kody's packages/worker/client
+src/web/                  browser route handlers: sign-in/setup, account pages, operator console, community (build loader data → renderStartDocument)
+src/app/                  Worker-to-Start document rendering, streaming, security headers
+start/                    TanStack Start + Redact/Emotion routes, pages, shell, Markdown and file explorer
+client/                   Browser-safe helpers shared with Start
 universal/                typed routes, loader-data contracts, design tokens/primitives/icons shared by Worker + browser — mirrors kody's universal/
 public/                   static assets served by celld: styles.css, fonts, page-init.js, build/ (vite output)
 src/mcp/                  JSON-RPC server (search, execute) + search ranking

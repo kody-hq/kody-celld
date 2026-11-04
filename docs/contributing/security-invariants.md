@@ -18,8 +18,7 @@ exactly once at issuance; `fromRuntime` calls may not mint or revoke them.
 
 Form handlers in `src/web` and `src/oauth/routes.ts` keep `assertSameOrigin` +
 `assertCsrf` on every mutation. Keep the consent form's signed state. Render
-pages only through `renderPage()` (`src/app/render.tsx`) or the migrated
-`renderStartDocument()` (`src/app/start-render.ts`) with a serialisable
+pages only through `renderStartDocument()` (`src/app/start-render.ts`) with a serialisable
 `AppLoaderData` payload: never string-concatenate HTML, and never put
 token/secret values or session ids into loader data except the one-time reveal
 at issuance.

@@ -8,10 +8,8 @@ const doctypeBytes = new TextEncoder().encode('<!DOCTYPE html>')
  * chunk. Reading that chunk here turns such a failure into a rejection the
  * caller can answer with a real error response, instead of a committed `200`
  * whose body stops after the doctype (which the browser shows as a blank page
- * and shared caches can store). The remix/component renderer also emits markup
- * starting at `<html>`; without a doctype the browser parses the document in
- * quirks mode, so the doctype is prepended once the document is known to exist.
- * Start already includes a doctype; its caller disables that prefix.
+ * and shared caches can store). A doctype can be prepended once the document
+ * is known to exist. Start already includes one; its caller disables that prefix.
  */
 export async function openDocumentStream(
 	stream: ReadableStream<Uint8Array>,

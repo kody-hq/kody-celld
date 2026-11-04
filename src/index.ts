@@ -32,7 +32,7 @@ import { handleBrandGuide, isBrandGuideRoute } from './web/brand-guide.ts'
 import { handleCommunity, isCommunityRoute } from './web/community.ts'
 import { handleConsole, isConsoleRoute } from './web/console.ts'
 import { handleConnectSecretSet, isConnectSecretSetRoute } from './web/connect-secret-set.ts'
-import { renderPage } from '#app/render.tsx'
+import { renderStartDocument } from '#app/start-render.ts'
 import { appSessionOf, redirect } from './web/http.ts'
 import { readWebSession } from './web/session.ts'
 import { handleSignin, isSigninRoute, issueSigninLink } from './web/signin.ts'
@@ -103,7 +103,7 @@ async function errorPage(error: unknown, request: Request, env: Env) {
 	const status = errorStatus(error)
 	// Best effort: the error may be the session lookup itself failing.
 	const session = await readWebSession(request, env).catch(() => null)
-	return renderPage({
+	return renderStartDocument(request, {
 		title: status === 404 ? 'Not found' : 'Something went wrong',
 		pathname: '/',
 		status,

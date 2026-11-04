@@ -267,6 +267,26 @@
       "source": "packages/worker/universal/youtube-watch.ts",
       "sha256": "7004a3fd7b1d8768a66f31730da6da4e73d7cc3289c862e138f5b40ebab7180d",
       "kind": "ui"
+    },
+    {
+      "path": "start/components/copy-code-block.tsx",
+      "source": "packages/worker/start/components/copy-code-block.tsx",
+      "sha256": "3d70938ac62a5349a63c6ebd4ea88bed8619ea75d39727c0962b4ba3ce3b867a"
+    },
+    {
+      "path": "start/components/doc-youtube-embed.tsx",
+      "source": "packages/worker/start/components/doc-youtube-embed.tsx",
+      "sha256": "ec283fc12a705a159eccb8229a4d4dbc040a952e53db74ad895696376defc251"
+    },
+    {
+      "path": "start/components/youtube-light-player.tsx",
+      "source": "packages/worker/start/components/youtube-light-player.tsx",
+      "sha256": "f20ef94ce3cd60fdfe6df6849d7fa372030d6ed830875e1e2ca6247b4c712040"
+    },
+    {
+      "path": "start/components/markdown-heading-anchor.tsx",
+      "source": "packages/worker/start/components/markdown-heading-anchor.tsx",
+      "sha256": "22c91f9eb6cbb49a13daef42d0c0708a88bd6d3d2075a7737a9a3e35102a0fcf"
     }
   ],
   "adapted": [
@@ -283,32 +303,22 @@
     {
       "path": "start/pages/account-management-components.tsx",
       "source": "packages/worker/start/pages/account-management-components.tsx",
-      "reason": "Ports the celld header, panel and metadata contracts to Emotion while private account chrome remains on Remix."
+      "reason": "Celld account, console, metadata and native form contracts without hosted organization chrome."
     },
     {
-      "path": "client/copy-text-button.tsx",
-      "source": "packages/worker/start/components/copy-text-button.tsx",
-      "reason": "Remix 3 component wrapped with clientEntry for celld island hydration (entry.tsx registers it); hosted is a React component under start/components."
-    },
-    {
-      "path": "client/package-files-explorer.tsx",
+      "path": "start/components/package-files-explorer.tsx",
       "source": "packages/worker/start/components/package-files-explorer.tsx",
-      "reason": "Adds an embedded prop so the package detail page can host the explorer without a second title/back link."
+      "reason": "Celld data and security contracts with React/Emotion rendering and native document navigation."
     },
     {
-      "path": "client/site-footer.tsx",
+      "path": "start/components/site-footer.tsx",
       "source": "packages/worker/start/components/site-footer.tsx",
-      "reason": "Self-hosted footer nav and version string; hosted points at product marketing links."
+      "reason": "Celld data and security contracts with React/Emotion rendering and native document navigation."
     },
     {
-      "path": "client/site-header.tsx",
+      "path": "start/components/site-header.tsx",
       "source": "packages/worker/start/components/site-header.tsx",
-      "reason": "Account/console nav for a single-node deploy; hosted header includes org switcher and billing chrome."
-    },
-    {
-      "path": "client/toaster.tsx",
-      "source": "packages/worker/start/components/toaster.tsx",
-      "reason": "Remix 3 component wrapped with clientEntry for island hydration; hosted is a React component under start/components."
+      "reason": "Celld data and security contracts with React/Emotion rendering and native document navigation."
     },
     {
       "path": "universal/loader-data.ts",
@@ -328,7 +338,7 @@
     {
       "path": "universal/routes.ts",
       "source": "packages/worker/universal/routes.ts",
-      "reason": "Typed route table covers celld paths only (/signin, /console, …); hosted has many more public and org routes."
+      "reason": "Typed route table covers celld paths only (/signin, /console, \u2026); hosted has many more public and org routes."
     },
     {
       "path": "public/styles.css",
@@ -356,39 +366,19 @@
       "reason": "Adapted to inline canonical JSON and record helpers absent on celld, and to use a JSON object shape supported by Durable Object RPC types."
     },
     {
-      "path": "client/copy-code-block.tsx",
-      "source": "packages/worker/start/components/copy-code-block.tsx",
-      "reason": "Hosted rewrote this as a React + Emotion component under start/components (TanStack Start); celld keeps the Remix 3 component."
-    },
-    {
-      "path": "client/doc-youtube-embed.tsx",
-      "source": "packages/worker/start/components/doc-youtube-embed.tsx",
-      "reason": "Hosted rewrote this as a React + Emotion component under start/components (TanStack Start); celld keeps the Remix 3 component."
-    },
-    {
       "path": "client/markdown-first-party.ts",
       "source": "packages/worker/universal/markdown-first-party.ts",
       "reason": "Hosted moved to universal/ and parses with @tanstack/markdown (BlockNode/InlineNode); celld keeps the marked token helpers its renderer uses."
     },
     {
-      "path": "client/markdown-heading-anchor.tsx",
-      "source": "packages/worker/start/components/markdown-heading-anchor.tsx",
-      "reason": "Hosted rewrote this as a React + Emotion component under start/components (TanStack Start); celld keeps the Remix 3 component."
-    },
-    {
-      "path": "client/markdown-view.tsx",
+      "path": "start/components/markdown-view.tsx",
       "source": "packages/worker/start/components/markdown-view.tsx",
-      "reason": "Hosted renders markdown with React + @tanstack/markdown under start/components; celld keeps the Remix 3 marked renderer."
+      "reason": "Celld data and security contracts with React/Emotion rendering and native document navigation."
     },
     {
-      "path": "client/syntax-highlight.tsx",
+      "path": "start/components/syntax-highlight.tsx",
       "source": "packages/worker/start/components/syntax-highlight.tsx",
-      "reason": "Hosted rewrote this as a React + Emotion component under start/components (TanStack Start); celld keeps the Remix 3 component."
-    },
-    {
-      "path": "client/youtube-light-player.tsx",
-      "source": "packages/worker/start/components/youtube-light-player.tsx",
-      "reason": "Hosted rewrote this as a React + Emotion component under start/components (TanStack Start); celld keeps the Remix 3 component."
+      "reason": "Celld data and security contracts with React/Emotion rendering and native document navigation."
     },
     {
       "path": "universal/highlighted-code.ts",
@@ -396,34 +386,9 @@
       "reason": "Hosted switched the tokenizer to TanStack highlight (version 2, tanstack-highlight pre class); celld keeps the Shiki tokenizer and its pre class."
     },
     {
-      "path": "universal/icon-glyphs.tsx",
-      "source": "packages/worker/start/components/icon-glyphs.tsx",
-      "reason": "Hosted glyphs are React JSX under start/components; celld keeps the Remix 3 JSX copy and the exported iconNames list."
-    },
-    {
-      "path": "universal/icon.tsx",
-      "source": "packages/worker/start/components/icon.tsx",
-      "reason": "Hosted rewrote this as a React + Emotion component under start/components (TanStack Start); celld keeps the Remix 3 component."
-    },
-    {
       "path": "universal/styles/style-primitives.ts",
       "source": "packages/worker/universal/styles/style-primitives.ts",
       "reason": "Hosted types styles as Emotion CSSObject, drops mergeCss and imports surface.ts; celld keeps Remix 3 css objects and mergeCss."
-    },
-    {
-      "path": "universal/user-avatar.tsx",
-      "source": "packages/worker/start/components/user-avatar.tsx",
-      "reason": "Hosted rewrote this as a React + Emotion component under start/components (TanStack Start); celld keeps the Remix 3 component."
-    },
-    {
-      "path": "start/components/site-header.tsx",
-      "source": "packages/worker/start/components/site-header.tsx",
-      "reason": "Celld retains its native full-document navigation, self-hosted links, clipboard fallback, and session/version shell."
-    },
-    {
-      "path": "start/components/site-footer.tsx",
-      "source": "packages/worker/start/components/site-footer.tsx",
-      "reason": "Celld retains its native full-document navigation, self-hosted links, clipboard fallback, and session/version shell."
     },
     {
       "path": "start/components/brand-context-menu.tsx",

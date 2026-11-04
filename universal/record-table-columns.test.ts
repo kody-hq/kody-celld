@@ -7,7 +7,7 @@ import {
 	packedColWidths,
 } from './record-table-columns.ts'
 
-/** Jobs list column specs (mirrors client/routes/account-jobs.tsx). */
+/** Jobs list column specs (mirrors start/pages/account-jobs.tsx). */
 const jobsColumns = [
 	{ key: 'job' },
 	{ key: 'schedule', drop: 3 as const },

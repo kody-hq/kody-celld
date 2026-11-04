@@ -1,7 +1,8 @@
 /** @jsxImportSource @emotion/react */
+import type { CSSObject } from '@emotion/react'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { ConfirmSubmitButton } from '../components/confirm-submit-button.tsx'
-import { type ReactNode, type HTMLInputAutoCompleteAttribute } from 'react'
+import { useRef, useState, type ReactNode, type HTMLInputAutoCompleteAttribute } from 'react'
 import { getDangerPillCss, getGhostButtonCss, getPillButtonCss } from '#universal/styles/style-primitives.ts'
 import {
 	accountFieldCss,
@@ -279,8 +280,14 @@ export function SignOutForm(props: { action: string; csrf: string }) {
 	)
 }
 
-export function Actions(props: { children: Slot }) {
-	return <div css={{ display: 'flex', flexWrap: 'wrap', gap: '0.7rem' }}>{props.children}</div>
+export function Actions(props: { children: Slot; layout?: 'wrap' | 'inline' }) {
+	return (
+		<div
+			css={props.layout === 'inline' ? accountActionsInlineCss : { display: 'flex', flexWrap: 'wrap', gap: '0.7rem' }}
+		>
+			{props.children}
+		</div>
+	)
 }
 
 export function SecretReveal(props: { value: string; label: string }) {
@@ -338,18 +345,50 @@ export function ActionForm(props: {
 	csrf: string
 	fields: Record<string, string>
 	label: string
+	pendingLabel?: string
 	ariaLabel?: string
 	disabled?: boolean
 }) {
+	const [pending, setPending] = useState(false)
+	const submitted = useRef(false)
 	return (
-		<form method="post" action={props.action} css={inlineFormCss}>
+		<form
+			method="post"
+			action={props.action}
+			css={inlineFormCss}
+			onSubmit={
+				props.pendingLabel
+					? (event) => {
+							if (submitted.current) {
+								event.preventDefault()
+								return
+							}
+							submitted.current = true
+							setPending(true)
+						}
+					: undefined
+			}
+		>
 			<CsrfInput token={props.csrf} />
 			{Object.entries(props.fields).map(([name, value]) => (
 				<Hidden key={name} name={name} value={value} />
 			))}
-			<SubmitButton variant="secondary" disabled={props.disabled} ariaLabel={props.ariaLabel}>
-				{props.label}
+			<SubmitButton variant="secondary" disabled={props.disabled || pending} ariaLabel={props.ariaLabel}>
+				{pending ? props.pendingLabel : props.label}
 			</SubmitButton>
 		</form>
 	)
+}
+
+export const accountActionsInlineCss: CSSObject = {
+	display: 'grid',
+	gridAutoFlow: 'column',
+	gridAutoColumns: '1fr',
+	alignItems: 'center',
+	gap: '0.7rem',
+	width: 'max-content',
+	maxWidth: '100%',
+	'& > form': { margin: 0, minWidth: 0 },
+	'& > form > button': { width: '100%', boxSizing: 'border-box', minWidth: '6.75rem' },
+	'@container (max-width: 620px)': { gridAutoFlow: 'row', width: '100%' },
 }

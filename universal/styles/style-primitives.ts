@@ -1,4 +1,4 @@
-import { type css } from 'remix/component'
+import type { CSSObject } from '@emotion/react'
 import {
 	colors,
 	mq,
@@ -15,7 +15,7 @@ import {
  */
 export const hoverMq = '@media (hover: hover) and (pointer: fine)'
 
-type CssObject = Parameters<typeof css>[0]
+type CssObject = CSSObject
 
 function isPlainObject(value: unknown): value is CssObject {
 	return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -471,7 +471,7 @@ export function getLanternGlowCss(options: { maxWidth: string }) {
  *
  * Wrap each `<table>` in `[data-markdown-table]` (see `markdown-view.tsx`).
  */
-export const markdownTableCss = {
+export const markdownTableCss: CSSObject = {
 	'& [data-markdown-table]': {
 		margin: '1.15rem 0 0',
 		maxWidth: '100%',
@@ -502,7 +502,7 @@ export const markdownTableCss = {
 		},
 }
 
-export const proseCss = {
+export const proseCss: CSSObject = {
 	marginTop: 'clamp(1.8rem, 4vw, 2.5rem)',
 	minWidth: 0,
 	// `anywhere` (not `break-word`) shrinks min-content, so a grid list item
