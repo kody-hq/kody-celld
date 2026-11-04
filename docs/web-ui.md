@@ -159,6 +159,9 @@ The layout mirrors hosted's `packages/worker/`:
 2. `renderStartDocument()` in `src/app/start-render.ts` provides request context
    and a CSP nonce to the bundled Start server, preserving status and headers.
    It waits for the first nonempty stream chunk before returning a response.
+   Only the internal render pathname is canonicalized. Router rewrites retain
+   the public pathname and query spelling, so URI decoding and search
+   serialization cannot turn hydration into a client navigation.
 3. The root loader reads request context; the root shell retains icons, fonts,
    styles, skip link, noindex policy, flash, self-hosted navigation and version.
    Root error dispatch also handles errors at otherwise-valid page URLs.
