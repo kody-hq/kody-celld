@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
 import { describe, it } from 'node:test'
 import { renderStartDocument } from './start-render.ts'
 import {
@@ -27,6 +28,181 @@ function render(pathname = '/brand-guide', displayName?: string) {
 }
 
 describe('Start document renderer', () => {
+	it('renders API-token metadata and native create/revoke forms without a credential receipt', async () => {
+		const response = await renderStartDocument(
+			new Request('http://localhost/account/tokens'),
+			{
+				title: 'API tokens',
+				pathname: '/account/tokens',
+				data: {
+					page: 'accountApiTokens',
+					csrf: 'fixture-csrf',
+					publicUrl: 'https://fixture.example.invalid',
+					issued: null,
+					tokens: [null, '2026-01-02T00:00:00.000Z'].map((lastUsedAt, i) => ({
+						id: `fixture-token-${i}`,
+						label: `Fixture <&> ${i}`,
+						createdAt: '2026-01-01T00:00:00.000Z',
+						lastUsedAt,
+					})),
+				},
+			},
+		)
+		assert.equal(response.status, 200)
+		assert.equal(response.headers.get('cache-control'), 'no-store')
+		const html = await response.text()
+		assert.ok(!html.includes('/build/client-entry.js'))
+		assert.ok(html.includes('Fixture &lt;&amp;&gt; 0'))
+		assert.ok(html.includes('never'))
+		assert.ok(html.includes('Account sections'))
+		assert.ok(!html.includes('Copy API token'))
+		const forms = [...html.matchAll(/<form\b[^>]*>[\s\S]*?<\/form>/g)].map(
+			([form]) => form,
+		)
+		assert.equal(forms.length, 3)
+		for (const form of forms) {
+			assert.ok(form.includes('method="post"'))
+			assert.ok(form.includes('action="/account/tokens"'))
+			assert.ok(form.includes('name="csrf"'))
+			assert.ok(form.includes('value="fixture-csrf"'))
+		}
+		const create = forms.find((form) => form.includes('value="create"'))
+		assert.ok(create)
+		assert.ok(create.includes('name="label"'))
+		assert.match(create, /maxlength="80"/i)
+		for (const id of ['fixture-token-0', 'fixture-token-1']) {
+			assert.ok(
+				forms.some(
+					(form) =>
+						form.includes('value="revoke"') &&
+						form.includes('name="tokenId"') &&
+						form.includes(`value="${id}"`),
+				),
+			)
+		}
+	})
+
+	it('renders a one-time API-token receipt only when supplied by the handler', async () => {
+		const value = `${randomUUID()}<&>`
+		for (const issued of [
+			null,
+			{ kind: 'token' as const, label: 'Fixture <&>', value, expiresAt: null },
+		]) {
+			const response = await renderStartDocument(
+				new Request('http://localhost/account/tokens', {
+					method: issued ? 'POST' : 'GET',
+				}),
+				{
+					title: 'API tokens',
+					pathname: '/account/tokens',
+					data: {
+						page: 'accountApiTokens',
+						csrf: 'fixture-csrf',
+						publicUrl: 'https://fixture.example.invalid',
+						tokens: [],
+						issued,
+					},
+				},
+			)
+			assert.equal(response.status, 200)
+			assert.equal(response.headers.get('cache-control'), 'no-store')
+			const html = await response.text()
+			assert.ok(html.includes('No API tokens.'))
+			assert.equal(html.includes('Copy API token'), issued !== null)
+			assert.equal(html.includes('Copy it now'), issued !== null)
+			assert.equal(
+				html.includes(value.replace('<&>', '&lt;&amp;&gt;')),
+				issued !== null,
+			)
+			assert.ok(!html.includes(value))
+			if (issued) {
+				assert.ok(html.includes('Fixture &lt;&amp;&gt;'))
+				assert.ok(html.includes('Authorization: Bearer'))
+				assert.ok(html.includes('https://fixture.example.invalid/mcp'))
+			}
+		}
+	})
+
+	it('renders connected MCP clients with native per-grant and revoke-all forms', async () => {
+		const response = await renderStartDocument(
+			new Request('http://localhost/account/clients'),
+			{
+				title: 'MCP clients',
+				pathname: '/account/clients',
+				data: {
+					page: 'accountMcpOauthClients',
+					csrf: 'fixture-csrf',
+					publicUrl: 'https://fixture.example.invalid',
+					grants: [null, '2026-01-02T00:00:00.000Z'].map((lastUsedAt, i) => ({
+						id: `fixture-grant-${i}`,
+						clientId: `fixture-client-${i}`,
+						clientName: `Fixture <&> ${i}`,
+						createdAt: '2026-01-01T00:00:00.000Z',
+						lastUsedAt,
+						activeFamilies: i + 1,
+					})),
+				},
+			},
+		)
+		assert.equal(response.status, 200)
+		assert.equal(response.headers.get('cache-control'), 'no-store')
+		const html = await response.text()
+		assert.ok(!html.includes('/build/client-entry.js'))
+		assert.ok(html.includes('Fixture &lt;&amp;&gt; 0'))
+		assert.ok(html.includes('never'))
+		assert.ok(html.includes('Active devices'))
+		assert.ok(html.includes('Account sections'))
+		const forms = [...html.matchAll(/<form\b[^>]*>[\s\S]*?<\/form>/g)].map(
+			([form]) => form,
+		)
+		assert.equal(forms.length, 3)
+		for (const form of forms) {
+			assert.ok(form.includes('method="post"'))
+			assert.ok(form.includes('action="/account/clients"'))
+			assert.ok(form.includes('name="csrf"'))
+			assert.ok(form.includes('value="fixture-csrf"'))
+		}
+		for (const id of ['fixture-grant-0', 'fixture-grant-1']) {
+			assert.ok(
+				forms.some(
+					(form) =>
+						form.includes('value="revoke"') &&
+						form.includes('name="grantId"') &&
+						form.includes(`value="${id}"`),
+				),
+			)
+		}
+		assert.ok(
+			forms.some(
+				(form) =>
+					form.includes('value="revoke_all"') &&
+					form.includes('Revoke all clients'),
+			),
+		)
+	})
+
+	it('renders empty MCP clients without destructive forms', async () => {
+		const response = await renderStartDocument(
+			new Request('http://localhost/account/clients'),
+			{
+				title: 'MCP clients',
+				pathname: '/account/clients',
+				data: {
+					page: 'accountMcpOauthClients',
+					csrf: 'fixture-csrf',
+					publicUrl: 'https://fixture.example.invalid',
+					grants: [],
+				},
+			},
+		)
+		assert.equal(response.status, 200)
+		const html = await response.text()
+		assert.ok(html.includes('No connected clients yet.'))
+		assert.ok(html.includes('https://fixture.example.invalid/mcp'))
+		assert.ok(!html.includes('Revoke all clients'))
+		assert.ok(!/<form\b/.test(html))
+	})
+
 	it('renders account identity, usage and password setup/change as native CSRF forms', async () => {
 		for (const hasPassword of [false, true]) {
 			const response = await renderStartDocument(

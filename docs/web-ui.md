@@ -6,7 +6,7 @@ design system of [kody-hq/kody](https://github.com/kody-hq/kody), using
 TanStack Start, Redact, and Emotion for the public brand guide, community
 catalog/detail pages, sign-in, setup, one-time links, MCP OAuth consent,
 integration connect, secret-set handoffs, every operator-console page,
-and the account overview and browser-session pages.
+and the account overview, browser-session, API-token, and MCP-client pages.
 The remaining account/private/package pages still use Remix 3 components and
 streaming SSR during migration.
 Typed URL builders are framework-independent, matching hosted's
@@ -30,6 +30,8 @@ The Start clipboard button is copied verbatim from hosted; the celld ID-value
 wrapper retains its compact segment sizing. The account overview reuses the
 Start password form; session revocation keeps native POST forms and progressive
 confirmation. Password/session policy and audit writes remain in the Worker.
+API-token issuance uses the existing one-time reveal and clipboard controls;
+token and OAuth-grant revocation retain native forms and Worker-owned policy.
 Both renderers share the same account-navigation data while migration continues.
 Request-scoped CSP nonces also preserve the
 consent page's validated redirect `form-action` source. The MCP surface is

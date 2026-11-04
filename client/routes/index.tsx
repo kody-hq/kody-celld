@@ -1,7 +1,6 @@
 import { type Handle } from 'remix/component'
 import { type AppLoaderData } from '#universal/loader-data.ts'
 import { AccountActivity } from './account-activity.tsx'
-import { AccountApiTokens } from './account-api-tokens.tsx'
 import { AccountEmail } from './account-email.tsx'
 import { AccountIntegrations } from './account-integrations.tsx'
 import { AccountJobs } from './account-jobs.tsx'
@@ -10,7 +9,6 @@ import { AccountJobDetail } from './account-jobs-detail.tsx'
 import { AccountMemories } from './account-memories.tsx'
 import { AccountMcpServerAuthorize } from './account-mcp-server-authorize.tsx'
 import { AccountMcpServers } from './account-mcp-servers.tsx'
-import { AccountMcpOauthClients } from './account-mcp-oauth-clients.tsx'
 import { AccountPackages } from './account-packages.tsx'
 import { AccountPackageDetail } from './account-package-detail.tsx'
 import { AccountSecrets } from './account-secrets.tsx'
@@ -34,10 +32,6 @@ export function RouteView(
 		switch (data.page) {
 			case 'error':
 				return <ErrorPage data={data} signedIn={handle.props.signedIn} />
-			case 'accountMcpOauthClients':
-				return <AccountMcpOauthClients data={data} pathname={pathname} />
-			case 'accountApiTokens':
-				return <AccountApiTokens data={data} pathname={pathname} />
 			case 'accountSecrets':
 				return <AccountSecrets data={data} pathname={pathname} />
 			case 'accountSecretApprove':
@@ -72,6 +66,8 @@ export function RouteView(
 				return <AccountEmail data={data} pathname={pathname} />
 			case 'account':
 			case 'accountSessions':
+			case 'accountApiTokens':
+			case 'accountMcpOauthClients':
 				throw new Error(
 					'Migrated account pages require the Start document renderer',
 				)
