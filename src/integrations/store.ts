@@ -399,6 +399,13 @@ export class IntegrationStore {
 				`Integration "${name}" uses ${record.flow}; connect it with integrationTokenRefresh instead.`,
 			)
 		}
+		const row = this.row(name)
+		if (row && storedSecretFor(row, record).kind === 'unbound') {
+			throw new KodyError(
+				'integration_client_secret_required',
+				`The stored client secret for "${name}" was saved for a different clientId or tokenUrl; re-save the integration with its clientSecret before connecting.`,
+			)
+		}
 		const id = randomId('cn')
 		const ticket = randomUrlSafe(32)
 		const now = new Date()

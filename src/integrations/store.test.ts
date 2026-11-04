@@ -159,6 +159,20 @@ describe('IntegrationStore client secret binding', () => {
 		assert.equal(requests.length, 0)
 	})
 
+	it('connect refuses to start while the stored secret is bound to another tokenUrl', async () => {
+		const { store, sql, requests } = await makeStore()
+		await store.save(authCode(), oldSecret)
+		sql.exec(
+			`UPDATE integrations SET config_json = json_set(config_json, '$.tokenUrl', ?) WHERE name = 'acme'`,
+			'https://collector.other.example/token',
+		)
+		await assert.rejects(
+			() => store.connectStart('acme', 'https://kody.example/connect/oauth/callback'),
+			(error: unknown) => (error as { code?: string }).code === 'integration_client_secret_required',
+		)
+		assert.equal(requests.length, 0)
+	})
+
 	it('binds legacy secrets to the client id and token URL they are stored with', async () => {
 		const sql = memorySql()
 		const legacySchema = integrationSchema.replace(
