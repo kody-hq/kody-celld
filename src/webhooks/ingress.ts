@@ -4,6 +4,7 @@ import { executeRun, getUserCell } from '../execute/engine.ts'
 import { sha256Hex } from '../lib/crypto.ts'
 import { KodyError } from '../lib/errors.ts'
 import { limitsFromEnv } from '../lib/limits.ts'
+import { readRequestBodyUpTo } from '../lib/read-request-body-up-to.ts'
 import type { WebhookDefinition } from '../packages/manifest.ts'
 import { parseSignatureHeader, parseTimestamp, signedMessage, withinTolerance } from './verify.ts'
 
@@ -100,15 +101,12 @@ export async function handleWebhookIngress(
 
 	const limits = limitsFromEnv(env)
 	const contentType = request.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() ?? null
-	const declaredLength = Number(request.headers.get('content-length') ?? 0)
-	if (declaredLength > limits.webhookMaxBodyBytes) {
-		return reject(userCell, admission, 413, 'body_too_large', declaredLength, contentType)
-	}
-	const body = await request.text()
-	const bodyBytes = new TextEncoder().encode(body).byteLength
-	if (bodyBytes > limits.webhookMaxBodyBytes) {
-		return reject(userCell, admission, 413, 'body_too_large', bodyBytes, contentType)
-	}
+	// Counts the stream as it arrives, so a chunked body without a
+	// Content-Length is cut off at the cap instead of buffered whole.
+	const read = await readRequestBodyUpTo(request, limits.webhookMaxBodyBytes)
+	if (!read.ok) return reject(userCell, admission, 413, 'body_too_large', read.byteLength, contentType)
+	const bodyBytes = read.bytes.byteLength
+	const body = new TextDecoder().decode(read.bytes)
 
 	const { definition } = admission
 	const replay = definition.replay
