@@ -33,6 +33,7 @@ async function render(
 		},
 	)
 	assert.equal(response.status, status)
+	assert.equal(response.headers.get('location'), null)
 	assert.equal(response.headers.get('x-fixture'), 'preserved')
 	assert.equal(response.headers.get('referrer-policy'), 'no-referrer')
 	assert.equal(response.headers.get('cache-control'), 'no-store')
@@ -369,7 +370,16 @@ describe('remaining Start document contracts', () => {
 	}
 
 	for (const status of [400, 404, 500])
-		for (const path of ['/fixture/missing', '/account/jobs', '/']) {
+		for (const path of [
+			'/fixture/missing',
+			'/account/jobs',
+			'/',
+			'/account/mcp-servers/%E0%A4%A/authorize',
+			'/account/mcp-servers/%/authorize?state=fixture',
+			'/community/%80',
+			'/community/%25literal',
+			'/community/%E2%9C%93',
+		]) {
 			it(
 				'preserves error ' + status + ' at ' + path + ', with escaped details',
 				async () => {
@@ -393,6 +403,38 @@ describe('remaining Start document contracts', () => {
 				},
 			)
 		}
+	it('renders a rejected malformed POST after the Worker has consumed its form', async () => {
+		const request = new Request(
+			'http://localhost/account/mcp-servers/%/authorize?state=fixture',
+			{
+				method: 'POST',
+				body: new URLSearchParams({ csrf: 'fixture-invalid' }),
+			},
+		)
+		await request.formData()
+		const response = await renderStartDocument(request, {
+			title: 'Fixture',
+			pathname: '/',
+			status: 403,
+			data: {
+				page: 'error',
+				error: 'csrf_invalid',
+				message: 'Fixture rejection',
+				status: 403,
+			},
+		})
+		assert.equal(response.status, 403)
+		assert.equal(response.headers.get('location'), null)
+		assert.match(response.headers.get('content-type') ?? '', /text\/html/)
+		const html = await response.text()
+		assert.ok(html.includes('csrf_invalid'))
+		assert.ok(html.includes('Fixture rejection'))
+		assert.equal(
+			request.url,
+			'http://localhost/account/mcp-servers/%/authorize?state=fixture',
+		)
+		assert.equal(request.method, 'POST')
+	})
 	it('retains signed-out error navigation', async () => {
 		const html = await render(
 			'/fixture/missing',

@@ -7,6 +7,7 @@ import {
 	pageResponseHeaders,
 } from './security-headers.ts'
 import { openDocumentStream } from './ssr-document-stream.ts'
+import { opaquePathname } from '#universal/opaque-pathname.ts'
 
 export async function renderStartDocument(
 	request: Request,
@@ -23,7 +24,15 @@ export async function renderStartDocument(
 		version: KODY_CELLD_VERSION,
 	}
 	const { default: server } = await import('#start-server')
-	const response = await server.fetch(request, { context: { nonce, document } })
+	const url = new URL(request.url)
+	url.pathname = opaquePathname(url.pathname)
+	const renderRequest =
+		url.href === request.url
+			? request
+			: new Request(url, { headers: request.headers, signal: request.signal })
+	const response = await server.fetch(renderRequest, {
+		context: { nonce, document },
+	})
 	const headers = new Headers(response.headers)
 	for (const [name, value] of Object.entries(
 		pageResponseHeaders(options.headers),
