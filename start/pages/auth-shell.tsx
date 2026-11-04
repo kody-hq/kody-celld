@@ -37,7 +37,9 @@ export function AuthShell(props: { title: string; description?: ReactNode; wide?
 				<KodyMark size={34} />
 				<span>Kody</span>
 			</a>
-			<div css={{ display: 'grid', gap: '0.5rem' }}>
+			{/* A client-chosen name (OAuth consent) can be one unbroken word; let
+			    it wrap instead of widening the page on narrow screens. */}
+			<div css={{ display: 'grid', gap: '0.5rem', overflowWrap: 'anywhere' }}>
 				<h1
 					css={{
 						margin: 0,
