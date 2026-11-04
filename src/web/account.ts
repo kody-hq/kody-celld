@@ -108,6 +108,8 @@ function view(
 		case 'accountSessions':
 		case 'accountApiTokens':
 		case 'accountMcpOauthClients':
+		case 'accountSecrets':
+		case 'accountSecretApprove':
 			return renderStartDocument(request, options)
 		default:
 			return renderPage(options)

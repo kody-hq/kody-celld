@@ -9,14 +9,20 @@ const source = readFileSync(
 	'utf8',
 )
 
-function boot() {
+function boot(fields: Array<{ value: string }> = []) {
 	const events = new EventTarget()
 	const element = { hidden: false }
 	const navigations: string[] = []
 	runInNewContext(source, {
 		URL,
 		addEventListener: events.addEventListener.bind(events),
-		document: { documentElement: element },
+		document: {
+			documentElement: element,
+			querySelectorAll(selector: string) {
+				assert.equal(selector, '[data-sensitive-value]')
+				return fields
+			},
+		},
 		location: {
 			href: 'https://fixture.example.invalid/account/tokens?view=list#receipt',
 			replace: (url: string) => navigations.push(url),
@@ -31,7 +37,7 @@ function boot() {
 	}
 }
 
-describe('one-time document lifecycle', () => {
+describe('sensitive document lifecycle', () => {
 	it('leaves the initial receipt visible without refreshing or replaying its POST', () => {
 		const page = boot()
 		page.dispatch('pageshow', false)
@@ -56,5 +62,28 @@ describe('one-time document lifecycle', () => {
 		assert.deepEqual(page.navigations, [
 			'https://fixture.example.invalid/account/tokens?view=list',
 		])
+	})
+
+	it('clears every marked private field before cached or ordinary departure', () => {
+		for (const persisted of [false, true]) {
+			const fields = [
+				{ value: 'inert field fixture' },
+				{ value: 'another fixture' },
+			]
+			const page = boot(fields)
+			page.dispatch('pageshow', false)
+			assert.equal(fields[0]?.value, 'inert field fixture')
+			page.dispatch('pagehide', persisted)
+			assert.ok(page.element.hidden)
+			assert.deepEqual(
+				fields.map((field) => field.value),
+				['', ''],
+			)
+			page.dispatch('pageshow', true)
+			assert.deepEqual(
+				fields.map((field) => field.value),
+				['', ''],
+			)
+		}
 	})
 })

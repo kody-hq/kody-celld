@@ -81,7 +81,9 @@ function Document({ children }: { children: ReactNode }) {
 				/>
 				<title>{data.title}</title>
 				<link rel="stylesheet" href="/styles.css" />
-				{'issued' in data.data && data.data.issued ? <script src="/one-time-document.js"></script> : null}
+				{data.data.page === 'accountSecrets' || ('issued' in data.data && data.data.issued) ? (
+					<script src="/one-time-document.js"></script>
+				) : null}
 				<script src="/page-init.js"></script>
 				<HeadContent />
 			</head>

@@ -28,6 +28,226 @@ function render(pathname = '/brand-guide', displayName?: string) {
 }
 
 describe('Start document renderer', () => {
+	it('renders secret metadata, scope-specific native mutations and a blank save form', async () => {
+		const response = await renderStartDocument(
+			new Request('http://localhost/account/secrets'),
+			{
+				title: 'Secrets',
+				pathname: '/account/secrets',
+				data: {
+					page: 'accountSecrets',
+					csrf: 'fixture-csrf',
+					secrets: [
+						{
+							name: 'OPEN',
+							scope: 'user',
+							packageName: null,
+							description: null,
+							allowedPackages: [],
+						},
+						{
+							name: 'ONE',
+							scope: 'user',
+							packageName: null,
+							description: 'Fixture <&>',
+							allowedPackages: ['@fixture/one'],
+						},
+						{
+							name: 'MANY',
+							scope: 'user',
+							packageName: null,
+							description: null,
+							allowedPackages: ['@fixture/one', '@fixture/two'],
+						},
+						{
+							name: 'SCOPED',
+							scope: 'package',
+							packageName: '@fixture/one',
+							description: null,
+							allowedPackages: [],
+						},
+					].map((secret) => ({
+						...secret,
+						scope: secret.scope as 'user' | 'package',
+						updatedAt: '2026-01-01T00:00:00.000Z',
+					})),
+					hosts: [
+						{
+							host: 'fixture.example.invalid',
+							approvedAt: '2026-01-02T00:00:00.000Z',
+							approvedBy: 'Fixture <&>',
+						},
+					],
+				},
+			},
+		)
+		assert.equal(response.status, 200)
+		assert.equal(response.headers.get('cache-control'), 'no-store')
+		const html = await response.text()
+		assert.ok(!html.includes('/build/client-entry.js'))
+		assert.ok(html.includes('<script src="/one-time-document.js"></script>'))
+		assert.ok(
+			html.indexOf('src="/one-time-document.js"') < html.indexOf('<body>'),
+		)
+		assert.ok(html.includes('Account sections'))
+		assert.ok(html.includes('4 total'))
+		assert.ok(html.includes('Any package'))
+		assert.match(html, /Only (?:<!-- -->)?@fixture\/one/)
+		assert.ok(html.includes('Fixture &lt;&amp;&gt;'))
+		assert.ok(html.includes('fixture.example.invalid'))
+		assert.ok(html.includes('Approvals are made by the operator'))
+		const forms = [...html.matchAll(/<form\b[^>]*>[\s\S]*?<\/form>/g)].map(
+			([form]) => form,
+		)
+		assert.equal(forms.length, 8)
+		const fields = (form: string) =>
+			Object.fromEntries(
+				[...form.matchAll(/<input\b[^>]*type="hidden"[^>]*>/g)].map(
+					([input]) => [
+						input.match(/\bname="([^"]*)"/)?.[1],
+						input.match(/\bvalue="([^"]*)"/)?.[1],
+					],
+				),
+			)
+		for (const form of forms) {
+			assert.ok(form.includes('method="post"'))
+			assert.ok(form.includes('action="/account/secrets"'))
+			assert.equal(fields(form).csrf, 'fixture-csrf')
+		}
+		const deletions = forms
+			.filter((form) => fields(form).action === 'delete')
+			.map(fields)
+		assert.deepEqual(
+			deletions.map(({ name, packageName }) => ({ name, packageName })),
+			[
+				{ name: 'OPEN', packageName: '' },
+				{ name: 'ONE', packageName: '' },
+				{ name: 'MANY', packageName: '' },
+				{ name: 'SCOPED', packageName: '@fixture/one' },
+			],
+		)
+		const grants = forms
+			.filter((form) => fields(form).action === 'remove_grant')
+			.map(fields)
+		assert.deepEqual(
+			grants.map(({ name, packageName }) => ({ name, packageName })),
+			[
+				{ name: 'ONE', packageName: '@fixture/one' },
+				{ name: 'MANY', packageName: '@fixture/one' },
+				{ name: 'MANY', packageName: '@fixture/two' },
+			],
+		)
+		const save = forms.find((form) => fields(form).action === 'save')
+		assert.ok(save)
+		assert.match(save, /autocomplete="off"/i)
+		assert.match(save, /<input\b[^>]*name="name"[^>]*required\b/)
+		assert.ok(save.includes('pattern="[a-zA-Z0-9._\\-]+"'))
+		assert.match(
+			save,
+			/<textarea\b[^>]*name="value"[^>]*data-sensitive-value=""[^>]*required\b[^>]*><\/textarea>/,
+		)
+		assert.ok(save.includes('name="description"'))
+		assert.ok(save.includes('Save secret'))
+	})
+
+	it('renders empty secrets and approved hosts while retaining the native save form', async () => {
+		const response = await renderStartDocument(
+			new Request('http://localhost/account/secrets'),
+			{
+				title: 'Secrets',
+				pathname: '/account/secrets',
+				data: {
+					page: 'accountSecrets',
+					csrf: 'fixture-csrf',
+					secrets: [],
+					hosts: [],
+				},
+			},
+		)
+		const html = await response.text()
+		assert.ok(html.includes('No secrets yet.'))
+		assert.ok(html.includes('No approved hosts.'))
+		assert.ok(html.includes('<script src="/one-time-document.js"></script>'))
+		assert.equal([...html.matchAll(/<form\b/g)].length, 1)
+		assert.ok(!html.includes('value="delete"'))
+		assert.ok(!html.includes('value="remove_grant"'))
+		assert.ok(!html.includes('value="approve_host"'))
+		assert.ok(html.includes('value="save"'))
+	})
+
+	for (const state of [
+		{ label: 'unrestricted', allowedPackages: [], alreadyGranted: false },
+		{
+			label: 'restricted',
+			allowedPackages: ['@fixture/one'],
+			alreadyGranted: false,
+		},
+		{
+			label: 'already-approved',
+			allowedPackages: ['@fixture/one', '@fixture/two'],
+			alreadyGranted: true,
+		},
+	]) {
+		it(`renders ${state.label} owner-only package approval without a secret value`, async () => {
+			const response = await renderStartDocument(
+				new Request(
+					'http://localhost/account/secrets/approve?name=FIXTURE&package=fixture',
+				),
+				{
+					title: 'Approve package access',
+					pathname: '/account/secrets/approve',
+					data: {
+						page: 'accountSecretApprove',
+						csrf: 'fixture-csrf',
+						name: 'Fixture <&>',
+						packageName: '@fixture/two',
+						allowedPackages: state.allowedPackages,
+						alreadyGranted: state.alreadyGranted,
+					},
+				},
+			)
+			assert.equal(response.status, 200)
+			assert.equal(response.headers.get('cache-control'), 'no-store')
+			const html = await response.text()
+			assert.ok(!html.includes('/build/client-entry.js'))
+			assert.ok(!html.includes('src="/one-time-document.js"'))
+			assert.ok(html.includes('Only the account owner can approve'))
+			assert.ok(html.includes('Fixture &lt;&amp;&gt;'))
+			assert.ok(!html.includes('name="value"'))
+			assert.equal(
+				html.includes('will limit package use to the approved list'),
+				state.allowedPackages.length === 0,
+			)
+			assert.equal(
+				html.includes('Currently approved packages:'),
+				state.allowedPackages.length > 0,
+			)
+			assert.equal(
+				html.includes('This package is already approved.'),
+				state.alreadyGranted,
+			)
+			const forms = [...html.matchAll(/<form\b[^>]*>[\s\S]*?<\/form>/g)].map(
+				([form]) => form,
+			)
+			assert.equal(forms.length, state.alreadyGranted ? 0 : 1)
+			if (!state.alreadyGranted) {
+				const form = forms[0]!
+				assert.ok(form.includes('method="post"'))
+				assert.ok(form.includes('action="/account/secrets/approve"'))
+				for (const value of [
+					'fixture-csrf',
+					'allow',
+					'Fixture &lt;&amp;&gt;',
+					'@fixture/two',
+				])
+					assert.ok(form.includes(`value="${value}"`))
+				for (const name of ['csrf', 'action', 'name', 'packageName'])
+					assert.ok(form.includes(`name="${name}"`))
+				assert.ok(form.includes('Allow package'))
+			}
+		})
+	}
+
 	it('renders API-token metadata and native create/revoke forms without a credential receipt', async () => {
 		const response = await renderStartDocument(
 			new Request('http://localhost/account/tokens'),
