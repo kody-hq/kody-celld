@@ -8,7 +8,7 @@ import { sha256Hex } from '../lib/crypto.ts'
 import { KodyError } from '../lib/errors.ts'
 import { normalizeSecretHost } from '../secrets/host-policy.ts'
 import { appSessionOf, readForm, redirect } from './http.ts'
-import { assertCsrf, readWebSession, type WebSession } from './session.ts'
+import { assertCsrf, requireWebSession, type WebSession } from './session.ts'
 
 export type ConnectSecretSetPageData = {
 	page: 'connectSecretSet'
@@ -161,10 +161,8 @@ function savedLocation(url: URL) {
 }
 
 export async function handleConnectSecretSet(request: Request, env: Env, url: URL): Promise<Response> {
-	const session = await readWebSession(request, env)
-	if (!session) {
-		return redirect(`/signin?flash=signin_required&next=${encodeURIComponent(url.pathname + url.search)}`)
-	}
+	const session = await requireWebSession(request, env)
+	if (session instanceof Response) return session
 
 	if (request.method !== 'GET' && request.method !== 'POST') {
 		return new Response(null, { status: 405, headers: { allow: 'GET, POST' } })

@@ -268,8 +268,8 @@ describe('mail bridge shutdown', () => {
 	})
 
 	it('reports a delivery still sending at the cutoff as failed, then exits', async (t) => {
-		// Never finishes its greeting but keeps the socket busy, so only the
-		// shutdown cutoff (not an idle timeout) can end the send.
+		// Finish setup, then trickle the DATA response so the send stays active
+		// past its idle timeout and only the shutdown cutoff can end it.
 		const sockets = new Set()
 		let relayOpenAtReport
 		const kody = await eventRecorder(() => {
@@ -282,9 +282,30 @@ describe('mail bridge shutdown', () => {
 		const relay = net.createServer((socket) => {
 			sockets.add(socket)
 			socket.on('error', () => {})
-			const trickle = setInterval(() => socket.write('2'), 100)
-			socket.on('close', () => clearInterval(trickle))
-			relayConnected()
+			socket.write('220 fixture relay\r\n')
+			let buffer = ''
+			let receivingData = false
+			socket.on('data', (chunk) => {
+				buffer += chunk.toString()
+				let end
+				while ((end = buffer.indexOf('\r\n')) !== -1) {
+					const line = buffer.slice(0, end)
+					buffer = buffer.slice(end + 2)
+					if (receivingData) {
+						if (line !== '.') continue
+						const trickle = setInterval(() => socket.write('2'), 100)
+						socket.once('close', () => clearInterval(trickle))
+						relayConnected()
+					} else if (line === 'DATA') {
+						receivingData = true
+						socket.write('354 End with a dot\r\n')
+					} else if (line === 'QUIT') {
+						socket.end('221 Bye\r\n')
+					} else {
+						socket.write('250 OK\r\n')
+					}
+				}
+			})
 		})
 		const relayPort = await listen(relay)
 		const ports = { kody: kody.port, relay: relayPort, smtp: await freePort(), http: await freePort() }
@@ -315,30 +336,37 @@ describe('mail bridge shutdown', () => {
 })
 
 describe('mail bridge relay timeouts', () => {
-	it('reports failed when the relay goes silent for MAIL_BRIDGE_SEND_TIMEOUT_MS', async (t) => {
-		const kody = await eventRecorder()
-		const sockets = new Set()
-		const relay = net.createServer((socket) => {
-			sockets.add(socket)
-			socket.on('error', () => {})
-			socket.write('220 silent relay\r\n')
-		})
-		const relayPort = await listen(relay)
-		const ports = { kody: kody.port, relay: relayPort, smtp: await freePort(), http: await freePort() }
-		const child = spawnBridge(ports, { MAIL_BRIDGE_SEND_TIMEOUT_MS: '1000' })
-		t.after(() => {
-			child.kill('SIGKILL')
-			kody.server.close()
-			for (const socket of sockets) socket.destroy()
-			relay.close()
-		})
-		await waitFor(async () => (await fetch(`http://127.0.0.1:${ports.http}/health`)).ok)
+	for (const trickle of [false, true]) {
+		it(`reports failed when the relay ${trickle ? 'trickles its greeting past connection setup timeout' : 'goes silent for MAIL_BRIDGE_SEND_TIMEOUT_MS'}`, async (t) => {
+			const kody = await eventRecorder()
+			const sockets = new Set()
+			const relay = net.createServer((socket) => {
+				sockets.add(socket)
+				socket.on('error', () => {})
+				if (trickle) {
+					const interval = setInterval(() => socket.write('2'), 100)
+					socket.once('close', () => clearInterval(interval))
+				} else {
+					socket.write('220 silent relay\r\n')
+				}
+			})
+			const relayPort = await listen(relay)
+			const ports = { kody: kody.port, relay: relayPort, smtp: await freePort(), http: await freePort() }
+			const child = spawnBridge(ports, { MAIL_BRIDGE_SEND_TIMEOUT_MS: '1000' })
+			t.after(() => {
+				child.kill('SIGKILL')
+				kody.server.close()
+				for (const socket of sockets) socket.destroy()
+				relay.close()
+			})
+			await waitFor(async () => (await fetch(`http://127.0.0.1:${ports.http}/health`)).ok)
 
-		const accepted = await postSend(ports.http, 'silent relay')
-		assert.equal(accepted.status, 202)
-		const { messageId } = await accepted.json()
-		await waitFor(() => kody.events.length > 0, 5_000)
-		assert.equal(kody.events[0].messageId, messageId)
-		assert.equal(kody.events[0].event, 'failed')
-	})
+			const accepted = await postSend(ports.http, 'silent relay')
+			assert.equal(accepted.status, 202)
+			const { messageId } = await accepted.json()
+			await waitFor(() => kody.events.length > 0, 5_000)
+			assert.equal(kody.events[0].messageId, messageId)
+			assert.equal(kody.events[0].event, 'failed')
+		})
+	}
 })
