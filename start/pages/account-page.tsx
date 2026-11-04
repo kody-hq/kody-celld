@@ -1,5 +1,6 @@
 import { Route as Root } from '../routes/__root.tsx'
 import { Account } from './account.tsx'
+import { AccountActivity } from './account-activity.tsx'
 import { AccountApiTokens } from './account-api-tokens.tsx'
 import { AccountMcpOauthClients } from './account-mcp-oauth-clients.tsx'
 import { AccountMemories } from './account-memories.tsx'
@@ -20,6 +21,8 @@ export function AccountPage() {
 			return <AccountMcpOauthClients data={data} pathname={pathname} />
 		case 'accountMemories':
 			return <AccountMemories data={data} pathname={pathname} />
+		case 'accountActivity':
+			return <AccountActivity data={data} pathname={pathname} />
 		case 'accountSecrets':
 			return <AccountSecrets data={data} pathname={pathname} />
 		case 'accountSecretApprove':
