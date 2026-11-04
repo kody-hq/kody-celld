@@ -5,9 +5,9 @@ not have to drive everything with `curl` and an admin token. It is built on the
 design system of [kody-hq/kody](https://github.com/kody-hq/kody), using
 TanStack Start, Redact, and Emotion for the public brand guide, community
 catalog/detail pages, sign-in, setup, one-time links, MCP OAuth consent,
-integration connect, secret-set handoffs, and console sign-in/audit/config.
-The remaining pages, including console user management, still use Remix 3 components and streaming SSR during
-migration.
+integration connect, secret-set handoffs, and every operator-console page.
+The remaining account/private/package pages still use Remix 3 components and
+streaming SSR during migration.
 Typed URL builders are framework-independent, matching hosted's
 `packages/worker/universal/routes.ts`; request handlers still own method
 dispatch. Hosted Kody uses TanStack Start with `@tanstack/redact` replacing
@@ -21,7 +21,12 @@ buttons, double-confirm buttons, the header menu, toasts); Start hydrates its
 documents. Start serializes the server's timestamp locale and time zone so
 hydration preserves the existing server display even in a different browser
 locale. Auth pages retain their native forms and server-owned session,
-CSRF, and OAuth validation. Console documents preserve the separate operator cookie and native sign-out form. Request-scoped CSP nonces also preserve the
+CSRF, and OAuth validation. Console documents preserve the separate operator
+cookie, native forms, one-time credential reveal, clipboard controls, and
+two-click destructive confirmation. Without JavaScript, confirmation remains
+an enhancement rather than a gate: native mutation forms still submit as before.
+The Start clipboard button is copied verbatim from hosted; the celld ID-value
+wrapper retains its compact segment sizing. Request-scoped CSP nonces also preserve the
 consent page's validated redirect `form-action` source. The MCP surface is
 unchanged — the UI is a convenience layer over the same cells and
 capabilities.

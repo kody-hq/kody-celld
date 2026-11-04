@@ -12,7 +12,6 @@ import { getUserCell } from '../execute/engine.ts'
 import { dispatchDueJobs } from '../jobs/dispatcher.ts'
 import { recordAudit } from '../lib/audit.ts'
 import { KodyError } from '../lib/errors.ts'
-import { renderPage } from '#app/render.tsx'
 import { renderStartDocument } from '#app/start-render.ts'
 import { type AppSession } from '#universal/app-session.ts'
 import { type AppLoaderData, type PageFlash } from '#universal/loader-data.ts'
@@ -31,16 +30,13 @@ function view(
 	shellSession: AppSession | null,
 	input: { title: string; current: string; data: AppLoaderData; flash?: PageFlash | null },
 ) {
-	const options = {
+	return renderStartDocument(request, {
 		title: input.title,
 		pathname: input.current,
 		session: shellSession,
 		flash: input.flash ?? null,
 		data: input.data,
-	}
-	return input.data.page === 'adminAudit' || input.data.page === 'adminConfig'
-		? renderStartDocument(request, options)
-		: renderPage(options)
+	})
 }
 
 /**

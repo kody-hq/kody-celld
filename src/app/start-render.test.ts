@@ -7,6 +7,7 @@ import {
 } from './security-headers.ts'
 import { getDocumentTimestampLocale } from '../../start/document-locale.ts'
 import type { AppLoaderData } from '#universal/loader-data.ts'
+import { defaultQuotas } from '../lib/limits.ts'
 
 function render(pathname = '/brand-guide', displayName?: string) {
 	return renderStartDocument(new Request(`http://localhost${pathname}`), {
@@ -26,6 +27,151 @@ function render(pathname = '/brand-guide', displayName?: string) {
 }
 
 describe('Start document renderer', () => {
+	it('renders console issuance and dispatch with native CSRF forms and escaped one-time values', async () => {
+		const user = {
+			id: 'fixture-user',
+			email: 'fixture+<&>@example.invalid',
+			createdAt: '2026-01-01T00:00:00.000Z',
+		}
+		for (const kind of ['invite', 'token'] as const) {
+			const issuedValue = 'inert fixture display <&>'
+			const response = await renderStartDocument(
+				new Request('http://localhost/console'),
+				{
+					title: 'Users',
+					pathname: '/console',
+					data: {
+						page: 'adminUsers',
+						csrf: 'fixture-csrf',
+						users: [user],
+						issued: {
+							kind,
+							label: user.email,
+							value: issuedValue,
+							expiresAt: kind === 'invite' ? user.createdAt : null,
+						},
+					},
+				},
+			)
+			assert.equal(response.status, 200)
+			assert.equal(response.headers.get('cache-control'), 'no-store')
+			const html = await response.text()
+			assert.ok(html.includes('fixture+&lt;&amp;&gt;@example.invalid'))
+			assert.ok(html.includes('inert fixture display &lt;&amp;&gt;'))
+			assert.ok(!html.includes(issuedValue))
+			assert.ok(
+				html.includes(
+					`Copy ${kind === 'invite' ? 'sign-in link' : 'API token'}`,
+				),
+			)
+			assert.ok(html.includes('Copy user id'))
+			assert.ok(html.includes('class="site-header'))
+			assert.ok(!html.includes('/build/client-entry.js'))
+			const forms = [...html.matchAll(/<form\b[^>]*>[\s\S]*?<\/form>/g)].map(
+				([form]) => form,
+			)
+			assert.equal(forms.length, 5)
+			for (const form of forms) {
+				assert.ok(form.includes('method="post"'))
+				assert.ok(form.includes('name="csrf"'))
+				assert.ok(form.includes('value="fixture-csrf"'))
+			}
+			for (const action of ['invite', 'token', 'create', 'dispatch']) {
+				assert.ok(
+					forms.some(
+						(form) =>
+							form.includes('name="action"') &&
+							form.includes(`value="${action}"`),
+					),
+					action,
+				)
+			}
+		}
+	})
+
+	it('renders the empty console without a stale issuance panel', async () => {
+		const response = await renderStartDocument(
+			new Request('http://localhost/console'),
+			{
+				title: 'Users',
+				pathname: '/console',
+				data: {
+					page: 'adminUsers',
+					csrf: 'fixture-csrf',
+					users: [],
+					issued: null,
+				},
+			},
+		)
+		const html = await response.text()
+		assert.ok(html.includes('No users yet.'))
+		assert.ok(!html.includes('Copy API token'))
+		assert.ok(!html.includes('Copy sign-in link'))
+	})
+
+	it('renders user detail approvals and destructive actions as native CSRF forms', async () => {
+		const action = '/console/users/fixture-user'
+		const response = await renderStartDocument(
+			new Request(`http://localhost${action}`),
+			{
+				title: 'User',
+				pathname: '/console',
+				data: {
+					page: 'adminUserDetail',
+					csrf: 'fixture-csrf',
+					action,
+					user: {
+						id: 'fixture-user',
+						email: 'fixture+<&>@example.invalid',
+						createdAt: '2026-01-01T00:00:00.000Z',
+					},
+					counts: { tokens: 0, grants: 0, sessions: 0, jobs: 0, runsToday: 0 },
+					hosts: [
+						{
+							host: 'api.example.invalid',
+							approvedAt: '2026-01-01T00:00:00.000Z',
+							approvedBy: 'admin',
+						},
+					],
+					quotas: defaultQuotas,
+				},
+			},
+		)
+		assert.equal(response.status, 200)
+		assert.equal(response.headers.get('cache-control'), 'no-store')
+		const html = await response.text()
+		assert.ok(html.includes('fixture+&lt;&amp;&gt;@example.invalid'))
+		assert.ok(html.includes('Copy user id'))
+		assert.ok(html.includes('class="site-header'))
+		assert.ok(!html.includes('/build/client-entry.js'))
+		const forms = [...html.matchAll(/<form\b[^>]*>[\s\S]*?<\/form>/g)].map(
+			([form]) => form,
+		)
+		assert.equal(forms.length, 4)
+		for (const form of forms) {
+			assert.ok(form.includes('method="post"'))
+			assert.ok(form.includes('name="csrf"'))
+			assert.ok(form.includes('value="fixture-csrf"'))
+		}
+		for (const operation of [
+			'revoke_sessions',
+			'revoke_host',
+			'approve_host',
+		]) {
+			assert.ok(
+				forms.some(
+					(form) =>
+						form.includes(`action="${action}"`) &&
+						form.includes(`value="${operation}"`),
+				),
+				operation,
+			)
+		}
+		assert.ok(html.includes('Sign out everywhere'))
+		assert.ok(html.includes('Revoke'))
+		assert.ok(!html.includes('Confirm revoke'))
+	})
+
 	it('renders console login and read-only documents with native forms and the correct shell', async () => {
 		const cases: Array<{
 			path: string

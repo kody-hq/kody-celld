@@ -4,11 +4,12 @@ import { type ReactNode, type FormEvent } from 'react'
 import { routes } from '#universal/routes.ts'
 import { type IconName } from '#universal/icon-names.ts'
 import { getPageShellCss, pageBlockPadding } from '#client/page-layout.ts'
+import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { AccountManagementLinkNav, accountManagementNarrowMq } from './account-management-link-nav.tsx'
 import { formatDocumentTimestamp } from '../document-locale.ts'
 import { Route as Root } from '../routes/__root.tsx'
 import { getAuthInputCss, pageGutter } from '#universal/styles/style-primitives.ts'
-import { colors, spacing } from '#universal/styles/tokens.ts'
+import { colors, radius, spacing, typography } from '#universal/styles/tokens.ts'
 /*
  * Account-area visual language, ported from the redesign prototype
  * (`landing/account.html` + the `.account-*` blocks in `landing/styles.css`).
@@ -387,5 +388,62 @@ export function AdminPageHeader(props: AdminPageHeaderProps) {
 				}))}
 			/>
 		</>
+	)
+}
+export function IdValue(props: { value: string; label: string }) {
+	return (
+		<span
+			css={{
+				display: 'flex',
+				alignItems: 'stretch',
+				minWidth: '8rem',
+				maxWidth: '12rem',
+				flex: '0 1 12rem',
+				borderRadius: radius.sm,
+				border: `1px solid ${colors.border}`,
+				backgroundColor: colors.background,
+				overflow: 'hidden',
+			}}
+		>
+			<code
+				title={props.value}
+				css={{
+					flex: '1 1 auto',
+					minWidth: 0,
+					display: 'block',
+					overflow: 'hidden',
+					textOverflow: 'ellipsis',
+					whiteSpace: 'nowrap',
+					userSelect: 'all',
+					fontFamily: 'monospace',
+					fontSize: typography.fontSize.sm,
+					lineHeight: 1.35,
+					padding: '0.4rem 0.55rem',
+					border: 'none',
+					backgroundColor: 'transparent',
+					color: colors.text,
+				}}
+			>
+				{props.value}
+			</code>
+			<span
+				css={{
+					display: 'flex',
+					alignItems: 'center',
+					flex: 'none',
+					borderLeft: `1px solid ${colors.border}`,
+					backgroundColor: colors.surface,
+					paddingInline: '0.35rem',
+					'& > button': {
+						width: '2.85rem',
+						boxSizing: 'border-box',
+						overflow: 'hidden',
+						paddingInline: '0.25rem',
+					},
+				}}
+			>
+				<CopyTextButton value={props.value} variant="chip" ariaLabel={`Copy ${props.label}`} />
+			</span>
+		</span>
 	)
 }
