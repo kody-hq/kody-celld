@@ -1,5 +1,9 @@
 import { css, type Handle, type RemixNode } from 'remix/component'
 import { routes } from '#universal/routes.ts'
+import {
+	accountNavItems,
+	isAccountNavItemActive,
+} from '#universal/account-navigation.ts'
 import { CopyTextButton } from '#client/copy-text-button.tsx'
 import { on } from '#client/event-mixin.ts'
 import { formatTimestamp } from '#client/format-timestamp.ts'
@@ -371,56 +375,6 @@ const adminNavItems = [
 	icon: IconName
 	paths: ReadonlyArray<string>
 }>
-
-type AccountNavItem = { href: string; label: string; icon: IconName }
-
-/**
- * Account rail items in display order. Upstream gates some entries on feature
- * flags and the session's username; every self-hosted section is always on,
- * so the list is static. Labels follow upstream where the concept matches
- * (Activity = run history, Email = inboxes).
- */
-export const accountNavItems: Array<AccountNavItem> = [
-	{ href: routes.account.href(), label: 'Overview', icon: 'home' },
-	{ href: routes.accountPackages.href(), label: 'Packages', icon: 'box' },
-	{
-		href: routes.accountActivity.href(),
-		label: 'Activity',
-		icon: 'trending-up',
-	},
-	{ href: routes.accountJobs.href(), label: 'Jobs', icon: 'briefcase' },
-	{
-		href: routes.accountWorkflows.href(),
-		label: 'Workflows',
-		icon: 'refresh',
-	},
-	{ href: routes.accountWebhooks.href(), label: 'Webhooks', icon: 'cloud' },
-	{ href: routes.accountSecrets.href(), label: 'Secrets', icon: 'key' },
-	{
-		href: routes.accountIntegrations.href(),
-		label: 'Integrations',
-		icon: 'plug',
-	},
-	{
-		href: routes.accountMcpServers.href(),
-		label: 'MCP servers',
-		icon: 'server',
-	},
-	{
-		href: routes.accountMcpOauthClients.href(),
-		label: 'MCP clients',
-		icon: 'server',
-	},
-	{ href: routes.accountMemories.href(), label: 'Memories', icon: 'book' },
-	{ href: routes.accountEmail.href(), label: 'Email', icon: 'mail' },
-	{ href: routes.accountApiTokens.href(), label: 'API tokens', icon: 'link' },
-	{ href: routes.accountSessions.href(), label: 'Sessions', icon: 'clock' },
-]
-
-function isAccountNavItemActive(itemHref: string, currentPath: string) {
-	if (itemHref === '/account') return currentPath === '/account'
-	return currentPath === itemHref || currentPath.startsWith(`${itemHref}/`)
-}
 
 type AccountPageHeaderProps = {
 	title: string

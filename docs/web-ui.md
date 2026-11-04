@@ -5,7 +5,8 @@ not have to drive everything with `curl` and an admin token. It is built on the
 design system of [kody-hq/kody](https://github.com/kody-hq/kody), using
 TanStack Start, Redact, and Emotion for the public brand guide, community
 catalog/detail pages, sign-in, setup, one-time links, MCP OAuth consent,
-integration connect, secret-set handoffs, and every operator-console page.
+integration connect, secret-set handoffs, every operator-console page,
+and the account overview and browser-session pages.
 The remaining account/private/package pages still use Remix 3 components and
 streaming SSR during migration.
 Typed URL builders are framework-independent, matching hosted's
@@ -26,7 +27,11 @@ cookie, native forms, one-time credential reveal, clipboard controls, and
 two-click destructive confirmation. Without JavaScript, confirmation remains
 an enhancement rather than a gate: native mutation forms still submit as before.
 The Start clipboard button is copied verbatim from hosted; the celld ID-value
-wrapper retains its compact segment sizing. Request-scoped CSP nonces also preserve the
+wrapper retains its compact segment sizing. The account overview reuses the
+Start password form; session revocation keeps native POST forms and progressive
+confirmation. Password/session policy and audit writes remain in the Worker.
+Both renderers share the same account-navigation data while migration continues.
+Request-scoped CSP nonces also preserve the
 consent page's validated redirect `form-action` source. The MCP surface is
 unchanged — the UI is a convenience layer over the same cells and
 capabilities.

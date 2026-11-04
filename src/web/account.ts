@@ -33,6 +33,7 @@ import {
 import { parsePackageManifest } from '../packages/manifest.ts'
 import { decodePreviewSource, encodePreviewSource } from '../packages/preview-source.ts'
 import { renderPage } from '#app/render.tsx'
+import { renderStartDocument } from '#app/start-render.ts'
 import { inProcessHighlightEnv, loadPackageFilesData } from '#app/package-files-data.ts'
 import { type AppLoaderData, type PageFlash, type RunDetailView } from '#universal/loader-data.ts'
 import type { RunRecord } from '../cells/user-cell.ts'
@@ -82,6 +83,7 @@ const flashes: Record<string, PageFlash> = {
 const noReferrer = { 'referrer-policy': 'no-referrer' }
 
 function view(
+	request: Request,
 	session: WebSession,
 	input: {
 		title: string
@@ -92,7 +94,7 @@ function view(
 		headers?: Record<string, string>
 	},
 ) {
-	return renderPage({
+	const options = {
 		title: input.title,
 		pathname: input.current,
 		session: appSessionOf(session),
@@ -100,7 +102,10 @@ function view(
 		...(input.status === undefined ? {} : { status: input.status }),
 		...(input.headers ? { headers: input.headers } : {}),
 		data: input.data,
-	})
+	}
+	return input.data.page === 'account' || input.data.page === 'accountSessions'
+		? renderStartDocument(request, options)
+		: renderPage(options)
 }
 
 function hrefWithFlash(href: string, flash: string) {
@@ -238,7 +243,7 @@ export async function handleAccount(request: Request, env: Env, ctx: ExecutionCo
 		if (!explorer) {
 			throw new KodyError('package_file_not_found', 'Package file was not found.', { status: 404 })
 		}
-		return view(session, {
+		return view(request, session, {
 			title: pkg.name,
 			current: url.pathname,
 			flash,
@@ -323,7 +328,7 @@ export async function handleAccount(request: Request, env: Env, ctx: ExecutionCo
 		if (!files) {
 			throw new KodyError('package_file_not_found', 'Package file was not found.', { status: 404 })
 		}
-		return view(session, {
+		return view(request, session, {
 			title: `Preview ${preview.name}`,
 			current: url.pathname,
 			flash,
@@ -366,7 +371,7 @@ export async function handleAccount(request: Request, env: Env, ctx: ExecutionCo
 		if (!files) {
 			throw new KodyError('package_file_not_found', 'Package file was not found.', { status: 404 })
 		}
-		return view(session, {
+		return view(request, session, {
 			title: `${pkg.name} files`,
 			current: url.pathname,
 			flash,
@@ -398,7 +403,7 @@ export async function handleAccount(request: Request, env: Env, ctx: ExecutionCo
 			userCell.packageGet(job.packageName),
 			userCell.jobRunList({ jobId: job.id, limit: 20 }),
 		])
-		return view(session, {
+		return view(request, session, {
 			title: job.id,
 			current: url.pathname,
 			flash,
@@ -448,7 +453,7 @@ export async function handleAccount(request: Request, env: Env, ctx: ExecutionCo
 				registry(env).tokenList(session.user.id),
 				registry(env).passwordIsSet(session.user.id),
 			])
-			return view(session, {
+			return view(request, session, {
 				title: 'Account',
 				current: '/account',
 				flash,
@@ -498,7 +503,7 @@ export async function handleAccount(request: Request, env: Env, ctx: ExecutionCo
 				return redirect('/account/clients?flash=revoked')
 			}
 			const grants = await registry(env).oauthGrantList(session.user.id)
-			return view(session, {
+			return view(request, session, {
 				title: 'MCP clients',
 				current: '/account/clients',
 				flash,
@@ -533,7 +538,7 @@ export async function handleAccount(request: Request, env: Env, ctx: ExecutionCo
 				}
 			}
 			const tokens = await registry(env).tokenList(session.user.id)
-			return view(session, {
+			return view(request, session, {
 				title: 'API tokens',
 				current: '/account/tokens',
 				flash,
@@ -566,7 +571,7 @@ export async function handleAccount(request: Request, env: Env, ctx: ExecutionCo
 					return redirect(hrefWithFlash(routes.accountSecrets.href(), 'secret_approved'))
 				}
 				const details = await secretPackageApprovalDetails(userCell, { name, packageName })
-				return view(session, {
+				return view(request, session, {
 					title: 'Approve package access',
 					current: routes.accountSecretsApprove.href(),
 					flash,
@@ -607,7 +612,7 @@ export async function handleAccount(request: Request, env: Env, ctx: ExecutionCo
 				return redirect('/account/secrets')
 			}
 			const [secrets, hosts] = await Promise.all([userCell.secretList(), userCell.secretHostList()])
-			return view(session, {
+			return view(request, session, {
 				title: 'Secrets',
 				current: '/account/secrets',
 				flash,
@@ -687,7 +692,7 @@ export async function handleAccount(request: Request, env: Env, ctx: ExecutionCo
 			])
 			const publishedByName = new Map(published.map((listing) => [listing.name, listing]))
 			const pinnedPreviewSource = preview ? pinPackageSourceToCommit(preview.source, preview.commit) : null
-			return view(session, {
+			return view(request, session, {
 				title: 'Packages',
 				current: '/account/packages',
 				flash,
@@ -755,7 +760,7 @@ export async function handleAccount(request: Request, env: Env, ctx: ExecutionCo
 				return redirect('/account/jobs?flash=saved')
 			}
 			const jobs = await userCell.jobList()
-			return view(session, {
+			return view(request, session, {
 				title: 'Jobs',
 				current: '/account/jobs',
 				flash,
@@ -791,7 +796,7 @@ export async function handleAccount(request: Request, env: Env, ctx: ExecutionCo
 				return redirect('/account/workflows')
 			}
 			const workflows = await userCell.workflowsList(100)
-			return view(session, {
+			return view(request, session, {
 				title: 'Workflows',
 				current: '/account/workflows',
 				flash,
@@ -875,7 +880,7 @@ export async function handleAccount(request: Request, env: Env, ctx: ExecutionCo
 					}
 				: null
 
-			return view(session, {
+			return view(request, session, {
 				title: 'Memories',
 				current: url.pathname,
 				flash,
@@ -900,7 +905,7 @@ export async function handleAccount(request: Request, env: Env, ctx: ExecutionCo
 				listings.flatMap(({ mint }) => (mint ? [userCell.webhookDeliveryList({ handle: mint.handle, limit: 1 })] : [])),
 			)
 			const latestDeliveryByHandle = new Map(deliveries.flat().map((delivery) => [delivery.handle, delivery] as const))
-			return view(session, {
+			return view(request, session, {
 				title: 'Webhooks',
 				current: url.pathname,
 				data: {
@@ -971,7 +976,7 @@ export async function handleAccount(request: Request, env: Env, ctx: ExecutionCo
 				}
 			}
 			const selectedRun = selectedId ? await userCell.runGet({ id: selectedId }) : null
-			return view(session, {
+			return view(request, session, {
 				title: 'Runs',
 				current: '/account/runs',
 				flash,
@@ -1012,7 +1017,7 @@ export async function handleAccount(request: Request, env: Env, ctx: ExecutionCo
 				return redirect('/account/integrations?flash=disconnected')
 			}
 			const integrations = await userCell.integrationList()
-			return view(session, {
+			return view(request, session, {
 				title: 'Integrations',
 				current: '/account/integrations',
 				flash,
@@ -1073,7 +1078,7 @@ export async function handleAccount(request: Request, env: Env, ctx: ExecutionCo
 					})
 				}
 				const { formActionOrigin, ...d } = await describeMcpOAuth(mcpDeps({ env, userCell }), name)
-				return view(session, {
+				return view(request, session, {
 					title: `Authorize ${d.name}`,
 					current: '/account/mcp-servers',
 					headers: {
@@ -1141,7 +1146,7 @@ export async function handleAccount(request: Request, env: Env, ctx: ExecutionCo
 				return redirect('/account/mcp-servers')
 			}
 			const servers = await cell.mcpServerList()
-			return view(session, {
+			return view(request, session, {
 				title: 'MCP servers',
 				current: '/account/mcp-servers',
 				flash,
@@ -1185,7 +1190,7 @@ export async function handleAccount(request: Request, env: Env, ctx: ExecutionCo
 			const current = selectedId ? routes.accountEmailMessage.href({ messageId: selectedId }) : '/account/inbox'
 			const config = loadEmailConfig(env)
 			if (!config) {
-				return view(session, {
+				return view(request, session, {
 					title: 'Inbox',
 					current,
 					...(selectedId ? { status: 404 } : {}),
@@ -1206,7 +1211,7 @@ export async function handleAccount(request: Request, env: Env, ctx: ExecutionCo
 				selectedId ? userCell.emailMessageGet(selectedId) : Promise.resolve(null),
 			])
 			const selected = selectedRecord ? emailMessageDetailView(selectedRecord) : null
-			return view(session, {
+			return view(request, session, {
 				title: selected ? selected.subject || 'Inbox' : 'Inbox',
 				current,
 				...(selectedId && !selected ? { status: 404 } : {}),
@@ -1248,7 +1253,7 @@ export async function handleAccount(request: Request, env: Env, ctx: ExecutionCo
 				)
 			}
 			const sessions = await registry(env).sessionList(session.user.id)
-			return view(session, {
+			return view(request, session, {
 				title: 'Browser sessions',
 				current: '/account/sessions',
 				flash,

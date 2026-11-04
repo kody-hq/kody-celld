@@ -27,6 +27,158 @@ function render(pathname = '/brand-guide', displayName?: string) {
 }
 
 describe('Start document renderer', () => {
+	it('renders account identity, usage and password setup/change as native CSRF forms', async () => {
+		for (const hasPassword of [false, true]) {
+			const response = await renderStartDocument(
+				new Request('http://localhost/account'),
+				{
+					title: 'Account',
+					pathname: '/account',
+					data: {
+						page: 'account',
+						csrf: 'fixture-csrf',
+						email: 'fixture+<&>@example.invalid',
+						createdAt: '2026-01-01T00:00:00.000Z',
+						publicUrl: 'https://fixture.example.invalid',
+						grantCount: 1,
+						tokenCount: 2,
+						hasPassword,
+						usage: {
+							today: { runs: 3, errors: 1, executeMs: 1500 },
+							counts: {
+								packages: 2,
+								secrets: 1,
+								jobs: 4,
+								blobs: 1,
+								blobBytes: 2048,
+							},
+							quotas: {
+								runsPerDay: 10,
+								executeMsPerDay: 60000,
+								packages: 5,
+								secrets: null,
+							},
+							limits: { executeTimeoutMs: 30000, runRetentionCount: 100 },
+						},
+						passwordForm: {
+							action: '/account/password',
+							submit: hasPassword ? 'Change password' : 'Set password',
+							requireCurrent: hasPassword,
+							minLength: 12,
+						},
+					},
+				},
+			)
+			assert.equal(response.status, 200)
+			assert.equal(response.headers.get('cache-control'), 'no-store')
+			const html = await response.text()
+			assert.ok(!html.includes('/build/client-entry.js'))
+			assert.ok(html.includes('fixture+&lt;&amp;&gt;@example.invalid'))
+			assert.ok(html.includes('https://fixture.example.invalid/mcp'))
+			assert.ok(html.includes('1 connected client'))
+			assert.ok(html.includes('2 API tokens'))
+			assert.ok(html.includes('3 / 10'))
+			assert.ok(html.includes('2 s / 60 s'))
+			assert.ok(html.includes('Account sections'))
+			assert.ok(!html.includes('Admin sections'))
+			const forms = [...html.matchAll(/<form\b[^>]*>[\s\S]*?<\/form>/g)].map(
+				([form]) => form,
+			)
+			assert.equal(forms.length, 2)
+			for (const form of forms) {
+				assert.ok(form.includes('method="post"'))
+				assert.ok(form.includes('name="csrf"'))
+				assert.ok(form.includes('value="fixture-csrf"'))
+			}
+			assert.ok(forms.some((form) => form.includes('action="/signout"')))
+			const password = forms.find((form) =>
+				form.includes('action="/account/password"'),
+			)
+			assert.ok(password)
+			assert.equal(password.includes('name="current"'), hasPassword)
+			assert.ok(password.includes('minlength="12"'))
+			const inputs = [
+				...password.matchAll(/<input\b[^>]*\btype="password"[^>]*>/g),
+			].map(([input]) => input)
+			assert.equal(inputs.length, hasPassword ? 3 : 2)
+			for (const input of inputs) {
+				assert.ok(!/\svalue=/.test(input))
+				assert.ok(input.includes('required'))
+			}
+		}
+	})
+
+	it('renders current and other browser sessions with escaped device names and native revoke forms', async () => {
+		const response = await renderStartDocument(
+			new Request('http://localhost/account/sessions'),
+			{
+				title: 'Browser sessions',
+				pathname: '/account/sessions',
+				data: {
+					page: 'accountSessions',
+					csrf: 'fixture-csrf',
+					sessions: [true, false].map((current) => ({
+						id: current ? 'fixture-current' : 'fixture-other',
+						current,
+						userAgent: current ? 'fixture browser <&>' : null,
+						createdAt: '2026-01-01T00:00:00.000Z',
+						lastSeenAt: null,
+						expiresAt: '2026-02-01T00:00:00.000Z',
+					})),
+				},
+			},
+		)
+		assert.equal(response.status, 200)
+		assert.equal(response.headers.get('cache-control'), 'no-store')
+		const html = await response.text()
+		assert.ok(!html.includes('/build/client-entry.js'))
+		assert.ok(html.includes('fixture browser &lt;&amp;&gt;'))
+		assert.ok(!html.includes('fixture browser <&>'))
+		assert.ok(html.includes('unknown'))
+		assert.ok(html.includes('Account sections'))
+		const forms = [...html.matchAll(/<form\b[^>]*>[\s\S]*?<\/form>/g)].map(
+			([form]) => form,
+		)
+		assert.equal(forms.length, 3)
+		for (const form of forms) {
+			assert.ok(form.includes('method="post"'))
+			assert.ok(form.includes('action="/account/sessions"'))
+			assert.ok(form.includes('value="fixture-csrf"'))
+		}
+		for (const id of ['fixture-current', 'fixture-other']) {
+			assert.ok(
+				forms.some(
+					(form) =>
+						form.includes(`value="${id}"`) && form.includes('value="revoke"'),
+				),
+			)
+			assert.ok(
+				forms.some(
+					(form) =>
+						form.includes(`value="${id}"`) &&
+						form.includes(id === 'fixture-current' ? 'Sign out' : 'Revoke'),
+				),
+			)
+		}
+		assert.ok(forms.some((form) => form.includes('value="revoke_others"')))
+		assert.ok(!html.includes('Are you sure?'))
+	})
+
+	it('renders an empty session list without inventing per-device actions', async () => {
+		const response = await renderStartDocument(
+			new Request('http://localhost/account/sessions'),
+			{
+				title: 'Browser sessions',
+				pathname: '/account/sessions',
+				data: { page: 'accountSessions', csrf: 'fixture-csrf', sessions: [] },
+			},
+		)
+		const html = await response.text()
+		assert.ok(html.includes('No sessions.'))
+		assert.ok(!html.includes('name="sessionId"'))
+		assert.ok(html.includes('value="revoke_others"'))
+	})
+
 	it('renders console issuance and dispatch with native CSRF forms and escaped one-time values', async () => {
 		const user = {
 			id: 'fixture-user',
