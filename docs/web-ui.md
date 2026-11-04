@@ -7,7 +7,7 @@ TanStack Start, Redact, and Emotion for the public brand guide, community
 catalog/detail pages, sign-in, setup, one-time links, MCP OAuth consent,
 integration connect, secret-set handoffs, every operator-console page,
 and the account overview, browser-session, API-token, MCP-client, secret,
-and package-access approval pages.
+package-access approval, and Memories pages.
 The remaining account/private/package pages still use Remix 3 components and
 streaming SSR during migration.
 Typed URL builders are framework-independent, matching hosted's
@@ -33,6 +33,8 @@ Start password form; session revocation keeps native POST forms and progressive
 confirmation. Password/session policy and audit writes remain in the Worker.
 API-token issuance uses the existing one-time reveal and clipboard controls;
 token and OAuth-grant revocation retain native forms and Worker-owned policy.
+Memories retain native GET filtering and CSRF-protected deletion forms;
+per-user lookup, ordering, search semantics, and audit writes stay in the Worker.
 Start credential receipts and account secret-entry forms install a blocking lifecycle
 guard before the body is parsed. It clears marked sensitive fields and hides
 the document on departure, then replaces a back/forward-cache restoration with

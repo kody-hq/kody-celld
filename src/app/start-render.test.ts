@@ -28,6 +28,156 @@ function render(pathname = '/brand-guide', displayName?: string) {
 }
 
 describe('Start document renderer', () => {
+	it('renders memory detail, encoded query links and native filter/delete forms', async () => {
+		const id = 'mem & cue'
+		const memory = {
+			id,
+			subject: 'Atlas <safe>',
+			category: 'notes',
+			status: 'active' as const,
+			tags: ['tag <one>'],
+			summary: 'Summary & detail',
+			updatedAt: '2026-01-01T00:00:00Z',
+		}
+		const response = await renderStartDocument(
+			new Request(
+				'http://localhost/account/memories/mem%20%26%20cue?q=Atlas&includeDeleted=1',
+			),
+			{
+				title: 'Memories',
+				pathname: '/account/memories/mem%20%26%20cue',
+				data: {
+					page: 'accountMemories',
+					csrf: 'fixture-csrf',
+					query: 'Atlas & cue',
+					includeDeleted: true,
+					total: 1,
+					memories: [memory],
+					selectedId: id,
+					selected: {
+						...memory,
+						details: 'Line <one>\nLine & two',
+						sourceUris: [
+							'https://example.invalid/source?x=1&y=2',
+							'file:///fixture',
+							'javascript:alert(1)',
+						],
+						dedupeKey: null,
+						createdAt: '2026-01-01T00:00:00Z',
+						lastAccessedAt: null,
+						deletedAt: null,
+					},
+				},
+			},
+		)
+		assert.equal(response.status, 200)
+		const html = await response.text()
+		assert.ok(html.includes('Atlas &lt;safe&gt;'))
+		assert.ok(html.includes('Line &lt;one&gt;\nLine &amp; two'))
+		assert.ok(html.includes('name="q"'))
+		assert.ok(html.includes('value="Atlas &amp; cue"'))
+		assert.match(html, /name="includeDeleted"[^>]*checked=""/)
+		assert.ok(
+			html.includes(
+				'/account/memories/mem%20%26%20cue?q=Atlas+%26+cue&amp;includeDeleted=1',
+			),
+		)
+		assert.match(
+			html,
+			/<a\b[^>]*href="https:\/\/example\.invalid\/source\?x=1&amp;y=2"[^>]*target="_blank"[^>]*rel="noreferrer"/,
+		)
+		assert.ok(html.includes('file:///fixture'))
+		assert.doesNotMatch(html, /<a\b[^>]*href="(?:javascript:|file:)/i)
+		const forms = [...html.matchAll(/<form\b[^>]*>[\s\S]*?<\/form>/g)].map(
+			([form]) => form,
+		)
+		assert.equal(forms.length, 3)
+		const [searchForm, softForm, hardForm] = forms
+		assert.ok(searchForm && softForm && hardForm)
+		assert.match(searchForm, /method="get"/)
+		assert.match(searchForm, /action="\/account\/memories"/)
+		for (const form of [softForm, hardForm]) {
+			assert.match(form, /method="post"/)
+			assert.match(form, /action="\/account\/memories"/)
+			for (const [name, value] of Object.entries({
+				csrf: 'fixture-csrf',
+				action: 'delete',
+				memoryId: 'mem &amp; cue',
+			}))
+				assert.match(form, new RegExp(`name="${name}"[^>]*value="${value}"`))
+		}
+		assert.doesNotMatch(softForm, /name="force"/)
+		assert.match(hardForm, /name="force"[^>]*value="true"/)
+	})
+
+	it('renders a missing memory as a 404 without deletion actions', async () => {
+		const response = await renderStartDocument(
+			new Request('http://localhost/account/memories/missing'),
+			{
+				title: 'Memories',
+				pathname: '/account/memories/missing',
+				status: 404,
+				data: {
+					page: 'accountMemories',
+					csrf: 'fixture-csrf',
+					query: '',
+					includeDeleted: false,
+					total: 0,
+					memories: [],
+					selectedId: 'missing',
+					selected: null,
+				},
+			},
+		)
+		assert.equal(response.status, 404)
+		const html = await response.text()
+		assert.ok(html.includes('Memory not found'))
+		assert.ok(html.includes('No memories yet'))
+		assert.ok(!html.includes('name="memoryId"'))
+	})
+
+	it('does not offer soft deletion of an already-deleted memory', async () => {
+		const memory = {
+			id: 'deleted',
+			subject: 'Archived fixture',
+			category: null,
+			status: 'deleted' as const,
+			tags: [],
+			summary: 'Removed',
+			updatedAt: '2026-01-01T00:00:00Z',
+		}
+		const response = await renderStartDocument(
+			new Request('http://localhost/account/memories/deleted?includeDeleted=1'),
+			{
+				title: 'Memories',
+				pathname: '/account/memories/deleted',
+				data: {
+					page: 'accountMemories',
+					csrf: 'fixture-csrf',
+					query: '',
+					includeDeleted: true,
+					total: 1,
+					memories: [memory],
+					selectedId: memory.id,
+					selected: {
+						...memory,
+						details: '',
+						sourceUris: [],
+						dedupeKey: null,
+						createdAt: '2026-01-01T00:00:00Z',
+						lastAccessedAt: null,
+						deletedAt: '2026-01-02T00:00:00Z',
+					},
+				},
+			},
+		)
+		assert.equal(response.status, 200)
+		const html = await response.text()
+		assert.ok(html.includes('Delete permanently'))
+		assert.ok(!html.includes('Soft delete'))
+		assert.match(html, /name="force"[^>]*value="true"/)
+	})
+
 	it('renders secret metadata, scope-specific native mutations and a blank save form', async () => {
 		const response = await renderStartDocument(
 			new Request('http://localhost/account/secrets'),

@@ -6,7 +6,6 @@ import { AccountIntegrations } from './account-integrations.tsx'
 import { AccountJobs } from './account-jobs.tsx'
 import { AccountWorkflows } from './account-workflows.tsx'
 import { AccountJobDetail } from './account-jobs-detail.tsx'
-import { AccountMemories } from './account-memories.tsx'
 import { AccountMcpServerAuthorize } from './account-mcp-server-authorize.tsx'
 import { AccountMcpServers } from './account-mcp-servers.tsx'
 import { AccountPackages } from './account-packages.tsx'
@@ -44,8 +43,6 @@ export function RouteView(
 				return <AccountWorkflows data={data} pathname={pathname} />
 			case 'accountJobDetail':
 				return <AccountJobDetail data={data} pathname={pathname} />
-			case 'accountMemories':
-				return <AccountMemories data={data} pathname={pathname} />
 			case 'accountWebhooks':
 				return <AccountWebhooks data={data} pathname={pathname} />
 			case 'accountActivity':
@@ -62,6 +59,7 @@ export function RouteView(
 			case 'accountSessions':
 			case 'accountApiTokens':
 			case 'accountMcpOauthClients':
+			case 'accountMemories':
 			case 'accountSecrets':
 			case 'accountSecretApprove':
 				throw new Error(
