@@ -273,6 +273,17 @@ describe('Start document renderer', () => {
 		)
 	})
 
+	it('clips decorative bleed at <main> so pages never widen the viewport (#156)', async () => {
+		const html = await (await render()).text()
+		const main = html.match(/<main id="main" class="(css-[\w-]+)"/)?.[1]
+		assert.ok(main, 'main element not found')
+		const rule = html.match(new RegExp(`\\.${main}\\{([^}]*)\\}`))?.[1] ?? ''
+		assert.ok(
+			rule.includes('overflow-x:clip'),
+			`main must clip horizontal overflow: ${rule}`,
+		)
+	})
+
 	it('renders the hosted brand guide with the celld document and native links', async () => {
 		for (const pathname of [
 			'/brand-guide',
