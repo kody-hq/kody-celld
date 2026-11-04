@@ -58,6 +58,11 @@ describe('Start document renderer', () => {
 		assert.equal(response.status, 200)
 		const html = await response.text()
 		assert.ok(html.includes('3 open errors'))
+		assert.ok(
+			html
+				.replace(/<!--[\s\S]*?-->/g, '')
+				.includes('3 open errors · 1 ignored · 2 resolved · 1 running'),
+		)
 		assert.ok(html.includes('2 of 3'))
 		assert.ok(html.includes('Fixture &lt;failure&gt; &amp; trace'))
 		assert.ok(html.includes('href="/account/runs/run%20%26%20cue?view=errors"'))
