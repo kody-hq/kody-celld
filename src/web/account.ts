@@ -111,9 +111,8 @@ function view(
 		case 'accountMemories':
 		case 'accountSecrets':
 		case 'accountSecretApprove':
-			return renderStartDocument(request, options)
 		case 'accountActivity':
-			return input.data.selectedId === null ? renderStartDocument(request, options) : renderPage(options)
+			return renderStartDocument(request, options)
 		default:
 			return renderPage(options)
 	}

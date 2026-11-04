@@ -1,6 +1,5 @@
 import { type Handle } from 'remix/component'
 import { type AppLoaderData } from '#universal/loader-data.ts'
-import { AccountActivity } from './account-activity.tsx'
 import { AccountEmail } from './account-email.tsx'
 import { AccountIntegrations } from './account-integrations.tsx'
 import { AccountJobs } from './account-jobs.tsx'
@@ -45,8 +44,6 @@ export function RouteView(
 				return <AccountJobDetail data={data} pathname={pathname} />
 			case 'accountWebhooks':
 				return <AccountWebhooks data={data} pathname={pathname} />
-			case 'accountActivity':
-				return <AccountActivity data={data} pathname={pathname} />
 			case 'accountIntegrations':
 				return <AccountIntegrations data={data} pathname={pathname} />
 			case 'accountMcpServers':
@@ -60,6 +57,7 @@ export function RouteView(
 			case 'accountApiTokens':
 			case 'accountMcpOauthClients':
 			case 'accountMemories':
+			case 'accountActivity':
 			case 'accountSecrets':
 			case 'accountSecretApprove':
 				throw new Error(

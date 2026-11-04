@@ -27,7 +27,228 @@ function render(pathname = '/brand-guide', displayName?: string) {
 	})
 }
 
+const activityRun: NonNullable<
+	Extract<AppLoaderData, { page: 'accountActivity' }>['selected']
+> = {
+	id: 'run & cue/one',
+	kind: 'job',
+	packageName: '@fixture/activity',
+	jobId: 'job & cue/one',
+	status: 'error',
+	createdAt: '2026-01-01T00:00:00Z',
+	durationMs: 17,
+	error: 'Fixture <failure>',
+	errorTriage: null,
+	triageNote: null,
+	triagedAt: null,
+	triagedBy: null,
+	logs: ['line <one>', 'line & two'],
+	result: 'Result <safe>',
+	warnings: ['Warning <safe>'],
+	gateway: [
+		{
+			method: 'GET',
+			host: 'api.example.invalid',
+			outcome: 'allowed',
+			status: 200,
+			reason: null,
+		},
+		{
+			method: 'POST',
+			host: 'blocked.example.invalid',
+			outcome: 'denied',
+			status: null,
+			reason: '<blocked>',
+		},
+	],
+}
+const activityData = {
+	page: 'accountActivity',
+	csrf: 'fixture-csrf',
+	view: 'errors',
+	error: null,
+	summary: { errors: 1, ignored: 0, resolved: 0, running: 0 },
+	runs: [activityRun],
+	selectedId: activityRun.id,
+	selected: activityRun,
+} satisfies Extract<AppLoaderData, { page: 'accountActivity' }>
+
 describe('Start document renderer', () => {
+	it('renders expanded Activity fields, close navigation and native retained triage', async () => {
+		const response = await renderStartDocument(
+			new Request(
+				'http://localhost/account/runs/run%20%26%20cue%2Fone?view=errors',
+			),
+			{ title: 'Runs', pathname: '/account/runs', data: activityData },
+		)
+		assert.equal(response.status, 200)
+		const html = await response.text()
+		assert.ok(html.includes('data-testid="run-detail"'))
+		assert.match(
+			html,
+			/<a\b(?=[^>]*href="\/account\/runs\?view=errors")(?=[^>]*aria-expanded="true")[^>]*>/,
+		)
+		assert.ok(html.includes('href="/account/packages/%40fixture%2Factivity"'))
+		assert.ok(html.includes('href="/account/jobs/job%20%26%20cue%2Fone"'))
+		for (const text of [
+			'17 ms',
+			'Fixture &lt;failure&gt;',
+			'Logs (2)',
+			'line &lt;one&gt;\nline &amp; two',
+			'Result &lt;safe&gt;',
+			'Warning &lt;safe&gt;',
+			'allowed GET api.example.invalid → 200',
+			'denied POST blocked.example.invalid (&lt;blocked&gt;)',
+			'Copy fix prompt',
+		]) {
+			assert.ok(html.includes(text), text)
+		}
+		assert.ok(!html.includes('Fixture <failure>'))
+		const prompts = [
+			...html.matchAll(/<blockquote\b[^>]*>([\s\S]*?)<\/blockquote>/g),
+		]
+		assert.equal(prompts.length, 2)
+		for (const text of [
+			'run &amp; cue/one',
+			'@fixture/activity',
+			'job &amp; cue/one',
+			'Fixture &lt;failure&gt;',
+		]) {
+			assert.ok(prompts[1]![1]!.includes(text), text)
+		}
+		const forms = [...html.matchAll(/<form\b[^>]*>[\s\S]*?<\/form>/g)].map(
+			([form]) => form,
+		)
+		assert.equal(forms.length, 4)
+		const retained = forms.filter((form) => /name="open"/.test(form))
+		assert.equal(retained.length, 2)
+		for (const form of retained) {
+			assert.match(form, /method="post"/)
+			assert.match(form, /action="\/account\/runs"/)
+			assert.match(form, /name="csrf"[^>]*value="fixture-csrf"/)
+			assert.match(form, /name="action"[^>]*value="triage"/)
+			assert.match(form, /name="view"[^>]*value="errors"/)
+			assert.match(form, /name="runId"[^>]*value="run &amp; cue\/one"/)
+			assert.match(form, /name="open"[^>]*value="run &amp; cue\/one"/)
+		}
+		assert.ok(
+			retained.some((form) => /name="triage"[^>]*value="ignored"/.test(form)),
+		)
+		assert.ok(
+			retained.some((form) => /name="triage"[^>]*value="resolved"/.test(form)),
+		)
+	})
+
+	it('renders a missing Activity detail without retained triage or a fix prompt', async () => {
+		const response = await renderStartDocument(
+			new Request(
+				'http://localhost/account/runs/missing%20%26%20cue?view=errors',
+			),
+			{
+				title: 'Runs',
+				pathname: '/account/runs',
+				data: { ...activityData, selectedId: 'missing & cue', selected: null },
+			},
+		)
+		assert.equal(response.status, 200)
+		const html = await response.text()
+		assert.ok(html.includes('Run not found'))
+		assert.ok(
+			html.includes(
+				'This run does not exist for this account, or it was pruned from the run history.',
+			),
+		)
+		assert.ok(!html.includes('data-testid="run-detail"'))
+		assert.ok(!html.includes('Copy fix prompt'))
+		assert.doesNotMatch(html, /name="open"/)
+		assert.ok(
+			html.includes('href="/account/runs/run%20%26%20cue%2Fone?view=errors"'),
+		)
+	})
+
+	it('renders an off-filter ignored Activity detail and retains it on Reopen', async () => {
+		const response = await renderStartDocument(
+			new Request('http://localhost/account/runs/old%2Ferror?view=errors'),
+			{
+				title: 'Runs',
+				pathname: '/account/runs',
+				data: {
+					...activityData,
+					selectedId: 'old/error',
+					selected: {
+						...activityRun,
+						id: 'old/error',
+						errorTriage: 'ignored',
+						triageNote: 'Reviewed <safe>',
+						triagedAt: '2026-01-02T00:00:00Z',
+						triagedBy: 'reviewer@example.invalid',
+					},
+				},
+			},
+		)
+		assert.equal(response.status, 200)
+		const html = await response.text()
+		assert.ok(html.includes('data-testid="run-detail"'))
+		assert.ok(html.includes('Reviewed &lt;safe&gt;'))
+		assert.ok(html.includes('reviewer@example.invalid'))
+		assert.ok(html.includes('>Triaged<'))
+		const retained = [...html.matchAll(/<form\b[^>]*>[\s\S]*?<\/form>/g)]
+			.map(([form]) => form)
+			.filter((form) => /name="open"/.test(form))
+		assert.equal(retained.length, 1)
+		assert.match(retained[0]!, /aria-label="Reopen run old\/error"/)
+		assert.match(retained[0]!, /name="triage"[^>]*value="open"/)
+		assert.match(retained[0]!, /name="open"[^>]*value="old\/error"/)
+		assert.match(retained[0]!, /name="view"[^>]*value="errors"/)
+	})
+
+	it('renders a running Activity detail with empty logs and no error-only fields or forms', async () => {
+		const selected = {
+			...activityRun,
+			id: 'running',
+			kind: 'execute',
+			packageName: null,
+			jobId: null,
+			status: 'running',
+			durationMs: null,
+			error: null,
+			logs: [],
+			result: null,
+			warnings: [],
+			gateway: [],
+		}
+		const response = await renderStartDocument(
+			new Request('http://localhost/account/runs/running?view=recent'),
+			{
+				title: 'Runs',
+				pathname: '/account/runs',
+				data: {
+					...activityData,
+					view: 'recent',
+					summary: { errors: 0, ignored: 0, resolved: 0, running: 1 },
+					runs: [selected],
+					selectedId: 'running',
+					selected,
+				},
+			},
+		)
+		const html = (await response.text()).replace(/<!--[\s\S]*?-->/g, '')
+		assert.ok(html.includes('data-testid="run-detail"'))
+		assert.ok(html.includes('Ad hoc · execute'))
+		assert.ok(html.includes('Logs (0)'))
+		assert.ok(html.includes('No log lines.'))
+		assert.ok(!html.includes('Copy fix prompt'))
+		assert.ok(!html.includes('<form'))
+		const detail = html.match(
+			/<section\b[^>]*data-testid="run-detail"[^>]*>([\s\S]*?)<\/section>/,
+		)?.[1]
+		assert.ok(detail)
+		assert.doesNotMatch(
+			detail,
+			/>\s*(?:Error|Result|Warnings|Gateway|Job|Triage note|Triaged)\s*</,
+		)
+	})
+
 	it('renders the open-error list with encoded detail links and native triage forms', async () => {
 		const response = await renderStartDocument(
 			new Request('http://localhost/account/runs?view=errors'),
