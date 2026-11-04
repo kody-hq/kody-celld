@@ -32,7 +32,6 @@ import {
 } from '../packages/install.ts'
 import { parsePackageManifest } from '../packages/manifest.ts'
 import { decodePreviewSource, encodePreviewSource } from '../packages/preview-source.ts'
-import { renderPage } from '#app/render.tsx'
 import { renderStartDocument } from '#app/start-render.ts'
 import { inProcessHighlightEnv, loadPackageFilesData } from '#app/package-files-data.ts'
 import { type AppLoaderData, type PageFlash, type RunDetailView } from '#universal/loader-data.ts'
@@ -103,19 +102,7 @@ function view(
 		...(input.headers ? { headers: input.headers } : {}),
 		data: input.data,
 	}
-	switch (input.data.page) {
-		case 'account':
-		case 'accountSessions':
-		case 'accountApiTokens':
-		case 'accountMcpOauthClients':
-		case 'accountMemories':
-		case 'accountSecrets':
-		case 'accountSecretApprove':
-		case 'accountActivity':
-			return renderStartDocument(request, options)
-		default:
-			return renderPage(options)
-	}
+	return renderStartDocument(request, options)
 }
 
 function hrefWithFlash(href: string, flash: string) {

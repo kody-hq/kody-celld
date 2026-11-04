@@ -1,7 +1,4 @@
-// Worker-side compiler options (celld / Workers globals). esbuild reads this
-// file when celld bundles, so it must resolve `#client/*` to the real browser
-// modules. `tsconfig.worker-typecheck.json` extends it with the stub mapping
-// for `tsc`; browser code under client/ is checked by tsconfig.client.json.
+// Worker-side compiler options; the Start browser tree is checked separately.
 {
   "compilerOptions": {
     "target": "ES2022",
@@ -10,7 +7,7 @@
     "lib": ["ES2022"],
     "types": ["@cloudflare/workers-types/experimental", "node"],
     "jsx": "react-jsx",
-    "jsxImportSource": "remix/component",
+    "jsxImportSource": "@emotion/react",
     "paths": {
       "#app/*": ["./src/app/*"],
       "#client/*": ["./client/*"],

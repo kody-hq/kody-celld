@@ -11,7 +11,7 @@ This tree is on the order of **~55k lines** of TypeScript across `src/`,
 includes:
 
 - MCP `search` + `execute`, packages, secrets, jobs, runs, quotas, audit
-- Sign-in and account/console web UI (Remix 3, mirrored from hosted)
+- Sign-in and account/console web UI (TanStack Start + Redact/Emotion, mirrored from hosted)
 - AI chat/embeddings adapters, memories (FTS5 + vectors), semantic search
 - Email (inbound/outbound + `mail-bridge`), webhooks, blobs
 - OAuth integrations, MCP OAuth 2.1 authorization server, external MCP clients

@@ -25,7 +25,7 @@ COPY . .
 # passes it here and src/version.ts is rewritten before the bundle builds.
 ARG KODY_CELLD_VERSION=0.0.0-dev
 RUN node tools/release/stamp-version.ts "$KODY_CELLD_VERSION"
-# Build both UI lanes and Start's bundled server. Celld bundles the Worker and
+# Build Start's browser and bundled server. Celld bundles the Worker and
 # serves public/ as static assets.
 RUN npm run build:client \
   && chmod +x docker/entrypoint.sh docker/healthcheck.sh && mkdir -p /data /var/lib/celld

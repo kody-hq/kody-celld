@@ -15,7 +15,7 @@ export function passwordProblem(form: { password?: string; confirm?: string }) {
 	}
 }
 
-/** Serializable description of a password form; `client/routes/login.tsx` renders it. */
+/** Serializable description of a password form; `start/pages/login.tsx` renders it. */
 export function passwordFormView(input: {
 	action: string
 	submit: string

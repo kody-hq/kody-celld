@@ -7,6 +7,18 @@ import { AccountMemories } from './account-memories.tsx'
 import { AccountSecrets } from './account-secrets.tsx'
 import { AccountSecretsApprove } from './account-secrets-approve.tsx'
 import { AccountSessions } from './account-sessions.tsx'
+import { AccountIntegrations } from './account-integrations.tsx'
+import { AccountWebhooks } from './account-webhooks.tsx'
+import { AccountMcpServers } from './account-mcp-servers.tsx'
+import { AccountMcpServerAuthorize } from './account-mcp-server-authorize.tsx'
+import { AccountEmail } from './account-email.tsx'
+import { AccountJobs } from './account-jobs.tsx'
+import { AccountJobDetail } from './account-jobs-detail.tsx'
+import { AccountWorkflows } from './account-workflows.tsx'
+import { AccountPackages } from './account-packages.tsx'
+import { AccountPackageDetail } from './account-package-detail.tsx'
+import { PackageFiles } from './package-files.tsx'
+import { PackagePreviewFiles } from './package-preview-files.tsx'
 
 export function AccountPage() {
 	const { data, pathname } = Root.useLoaderData()
@@ -27,6 +39,30 @@ export function AccountPage() {
 			return <AccountSecrets data={data} pathname={pathname} />
 		case 'accountSecretApprove':
 			return <AccountSecretsApprove data={data} pathname={pathname} />
+		case 'accountIntegrations':
+			return <AccountIntegrations data={data} pathname={pathname} />
+		case 'accountWebhooks':
+			return <AccountWebhooks data={data} pathname={pathname} />
+		case 'accountMcpServers':
+			return <AccountMcpServers data={data} pathname={pathname} />
+		case 'accountMcpServerAuthorize':
+			return <AccountMcpServerAuthorize data={data} pathname={pathname} />
+		case 'accountEmail':
+			return <AccountEmail data={data} pathname={pathname} />
+		case 'accountJobs':
+			return <AccountJobs data={data} pathname={pathname} />
+		case 'accountJobDetail':
+			return <AccountJobDetail data={data} pathname={pathname} />
+		case 'accountWorkflows':
+			return <AccountWorkflows data={data} pathname={pathname} />
+		case 'accountPackages':
+			return <AccountPackages data={data} pathname={pathname} />
+		case 'accountPackageDetail':
+			return <AccountPackageDetail data={data} pathname={pathname} />
+		case 'accountPackageFiles':
+			return <PackageFiles data={data} pathname={pathname} />
+		case 'accountPackagePreviewFiles':
+			return <PackagePreviewFiles data={data} pathname={pathname} />
 		default:
 			throw new Error('Account document data required')
 	}

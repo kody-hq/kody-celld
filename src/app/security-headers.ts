@@ -6,10 +6,9 @@
  *
  * - `script-src 'self'` with no `'unsafe-inline'` is the protection that
  *   matters: the browser bundle and `page-init.js` load from this origin, so
- *   an injected inline `<script>` cannot run. Remix's hydration payload is a
- *   `<script type="application/json">` data block, which CSP does not
- *   execute.
- * - `style-src 'unsafe-inline'` because `css()` mixins stream as inline
+ *   an injected inline `<script>` cannot run. Start documents add a per-request
+ *   nonce for their hydration bootstrap; ordinary inline scripts remain blocked.
+ * - `style-src 'unsafe-inline'` because Emotion streams CSS as inline
  *   `<style>` tags during SSR.
  * - `frame-ancestors 'none'` + `X-Frame-Options: DENY` protect the OAuth
  *   consent screen and account pages from clickjacking.

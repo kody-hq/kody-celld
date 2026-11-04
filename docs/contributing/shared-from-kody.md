@@ -22,72 +22,22 @@ npm run sync:kody:check    # verify every pinned file matches upstream (also run
   adapted file to verbatim, make celld match hosted (or document why it cannot)
   and move the entry.
 
-## Resync vs delist (Oct 10, 2026)
+## UI sync boundaries
 
-Of the 36 non-route `client/` + `universal/` files that share a path with
-hosted Kody, 17 differed from kody main. Choices:
+All UI lives in `start/`, matching hosted's TanStack Start, React-compatible
+Redact and Emotion layout. Legacy Remix renderers, islands and registrations
+are removed.
 
-| File                                   | Choice | Why                                           |
-| -------------------------------------- | ------ | --------------------------------------------- |
-| `client/copy-code-block.tsx`           | resync | Styling drift only; prefer hosted             |
-| `client/double-check.ts`               | resync | Missing hosted `arm()` helper                 |
-| `universal/package-file-media.ts`      | resync | Formatting-only drift                         |
-| `universal/styles/style-primitives.ts` | resync | Missing hosted YouTube poster rule            |
-| `universal/icon-glyphs.tsx`            | resync | Missing hosted glyphs (`plus`, `git-fork`, …) |
-| `client/app-root.tsx`                  | delist | Different shell / route dispatch              |
-| `client/client-router.tsx`             | delist | Hosted full router vs celld helper            |
-| `client/copy-text-button.tsx`          | delist | `clientEntry` island wrap                     |
-| `client/entry.tsx`                     | delist | Island registry / Navigation API stop         |
-| `client/package-files-explorer.tsx`    | delist | `embedded` prop for package detail            |
-| `client/site-footer.tsx`               | delist | Self-hosted nav and version                   |
-| `client/site-header.tsx`               | delist | Account/console nav, no org chrome            |
-| `client/toaster.tsx`                   | delist | `clientEntry` island wrap                     |
-| `universal/loader-data.ts`             | delist | celld `AppLoaderData` shapes                  |
-| `universal/package-files.ts`           | delist | Community/public href helpers not ported      |
-| `universal/package-readme-images.ts`   | delist | No `/assets/` route                           |
-| `universal/routes.ts`                  | delist | celld route table only                        |
+The manifest pins hosted primitives verbatim, including icons, branding,
+clipboard/code-copy buttons, toast, avatar, YouTube embeds, heading anchors
+and the Emotion style-hoist helper. Promote matching contracts to verbatim
+instead of retaining renderer-translation copies.
 
-`public/styles.css` is adapted (self-hosted CSS subset). Principle pages under
-`docs/principles/` (except the celld-owned index and celld-only pages) are
-verbatim.
-
-## Hosted moved to React (Nov 3, 2026)
-
-The full re-pin to kody-hq/kody@e3149c45 found that hosted Kody replaced its
-Remix 3 web UI with React + TanStack Start. Components moved to
-`packages/worker/start/components/` and are React + Emotion; markdown parses
-with `@tanstack/markdown`; code highlighting uses TanStack highlight. celld
-stayed on Remix 3 at that re-pin, so:
-
-- **Adapted** (hosted rewrote them for React, Emotion, `@tanstack/markdown` or
-  TanStack highlight): `client/copy-code-block.tsx`,
-  `client/doc-youtube-embed.tsx`, `client/markdown-first-party.ts`,
-  `client/markdown-heading-anchor.tsx`, `client/markdown-view.tsx`,
-  `client/syntax-highlight.tsx`, `client/youtube-light-player.tsx`,
-  `universal/highlighted-code.ts`, `universal/icon-glyphs.tsx`,
-  `universal/icon.tsx`, `universal/styles/style-primitives.ts`,
-  `universal/user-avatar.tsx`.
-- **Delisted** (deleted upstream): `client/double-check.ts`,
-  `client/event-mixin.ts`, `client/app-root.tsx`, `client/client-router.tsx`,
-  `client/entry.tsx`. They are celld-owned now.
-- **Still verbatim**: framework-neutral helpers, tokens, fonts, principles and
-  `src/lib` shared modules.
-
-Every verbatim file pins to the one top-level `kodyCommit`; there is no
-per-file pin.
-
-## Start migration
-
-The public brand guide now uses hosted's Start/Redact/Emotion stack. Its page,
-mark, avatar, toaster, brand geometry, router-nonce reader, popover helper, and
-Emotion style-hoist script are pinned verbatim at the same `kodyCommit`.
-The new `start/` header, footer, brand menu, and public-asset helper are
-adapted for celld's links, clipboard fallback, asset layout, and native
-full-document navigation. The community catalog/detail pages, record table,
-and metadata primitives also use Start/Emotion, adapted for celld's public
-data contracts and native search/navigation. The old brand-guide and community
-Remix pages are deleted. The remaining Remix pages stay in the adapted list
-until their page-family migration.
+Pages, native forms, self-hosted navigation and package exploration remain
+adapted where Worker data or security contracts differ. Markdown retains
+celld's safe Marked lexer policy and serialized Shiki spans rather than
+substituting hosted's package/install and highlight models. Adapted UI also
+uses React/Emotion; there is no second renderer.
 
 ## Interim contract modules (second lane)
 

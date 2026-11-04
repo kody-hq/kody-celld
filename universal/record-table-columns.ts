@@ -1,6 +1,6 @@
 /**
  * Container widths at which RecordTable columns drop out, widest first, and
- * which `drop` priorities are gone at each (client/routes/record-table.tsx).
+ * which `drop` priorities are gone at each (start/pages/record-table.tsx).
  */
 export const dropThresholds = [
 	{ maxWidth: 900, drops: [3] },

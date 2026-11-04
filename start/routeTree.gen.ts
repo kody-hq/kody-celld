@@ -9,6 +9,8 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as IndexRouteImport } from './routes/index'
+import { Route as SplatRouteImport } from './routes/$'
 import { Route as AccountRouteImport } from './routes/account'
 import { Route as BrandGuideRouteImport } from './routes/brand-guide'
 import { Route as ConsoleRouteImport } from './routes/console'
@@ -23,6 +25,16 @@ import { Route as OauthAuthorizeRouteImport } from './routes/oauth.authorize'
 import { Route as ConnectOauthSplatRouteImport } from './routes/connect.oauth.$'
 import { Route as SigninLinkTokenRouteImport } from './routes/signin_.link.$token'
 
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SplatRoute = SplatRouteImport.update({
+  id: '/$',
+  path: '/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AccountRoute = AccountRouteImport.update({
   id: '/account',
   path: '/account',
@@ -90,6 +102,8 @@ const SigninLinkTokenRoute = SigninLinkTokenRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
+  '/': typeof IndexRoute
+  '/$': typeof SplatRoute
   '/account': typeof AccountRoute
   '/brand-guide': typeof BrandGuideRoute
   '/console': typeof ConsoleRoute
@@ -105,6 +119,8 @@ export interface FileRoutesByFullPath {
   '/signin/link/$token': typeof SigninLinkTokenRoute
 }
 export interface FileRoutesByTo {
+  '/': typeof IndexRoute
+  '/$': typeof SplatRoute
   '/account': typeof AccountRoute
   '/brand-guide': typeof BrandGuideRoute
   '/console': typeof ConsoleRoute
@@ -121,6 +137,8 @@ export interface FileRoutesByTo {
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/': typeof IndexRoute
+  '/$': typeof SplatRoute
   '/account': typeof AccountRoute
   '/brand-guide': typeof BrandGuideRoute
   '/console': typeof ConsoleRoute
@@ -138,6 +156,8 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
+    | '/'
+    | '/$'
     | '/account'
     | '/brand-guide'
     | '/console'
@@ -153,6 +173,8 @@ export interface FileRouteTypes {
     | '/signin/link/$token'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/'
+    | '/$'
     | '/account'
     | '/brand-guide'
     | '/console'
@@ -168,6 +190,8 @@ export interface FileRouteTypes {
     | '/signin/link/$token'
   id:
     | '__root__'
+    | '/'
+    | '/$'
     | '/account'
     | '/brand-guide'
     | '/console'
@@ -184,6 +208,8 @@ export interface FileRouteTypes {
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
+  IndexRoute: typeof IndexRoute
+  SplatRoute: typeof SplatRoute
   AccountRoute: typeof AccountRoute
   BrandGuideRoute: typeof BrandGuideRoute
   ConsoleRoute: typeof ConsoleRoute
@@ -201,6 +227,20 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/$': {
+      id: '/$'
+      path: '/$'
+      fullPath: '/$'
+      preLoaderRoute: typeof SplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/account': {
       id: '/account'
       path: '/account'
@@ -296,6 +336,8 @@ declare module '@tanstack/react-router' {
 }
 
 const rootRouteChildren: RootRouteChildren = {
+  IndexRoute: IndexRoute,
+  SplatRoute: SplatRoute,
   AccountRoute: AccountRoute,
   BrandGuideRoute: BrandGuideRoute,
   ConsoleRoute: ConsoleRoute,

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { createRootRoute, HeadContent, Outlet, Scripts } from '@tanstack/react-router'
 import { createIsomorphicFn, getGlobalStartContext } from '@tanstack/react-start'
 import { AppShell } from '../app-shell.tsx'
+import { ErrorDocument } from '../pages/error-document.tsx'
 
 const readDocument = createIsomorphicFn()
 	.server(() => {
@@ -17,9 +18,14 @@ const readDocument = createIsomorphicFn()
 export const Route = createRootRoute({
 	loader: () => readDocument(),
 	shellComponent: Document,
-	component: Outlet,
+	component: DocumentContent,
 	errorComponent: () => <p role="alert">This page could not be displayed.</p>,
 })
+
+function DocumentContent() {
+	const { data } = Route.useLoaderData()
+	return data.page === 'error' ? <ErrorDocument /> : <Outlet />
+}
 
 function Document({ children }: { children: ReactNode }) {
 	const data = Route.useLoaderData()

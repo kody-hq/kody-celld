@@ -32,8 +32,8 @@ This file is a map, not the docs. Open the page that owns the task:
 | Path           | Role                                                               |
 | -------------- | ------------------------------------------------------------------ |
 | `src/`         | Worker, Durable Objects, capabilities, execute, secrets, jobs, web |
-| `client/`      | Remix 3 page components and islands                                |
-| `start/`       | Migrated TanStack Start + Redact/Emotion pages and components      |
+| `client/`      | Framework-neutral browser helpers                                  |
+| `start/`       | TanStack Start + Redact/Emotion pages and components               |
 | `universal/`   | Shared Worker + browser code (routes, loader data, styles, icons)  |
 | `public/`      | Static assets (`styles.css`, fonts, Vite `build/`)                 |
 | `smoke/`       | Integration smoke suite                                            |

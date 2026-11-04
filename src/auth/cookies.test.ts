@@ -61,6 +61,20 @@ describe('cookies', () => {
 		assert.equal(await readCookie(request, 'kody_session'), value)
 	})
 
+	it('preserves malformed encoding, literal plus signs, and first-value duplicate handling', async () => {
+		for (const [header, expected] of [
+			['kody_session=%E0%A4%A', '%E0%A4%A'],
+			['kody_session=a+b', 'a+b'],
+			['kody_session=first; kody_session=second', 'first'],
+			['kody_session=', ''],
+		]) {
+			assert.equal(
+				await readCookie(new Request('https://kody.example', { headers: { cookie: header! } }), 'kody_session'),
+				expected,
+			)
+		}
+	})
+
 	it('reads console cookie values in their existing wire format', async () => {
 		const request = new Request('https://kody.example', {
 			headers: { cookie: 'kody_console=1700000000000.abcdef' },

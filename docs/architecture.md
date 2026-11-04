@@ -218,8 +218,8 @@ detection), `src/oauth/routes.ts` the HTTP surface incl. the signed consent
 form.
 
 Browser sign-in (`src/web/*`, `src/auth/*`) is server-rendered with the same
-Remix 3 / `remix/component` stack and design system as kody-hq/kody (`client/`,
-`universal/`, `src/app/` mirror `packages/worker/`), with a
+TanStack Start, React-compatible Redact, Emotion and first-party design system
+as kody-hq/kody (`start/`, `universal/`, `src/app/` mirror `packages/worker/`), with a
 hashed session cookie, PBKDF2 passwords with lockout, one-time invite / reset /
 magic tokens, session-bound CSRF + same-origin checks, and a separate
 admin-token console cookie. The account pages and the operator console call

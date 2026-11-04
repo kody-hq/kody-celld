@@ -1,6 +1,6 @@
 import type { StartDocumentData } from '../../start/request-context.ts'
 import { getDocumentTimestampLocale } from '../../start/document-locale.ts'
-import type { RenderPageOptions } from './render.tsx'
+import type { RenderPageOptions } from './document.ts'
 import { KODY_CELLD_VERSION } from '../env.ts'
 import {
 	contentSecurityPolicyWithNonce,

@@ -20,7 +20,7 @@
   },
   "scripts": {
     "dev": "node tools/dev/ensure-dev-vars.ts && npm run build:client && celld dev . --port 8787",
-    "typecheck": "tsc -p tsconfig.worker-typecheck.json && tsc -p tsconfig.client.json && tsc -p tsconfig.start.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.client.json && tsc -p tsconfig.start.json",
     "lint": "oxlint src client start universal smoke examples scripts tools mail-bridge",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -34,8 +34,8 @@
     "sync:kody:check": "node scripts/sync-kody.mjs --check",
     "fleet:render": "node scripts/render-fleet-config.mjs",
     "fleet:deploy": "npm run build:client && npm run fleet:render && celld deploy wrangler.fleet.jsonc",
-    "build:client": "vite build && npm run build:start",
-    "build:start": "vite build --config vite.start.config.ts"
+    "build:client": "vite build",
+    "build:start": "vite build"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260918.1",
@@ -57,6 +57,7 @@
     "@cfworker/json-schema": "^4.1.1",
     "@emotion/react": "11.14.0",
     "@modelcontextprotocol/sdk": "1.32.1",
+    "@remix-run/cookie": "1.0.0",
     "@tanstack/react-router": "1.170.41",
     "@tanstack/react-start": "1.168.60",
     "@tanstack/redact": "0.1.4",
@@ -67,7 +68,6 @@
     "postal-mime": "4.2.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "remix": "3.0.0",
     "shiki": "^4.5.0",
     "strip-json-comments": "5.0.3",
     "sucrase": "3.35.1",
