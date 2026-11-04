@@ -32,6 +32,10 @@ Start password form; session revocation keeps native POST forms and progressive
 confirmation. Password/session policy and audit writes remain in the Worker.
 API-token issuance uses the existing one-time reveal and clipboard controls;
 token and OAuth-grant revocation retain native forms and Worker-owned policy.
+Start one-time credential documents install a blocking lifecycle guard before
+the receipt is parsed. It hides the document on departure and replaces a
+back/forward-cache restoration with a fresh GET, rechecking authentication
+without replaying the issuance POST. Ordinary GET pages do not load the guard.
 Both renderers share the same account-navigation data while migration continues.
 Request-scoped CSP nonces also preserve the
 consent page's validated redirect `form-action` source. The MCP surface is

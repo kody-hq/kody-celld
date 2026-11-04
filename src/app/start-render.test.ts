@@ -56,6 +56,7 @@ describe('Start document renderer', () => {
 		assert.ok(html.includes('never'))
 		assert.ok(html.includes('Account sections'))
 		assert.ok(!html.includes('Copy API token'))
+		assert.ok(!html.includes('src="/one-time-document.js"'))
 		const forms = [...html.matchAll(/<form\b[^>]*>[\s\S]*?<\/form>/g)].map(
 			([form]) => form,
 		)
@@ -110,6 +111,14 @@ describe('Start document renderer', () => {
 			assert.ok(html.includes('No API tokens.'))
 			assert.equal(html.includes('Copy API token'), issued !== null)
 			assert.equal(html.includes('Copy it now'), issued !== null)
+			const guard = html.indexOf('src="/one-time-document.js"')
+			assert.equal(guard !== -1, issued !== null)
+			if (issued) {
+				assert.ok(guard < html.indexOf('<body>'))
+				assert.ok(
+					html.includes('<script src="/one-time-document.js"></script>'),
+				)
+			}
 			assert.equal(
 				html.includes(value.replace('<&>', '&lt;&amp;&gt;')),
 				issued !== null,
@@ -387,6 +396,10 @@ describe('Start document renderer', () => {
 			assert.ok(html.includes('fixture+&lt;&amp;&gt;@example.invalid'))
 			assert.ok(html.includes('inert fixture display &lt;&amp;&gt;'))
 			assert.ok(!html.includes(issuedValue))
+			assert.ok(html.includes('<script src="/one-time-document.js"></script>'))
+			assert.ok(
+				html.indexOf('src="/one-time-document.js"') < html.indexOf('<body>'),
+			)
 			assert.ok(
 				html.includes(
 					`Copy ${kind === 'invite' ? 'sign-in link' : 'API token'}`,
@@ -435,6 +448,7 @@ describe('Start document renderer', () => {
 		assert.ok(html.includes('No users yet.'))
 		assert.ok(!html.includes('Copy API token'))
 		assert.ok(!html.includes('Copy sign-in link'))
+		assert.ok(!html.includes('src="/one-time-document.js"'))
 	})
 
 	it('renders user detail approvals and destructive actions as native CSRF forms', async () => {
