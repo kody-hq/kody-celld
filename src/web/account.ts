@@ -44,7 +44,7 @@ import { matchAccountDetailPath } from './account-detail-paths.ts'
 import { approveSecretPackage, secretPackageApprovalDetails } from './secret-package-approval.ts'
 import { appSessionOf, readForm, redirect } from './http.ts'
 import { summarizeJobSchedule } from './job-schedule-summary.ts'
-import { assertCsrf, readWebSession, type WebSession } from './session.ts'
+import { assertCsrf, requireWebSession, type WebSession } from './session.ts'
 import { passwordFormView } from './signin.ts'
 import { matchesSearchQuery } from './search-filter.ts'
 import { workflowView } from './workflow-view.ts'
@@ -178,8 +178,8 @@ export function isAccountRoute(pathname: string) {
 export async function handleAccount(request: Request, env: Env, ctx: ExecutionContext, url: URL): Promise<Response> {
 	const alias = request.method === 'GET' ? accountAliasLocation(url) : null
 	if (alias) return redirect(alias)
-	const session = await readWebSession(request, env)
-	if (!session) return redirect(`/signin?flash=signin_required&next=${encodeURIComponent(url.pathname + url.search)}`)
+	const session = await requireWebSession(request, env)
+	if (session instanceof Response) return session
 	const userCell = getUserCell(env, session.user.id)
 	await userCell.init(session.user.id)
 	const flash = flashes[url.searchParams.get('flash') ?? ''] ?? null

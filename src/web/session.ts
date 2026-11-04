@@ -17,6 +17,7 @@ import type { Env } from '../env.ts'
 import { sha256Hex } from '../lib/crypto.ts'
 import { KodyError } from '../lib/errors.ts'
 import { constantTimeEqualString } from '../auth/password.ts'
+import { redirect } from './http.ts'
 
 export type WebSession = {
 	user: UserRecord
@@ -37,6 +38,20 @@ export async function readWebSession(request: Request, env: Env): Promise<WebSes
 		session: resolved.session,
 		csrf: await csrfToken(env.KODY_MASTER_KEY, resolved.session.id),
 	}
+}
+
+/** Expire a rejected credential on protected routes, never an unsent cookie. */
+export async function requireWebSession(request: Request, env: Env): Promise<WebSession | Response> {
+	const session = await readWebSession(request, env)
+	if (session) return session
+	const secure = cookiesAreSecure(env.KODY_PUBLIC_URL)
+	const name = sessionCookieName(secure)
+	const raw = await readCookie(request, name)
+	const url = new URL(request.url)
+	return redirect(
+		`/signin?flash=signin_required&next=${encodeURIComponent(url.pathname + url.search)}`,
+		raw === null ? {} : { 'set-cookie': await clearCookie(name, secure) },
+	)
 }
 
 /** Returns the `Set-Cookie` value for a fresh browser session. */
