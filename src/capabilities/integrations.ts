@@ -51,7 +51,7 @@ export const integrationSave = defineCapability<
 	domain: 'integrations',
 	name: 'integrationSave',
 	description:
-		'Create or update an OAuth integration (BYO OAuth app). Stores clientSecret encrypted; returns metadata plus the redirectUri to register with the provider and the placeholder to use. Re-saving keeps existing tokens unless tokenUrl/clientId change.',
+		'Create or update an OAuth integration (BYO OAuth app). Stores clientSecret encrypted; returns metadata plus the redirectUri to register with the provider and the placeholder to use. Re-saving keeps existing tokens unless tokenUrl/clientId change; a new tokenUrl or clientId also drops the stored clientSecret, so pass clientSecret again with it.',
 	tags: ['integrations', 'write', 'oauth'],
 	keywords: [
 		'oauth',
@@ -79,7 +79,8 @@ export const integrationSave = defineCapability<
 			clientId: { type: 'string' },
 			clientSecret: {
 				type: ['string', 'null'],
-				description: 'OAuth client secret. Omit to keep the stored one; null clears it (public PKCE clients).',
+				description:
+					'OAuth client secret. Omit to keep the stored one (only while clientId and tokenUrl stay the same); null clears it (public PKCE clients).',
 			},
 			tokenAuthStyle: {
 				type: 'string',
@@ -118,7 +119,9 @@ export default async function main() {
 			throw new KodyError('invalid_args', 'clientSecret must be a string or null.')
 		}
 		const config = parseIntegrationConfig(raw)
+		const previous = clientSecret === undefined ? await ctx.userCell.integrationGet(config.name) : null
 		const record = await ctx.userCell.integrationSave({ config, clientSecret })
+		const clientSecretDropped = previous?.hasClientSecret === true && !record.hasClientSecret
 		await recordAudit(ctx.env, {
 			actor: `user:${ctx.user.id}`,
 			action: 'integration.save',
@@ -127,8 +130,9 @@ export default async function main() {
 		})
 		return {
 			...present(record, ctx),
-			next:
-				record.flow === 'authorization_code'
+			next: clientSecretDropped
+				? `The clientId or tokenUrl changed, so the stored client secret was cleared. Call integrationSave({ name: "${record.name}", ..., clientSecret }) with the secret for this client before connecting (omit it only for a public PKCE client).`
+				: record.flow === 'authorization_code'
 					? `Register the redirectUri on the provider's OAuth app, then call integrationConnect({ name: "${record.name}" }) and send the user the link.`
 					: `Call integrationTokenRefresh({ name: "${record.name}" }) to mint the first access token.`,
 		}

@@ -48,6 +48,10 @@ await kody.integrationSave({
 - The client secret is AES-256-GCM encrypted under the per-user key like any
   secret (`docs/secrets.md`); `integrationGet`/`integrationList` report
   `hasClientSecret`, never the value.
+- The stored client secret is bound to the `clientId` and `tokenUrl` it was
+  saved with. Re-saving with a different `clientId` or `tokenUrl` clears it
+  (and the tokens), so pass `clientSecret` again in that same call; Kody never
+  sends a stored secret to a token endpoint or client id it was not saved for.
 
 ### 2. Connect
 
