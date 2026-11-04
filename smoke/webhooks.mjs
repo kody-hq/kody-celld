@@ -137,11 +137,34 @@ export async function smokeWebhooks({ mcp, user, token }) {
 	assert(wrongSecret.status === 404, 'wrong url secret must be 404', wrongSecret.json)
 	const wrongMethod = await fetch(urls.plain, { method: 'GET' })
 	assert(wrongMethod.status === 405, 'GET must be 405', wrongMethod.status)
+	// A chunked body (no Content-Length) over the 1 MiB default cap is cut off
+	// while streaming, not buffered whole first.
+	const chunk = new Uint8Array(64 * 1024).fill(0x20)
+	let sent = 0
+	const oversized = await fetch(urls.plain, {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		duplex: 'half',
+		body: new ReadableStream({
+			pull(controller) {
+				if (sent >= 2 * 1024 * 1024) return controller.close()
+				sent += chunk.byteLength
+				controller.enqueue(chunk)
+			},
+		}),
+	})
+	const oversizedJson = await oversized.json()
+	assert(
+		oversized.status === 413 && oversizedJson.error === 'payload_too_large',
+		'chunked body over the cap must be 413',
+		{ status: oversized.status, json: oversizedJson },
+	)
 	log('plain', {
 		sync: plain.status,
 		invalidParams: plainBad.status,
 		handlerError: plainFail.status,
 		wrongSecret: wrongSecret.status,
+		chunkedOversized: oversized.status,
 	})
 
 	// 4. Idempotency-Key: same key + same payload replays; different payload conflicts

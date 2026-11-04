@@ -301,8 +301,10 @@ export function BrandContextMenu({ children }: BrandContextMenuProps) {
 		if (!menu) return
 		const rect = menu.getBoundingClientRect()
 		const margin = 8
-		const x = Math.max(margin, Math.min(coords.x, window.innerWidth - rect.width - margin))
-		const y = Math.max(margin, Math.min(coords.y, window.innerHeight - rect.height - margin))
+		// clientWidth/Height exclude the scrollbar; innerWidth/Height do not.
+		const { clientWidth, clientHeight } = document.documentElement
+		const x = Math.max(margin, Math.min(coords.x, clientWidth - rect.width - margin))
+		const y = Math.max(margin, Math.min(coords.y, clientHeight - rect.height - margin))
 		if (x !== coords.x || y !== coords.y) setCoords({ x, y })
 	}, [open, coords])
 

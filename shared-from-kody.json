@@ -161,6 +161,12 @@
       "kind": "shared"
     },
     {
+      "path": "src/lib/read-request-body-up-to.ts",
+      "source": "packages/worker/src/read-request-body-up-to.ts",
+      "sha256": "307c9620bd654950e725fb1855bf3fa308f611b4982658eb7997ddebc9c33b0d",
+      "kind": "shared"
+    },
+    {
       "path": "start/brand/kody-logo.ts",
       "source": "packages/worker/start/brand/kody-logo.ts",
       "sha256": "b0cc1bbac29d396b975651fb5394b063efa0be232052455d904b35587bac7bf9",
