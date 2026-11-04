@@ -59,4 +59,5 @@ universal/user-avatar.tsx
 universal/youtube-watch.ts
 src/lib/api-token-format.ts
 src/lib/base64.ts
+start/components/copy-text-button.tsx
 src/lib/read-request-body-up-to.ts

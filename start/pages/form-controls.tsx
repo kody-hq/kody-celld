@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { CopyTextButton } from '../components/copy-text-button.tsx'
+import { ConfirmSubmitButton } from '../components/confirm-submit-button.tsx'
 import { type ReactNode, type HTMLInputAutoCompleteAttribute } from 'react'
 import { getDangerPillCss, getGhostButtonCss, getPillButtonCss } from '#universal/styles/style-primitives.ts'
 import {
@@ -242,13 +244,73 @@ export function StackedForm(props: { action: string; method?: 'post' | 'get'; au
 	)
 }
 
-export const inlineFormCss = { display: 'inline-flex', margin: 0 }
+export function DangerForm(props: {
+	action: string
+	csrf: string
+	fields: Record<string, string>
+	label: string
+	confirmLabel?: string
+}) {
+	return (
+		<form method="post" action={props.action} css={inlineFormCss}>
+			<CsrfInput token={props.csrf} />
+			{Object.entries(props.fields).map(([name, value]) => (
+				<Hidden key={name} name={name} value={value} />
+			))}
+			<ConfirmSubmitButton
+				label={props.label}
+				confirmLabel={props.confirmLabel ?? `Confirm ${props.label.toLowerCase()}`}
+				variant="danger"
+			/>
+		</form>
+	)
+}
+
 export function SignOutForm(props: { action: string; csrf: string }) {
 	return (
 		<form method="post" action={props.action} css={inlineFormCss}>
 			<CsrfInput token={props.csrf} />
 			<SubmitButton variant="secondary">Sign out</SubmitButton>
 		</form>
+	)
+}
+
+export function Actions(props: { children: Slot }) {
+	return <div css={{ display: 'flex', flexWrap: 'wrap', gap: '0.7rem' }}>{props.children}</div>
+}
+
+export function SecretReveal(props: { value: string; label: string }) {
+	return (
+		<div
+			css={{
+				display: 'flex',
+				gap: spacing.sm,
+				alignItems: 'flex-start',
+				flexWrap: 'wrap',
+			}}
+		>
+			<pre
+				className="secret"
+				css={{
+					margin: 0,
+					flex: '1 1 20rem',
+					minWidth: 0,
+					whiteSpace: 'pre-wrap',
+					overflowWrap: 'anywhere',
+					fontFamily: 'monospace',
+					fontSize: typography.fontSize.sm,
+					padding: spacing.md,
+					borderRadius: radius.sm,
+					border: `1px solid ${colors.border}`,
+					backgroundColor: colors.background,
+					color: colors.text,
+					userSelect: 'all',
+				}}
+			>
+				{props.value}
+			</pre>
+			<CopyTextButton value={props.value} variant="pill" size="sm" ariaLabel={`Copy ${props.label}`} />
+		</div>
 	)
 }
 
@@ -263,5 +325,27 @@ export function Lede(props: { children: Slot }) {
 		>
 			{props.children}
 		</p>
+	)
+}
+
+export const inlineFormCss = { display: 'inline-flex', margin: 0 }
+export function ActionForm(props: {
+	action: string
+	csrf: string
+	fields: Record<string, string>
+	label: string
+	ariaLabel?: string
+	disabled?: boolean
+}) {
+	return (
+		<form method="post" action={props.action} css={inlineFormCss}>
+			<CsrfInput token={props.csrf} />
+			{Object.entries(props.fields).map(([name, value]) => (
+				<Hidden key={name} name={name} value={value} />
+			))}
+			<SubmitButton variant="secondary" disabled={props.disabled} ariaLabel={props.ariaLabel}>
+				{props.label}
+			</SubmitButton>
+		</form>
 	)
 }
