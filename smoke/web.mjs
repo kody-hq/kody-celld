@@ -671,20 +671,33 @@ export async function smokeWeb({ user, mcp }) {
 		toggled,
 	)
 	const enabledJobPage = await browser.get(jobHref)
+	function hasRunNowForm(html, action) {
+		return [...html.matchAll(/<form\b[^>]*>[\s\S]*?<\/form>/g)].some(([form]) => {
+			const fields = hiddenInputs(form)
+			return (
+				form.includes(`action="${action}"`) &&
+				form.includes('method="post"') &&
+				fields.action === 'run' &&
+				fields.id === jobId &&
+				fields.csrf === csrf &&
+				/<button\b[^>]*>Run now<\/button>/.test(form.replace(/<!--[\s\S]*?-->/g, ''))
+			)
+		})
+	}
 	assert(
 		enabledJobPage.status === 200 &&
 			enabledJobPage.text.includes('Enabled') &&
 			enabledJobPage.text.includes('never') &&
-			enabledJobPage.text.includes('data-pending-label="Running…"'),
-		'job detail reflects the enabled state, last run never, and Run now pending label',
+			hasRunNowForm(enabledJobPage.text, jobHref),
+		'job detail reflects the enabled state, last run never, and native CSRF-protected Run now form',
 	)
 	const jobsBeforeRun = await browser.get('/account/jobs')
 	assert(
 		jobsBeforeRun.status === 200 &&
 			jobsBeforeRun.text.includes(jobHref) &&
 			jobsBeforeRun.text.includes('never') &&
-			jobsBeforeRun.text.includes('data-pending-label="Running…"'),
-		'jobs list shows never before a manual run and includes the Running… pending label',
+			hasRunNowForm(jobsBeforeRun.text, '/account/jobs'),
+		'jobs list shows never before a manual run and a native CSRF-protected Run now form',
 	)
 	const ran = await browser.post(jobHref, { action: 'run', id: jobId, csrf })
 	assert(
