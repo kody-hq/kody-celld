@@ -103,9 +103,15 @@ function view(
 		...(input.headers ? { headers: input.headers } : {}),
 		data: input.data,
 	}
-	return input.data.page === 'account' || input.data.page === 'accountSessions'
-		? renderStartDocument(request, options)
-		: renderPage(options)
+	switch (input.data.page) {
+		case 'account':
+		case 'accountSessions':
+		case 'accountApiTokens':
+		case 'accountMcpOauthClients':
+			return renderStartDocument(request, options)
+		default:
+			return renderPage(options)
+	}
 }
 
 function hrefWithFlash(href: string, flash: string) {
