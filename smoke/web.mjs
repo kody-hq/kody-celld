@@ -393,7 +393,9 @@ export async function smokeWeb({ user, mcp }) {
 	const errorsView = await browser.get('/account/runs?view=errors')
 	assert(
 		errorsView.status === 200 &&
-			/\d+ open errors? · \d+ ignored · \d+ resolved · \d+ running/.test(errorsView.text) &&
+			/\d+ open errors? · \d+ ignored · \d+ resolved · \d+ running/.test(
+				errorsView.text.replace(/<!--[\s\S]*?-->/g, ''),
+			) &&
 			errorsView.text.includes(`name="runId" value="${triageFail.runId}"`) &&
 			errorsView.text.includes('name="triage" value="ignored"'),
 		'Activity open-errors view shows the summary and an Ignore form for the failing run',

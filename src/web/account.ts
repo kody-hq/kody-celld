@@ -112,6 +112,8 @@ function view(
 		case 'accountSecrets':
 		case 'accountSecretApprove':
 			return renderStartDocument(request, options)
+		case 'accountActivity':
+			return input.data.selectedId === null ? renderStartDocument(request, options) : renderPage(options)
 		default:
 			return renderPage(options)
 	}

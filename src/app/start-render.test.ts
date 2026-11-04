@@ -28,6 +28,159 @@ function render(pathname = '/brand-guide', displayName?: string) {
 }
 
 describe('Start document renderer', () => {
+	it('renders the open-error list with encoded detail links and native triage forms', async () => {
+		const response = await renderStartDocument(
+			new Request('http://localhost/account/runs?view=errors'),
+			{
+				title: 'Runs',
+				pathname: '/account/runs',
+				data: {
+					page: 'accountActivity',
+					csrf: 'fixture-csrf',
+					view: 'errors',
+					error: null,
+					summary: { errors: 3, ignored: 1, resolved: 2, running: 1 },
+					runs: ['run & cue', 'next/error'].map((id) => ({
+						id,
+						createdAt: '2026-01-01T00:00:00Z',
+						kind: 'execute',
+						packageName: null,
+						status: 'error',
+						durationMs: 15,
+						error: 'Fixture <failure> & trace',
+						errorTriage: null,
+					})),
+					selectedId: null,
+					selected: null,
+				},
+			},
+		)
+		assert.equal(response.status, 200)
+		const html = await response.text()
+		assert.ok(html.includes('3 open errors'))
+		assert.ok(
+			html
+				.replace(/<!--[\s\S]*?-->/g, '')
+				.includes('3 open errors · 1 ignored · 2 resolved · 1 running'),
+		)
+		assert.ok(html.includes('2 of 3'))
+		assert.ok(html.includes('Fixture &lt;failure&gt; &amp; trace'))
+		assert.ok(html.includes('href="/account/runs/run%20%26%20cue?view=errors"'))
+		assert.ok(html.includes('href="/account/runs/next%2Ferror?view=errors"'))
+		assert.ok(html.includes('href="/account/runs?view=recent"'))
+		assert.match(html, /aria-current="page"[^>]*>Open errors/)
+		assert.ok(html.includes('Look at my open Kody activity errors.'))
+		assert.ok(html.includes('Copy prompt'))
+		const forms = [...html.matchAll(/<form\b[^>]*>[\s\S]*?<\/form>/g)].map(
+			([form]) => form,
+		)
+		assert.equal(forms.length, 4)
+		for (const form of forms) {
+			assert.match(form, /method="post"/)
+			assert.match(form, /action="\/account\/runs"/)
+			assert.match(form, /name="csrf"[^>]*value="fixture-csrf"/)
+			assert.match(form, /name="action"[^>]*value="triage"/)
+			assert.match(form, /name="view"[^>]*value="errors"/)
+			assert.match(
+				form,
+				/name="runId"[^>]*value="(?:run &amp; cue|next\/error)"/,
+			)
+			assert.match(form, /name="triage"[^>]*value="(?:ignored|resolved)"/)
+			assert.doesNotMatch(form, /name="open"/)
+		}
+		assert.ok(!html.includes('data-testid="run-detail"'))
+	})
+
+	it('renders recent runs with native reopen forms and escaped triage errors', async () => {
+		const response = await renderStartDocument(
+			new Request('http://localhost/account/runs?view=recent'),
+			{
+				title: 'Runs',
+				pathname: '/account/runs',
+				status: 400,
+				data: {
+					page: 'accountActivity',
+					csrf: 'fixture-csrf',
+					view: 'recent',
+					error: 'Triage <denied>',
+					summary: { errors: 0, ignored: 1, resolved: 1, running: 1 },
+					runs: [
+						...(['ignored', 'resolved'] as const).map((errorTriage) => ({
+							id: errorTriage,
+							createdAt: '2026-01-01T00:00:00Z',
+							kind: 'package',
+							packageName: '@fixture/activity',
+							status: 'error',
+							durationMs: 15,
+							error: 'Fixture failure',
+							errorTriage,
+						})),
+						...['success', 'running'].map((status) => ({
+							id: status,
+							createdAt: '2026-01-01T00:00:00Z',
+							kind: 'execute',
+							packageName: null,
+							status,
+							durationMs: null,
+							error: null,
+							errorTriage: null,
+						})),
+					],
+					selectedId: null,
+					selected: null,
+				},
+			},
+		)
+		assert.equal(response.status, 400)
+		const html = await response.text()
+		assert.match(html, /role="alert"[^>]*aria-live="assertive"/)
+		assert.ok(html.includes('Triage &lt;denied&gt;'))
+		assert.match(html, /aria-current="page"[^>]*>Recent runs/)
+		assert.ok(html.includes('href="/account/runs?view=errors"'))
+		assert.ok(html.includes('href="/account/runs/success?view=recent"'))
+		assert.ok(!html.includes('Copy prompt'))
+		const forms = [...html.matchAll(/<form\b[^>]*>[\s\S]*?<\/form>/g)].map(
+			([form]) => form,
+		)
+		assert.equal(forms.length, 2)
+		for (const form of forms) {
+			assert.match(form, /method="post"/)
+			assert.match(form, /action="\/account\/runs"/)
+			assert.match(form, /name="csrf"[^>]*value="fixture-csrf"/)
+			assert.match(form, /name="action"[^>]*value="triage"/)
+			assert.match(form, /name="view"[^>]*value="recent"/)
+			assert.match(form, /name="triage"[^>]*value="open"/)
+			assert.match(form, /name="runId"[^>]*value="(?:ignored|resolved)"/)
+			assert.doesNotMatch(form, /name="open"/)
+		}
+	})
+
+	it('renders the empty recent Activity list without mutation forms', async () => {
+		const response = await renderStartDocument(
+			new Request('http://localhost/account/runs'),
+			{
+				title: 'Runs',
+				pathname: '/account/runs',
+				data: {
+					page: 'accountActivity',
+					csrf: 'fixture-csrf',
+					view: 'recent',
+					error: null,
+					summary: { errors: 0, ignored: 0, resolved: 0, running: 0 },
+					runs: [],
+					selectedId: null,
+					selected: null,
+				},
+			},
+		)
+		assert.equal(response.status, 200)
+		const html = await response.text()
+		assert.ok(html.includes('No runs yet.'))
+		assert.ok(html.includes('0 open errors'))
+		assert.ok(!html.includes('<form'))
+		assert.ok(!html.includes('Copy prompt'))
+	})
+
 	it('renders memory detail, encoded query links and native filter/delete forms', async () => {
 		const id = 'mem & cue'
 		const memory = {
