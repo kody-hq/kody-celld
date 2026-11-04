@@ -1,6 +1,5 @@
 import { type Handle } from 'remix/component'
 import { type AppLoaderData } from '#universal/loader-data.ts'
-import { Account } from './account.tsx'
 import { AccountActivity } from './account-activity.tsx'
 import { AccountApiTokens } from './account-api-tokens.tsx'
 import { AccountEmail } from './account-email.tsx'
@@ -16,7 +15,6 @@ import { AccountPackages } from './account-packages.tsx'
 import { AccountPackageDetail } from './account-package-detail.tsx'
 import { AccountSecrets } from './account-secrets.tsx'
 import { AccountSecretsApprove } from './account-secrets-approve.tsx'
-import { AccountSessions } from './account-sessions.tsx'
 import { AccountWebhooks } from './account-webhooks.tsx'
 import { ErrorPage } from './error-page.tsx'
 import { PackageFiles } from './package-files.tsx'
@@ -36,8 +34,6 @@ export function RouteView(
 		switch (data.page) {
 			case 'error':
 				return <ErrorPage data={data} signedIn={handle.props.signedIn} />
-			case 'account':
-				return <Account data={data} pathname={pathname} />
 			case 'accountMcpOauthClients':
 				return <AccountMcpOauthClients data={data} pathname={pathname} />
 			case 'accountApiTokens':
@@ -74,8 +70,11 @@ export function RouteView(
 				return <AccountMcpServerAuthorize data={data} pathname={pathname} />
 			case 'accountEmail':
 				return <AccountEmail data={data} pathname={pathname} />
+			case 'account':
 			case 'accountSessions':
-				return <AccountSessions data={data} pathname={pathname} />
+				throw new Error(
+					'Migrated account pages require the Start document renderer',
+				)
 			case 'community':
 			case 'communityNotFound':
 			case 'communityDetail':

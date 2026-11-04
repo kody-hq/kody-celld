@@ -9,10 +9,12 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as AccountRouteImport } from './routes/account'
 import { Route as BrandGuideRouteImport } from './routes/brand-guide'
 import { Route as ConsoleRouteImport } from './routes/console'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as SigninRouteImport } from './routes/signin'
+import { Route as AccountSplatRouteImport } from './routes/account_.$'
 import { Route as CommunityIndexRouteImport } from './routes/community.index'
 import { Route as CommunitySplatRouteImport } from './routes/community_.$'
 import { Route as ConnectSecretSetRouteImport } from './routes/connect.secret-set'
@@ -21,6 +23,11 @@ import { Route as OauthAuthorizeRouteImport } from './routes/oauth.authorize'
 import { Route as ConnectOauthSplatRouteImport } from './routes/connect.oauth.$'
 import { Route as SigninLinkTokenRouteImport } from './routes/signin_.link.$token'
 
+const AccountRoute = AccountRouteImport.update({
+  id: '/account',
+  path: '/account',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const BrandGuideRoute = BrandGuideRouteImport.update({
   id: '/brand-guide',
   path: '/brand-guide',
@@ -39,6 +46,11 @@ const SetupRoute = SetupRouteImport.update({
 const SigninRoute = SigninRouteImport.update({
   id: '/signin',
   path: '/signin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccountSplatRoute = AccountSplatRouteImport.update({
+  id: '/account_/$',
+  path: '/account/$',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CommunityIndexRoute = CommunityIndexRouteImport.update({
@@ -78,10 +90,12 @@ const SigninLinkTokenRoute = SigninLinkTokenRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
+  '/account': typeof AccountRoute
   '/brand-guide': typeof BrandGuideRoute
   '/console': typeof ConsoleRoute
   '/setup': typeof SetupRoute
   '/signin': typeof SigninRoute
+  '/account/$': typeof AccountSplatRoute
   '/community/$': typeof CommunitySplatRoute
   '/connect/secret-set': typeof ConnectSecretSetRoute
   '/console/$': typeof ConsoleSplatRoute
@@ -91,10 +105,12 @@ export interface FileRoutesByFullPath {
   '/signin/link/$token': typeof SigninLinkTokenRoute
 }
 export interface FileRoutesByTo {
+  '/account': typeof AccountRoute
   '/brand-guide': typeof BrandGuideRoute
   '/console': typeof ConsoleRoute
   '/setup': typeof SetupRoute
   '/signin': typeof SigninRoute
+  '/account/$': typeof AccountSplatRoute
   '/community/$': typeof CommunitySplatRoute
   '/connect/secret-set': typeof ConnectSecretSetRoute
   '/console/$': typeof ConsoleSplatRoute
@@ -105,10 +121,12 @@ export interface FileRoutesByTo {
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/account': typeof AccountRoute
   '/brand-guide': typeof BrandGuideRoute
   '/console': typeof ConsoleRoute
   '/setup': typeof SetupRoute
   '/signin': typeof SigninRoute
+  '/account_/$': typeof AccountSplatRoute
   '/community_/$': typeof CommunitySplatRoute
   '/connect/secret-set': typeof ConnectSecretSetRoute
   '/console_/$': typeof ConsoleSplatRoute
@@ -120,10 +138,12 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
+    | '/account'
     | '/brand-guide'
     | '/console'
     | '/setup'
     | '/signin'
+    | '/account/$'
     | '/community/$'
     | '/connect/secret-set'
     | '/console/$'
@@ -133,10 +153,12 @@ export interface FileRouteTypes {
     | '/signin/link/$token'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/account'
     | '/brand-guide'
     | '/console'
     | '/setup'
     | '/signin'
+    | '/account/$'
     | '/community/$'
     | '/connect/secret-set'
     | '/console/$'
@@ -146,10 +168,12 @@ export interface FileRouteTypes {
     | '/signin/link/$token'
   id:
     | '__root__'
+    | '/account'
     | '/brand-guide'
     | '/console'
     | '/setup'
     | '/signin'
+    | '/account_/$'
     | '/community_/$'
     | '/connect/secret-set'
     | '/console_/$'
@@ -160,10 +184,12 @@ export interface FileRouteTypes {
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
+  AccountRoute: typeof AccountRoute
   BrandGuideRoute: typeof BrandGuideRoute
   ConsoleRoute: typeof ConsoleRoute
   SetupRoute: typeof SetupRoute
   SigninRoute: typeof SigninRoute
+  AccountSplatRoute: typeof AccountSplatRoute
   CommunitySplatRoute: typeof CommunitySplatRoute
   ConnectSecretSetRoute: typeof ConnectSecretSetRoute
   ConsoleSplatRoute: typeof ConsoleSplatRoute
@@ -175,6 +201,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/account': {
+      id: '/account'
+      path: '/account'
+      fullPath: '/account'
+      preLoaderRoute: typeof AccountRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/brand-guide': {
       id: '/brand-guide'
       path: '/brand-guide'
@@ -201,6 +234,13 @@ declare module '@tanstack/react-router' {
       path: '/signin'
       fullPath: '/signin'
       preLoaderRoute: typeof SigninRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/account_/$': {
+      id: '/account_/$'
+      path: '/account/$'
+      fullPath: '/account/$'
+      preLoaderRoute: typeof AccountSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/community/': {
@@ -256,10 +296,12 @@ declare module '@tanstack/react-router' {
 }
 
 const rootRouteChildren: RootRouteChildren = {
+  AccountRoute: AccountRoute,
   BrandGuideRoute: BrandGuideRoute,
   ConsoleRoute: ConsoleRoute,
   SetupRoute: SetupRoute,
   SigninRoute: SigninRoute,
+  AccountSplatRoute: AccountSplatRoute,
   CommunitySplatRoute: CommunitySplatRoute,
   ConnectSecretSetRoute: ConnectSecretSetRoute,
   ConsoleSplatRoute: ConsoleSplatRoute,

@@ -2,6 +2,7 @@
 import type { CSSObject } from '@emotion/react'
 import { type ReactNode, type FormEvent } from 'react'
 import { routes } from '#universal/routes.ts'
+import { accountNavItems, isAccountNavItemActive } from '#universal/account-navigation.ts'
 import { type IconName } from '#universal/icon-names.ts'
 import { getPageShellCss, pageBlockPadding } from '#client/page-layout.ts'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
@@ -359,6 +360,27 @@ const adminNavItems = [
 	icon: IconName
 	paths: ReadonlyArray<string>
 }>
+
+export function AccountPageHeader(props: AccountManagementHeaderProps & { currentHref: string }) {
+	const currentPath = new URL(props.currentHref, 'http://localhost').pathname
+	return (
+		<>
+			<AccountManagementHeader
+				title={props.title}
+				description={props.description}
+				actions={props.actions}
+				belowDescription={props.belowDescription}
+			/>
+			<AccountManagementLinkNav
+				label="Account sections"
+				items={accountNavItems.map((item) => ({
+					...item,
+					active: isAccountNavItemActive(item.href, currentPath),
+				}))}
+			/>
+		</>
+	)
+}
 
 type AdminPageHeaderProps = {
 	title: string
