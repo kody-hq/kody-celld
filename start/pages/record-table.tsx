@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import type { CSSObject } from '@emotion/react'
 import { type ReactNode, useId } from 'react'
-import { colors, spacing, transitions, typography } from '#universal/styles/tokens.ts'
+import { colors, radius, spacing, transitions, typography } from '#universal/styles/tokens.ts'
 import { getSurfaceCardCss, hoverMq, visuallyHiddenCss } from '#universal/styles/style-primitives.ts'
 import { dropThresholds, packedColWidths } from '#universal/record-table-columns.ts'
 /*
@@ -378,6 +378,59 @@ const emptyCss: CSSObject = {
 	padding: spacing.lg,
 	color: colors.textMuted,
 	fontSize: typography.fontSize.sm,
+}
+
+export function recordCellClamp(ch: number) {
+	return {
+		display: 'block',
+		minWidth: 0,
+		maxWidth: `min(${ch}ch, 100%)`,
+		overflow: 'hidden',
+		textOverflow: 'ellipsis',
+		whiteSpace: 'nowrap' as const,
+	}
+}
+
+const chipCss: CSSObject = {
+	display: 'inline-block',
+	padding: `0 ${spacing.sm}`,
+	borderRadius: radius.md,
+	border: `1px solid ${colors.border}`,
+	backgroundColor: colors.surface,
+	color: colors.textMuted,
+	fontSize: typography.fontSize.xs,
+	lineHeight: '1.5rem',
+	whiteSpace: 'nowrap' as const,
+}
+
+const activeChipCss: CSSObject = {
+	...chipCss,
+	borderColor: colors.primary,
+	color: colors.primaryText,
+	backgroundColor: colors.primarySoft,
+}
+
+export function RecordChips(props: { items: Array<string>; active?: boolean; empty?: string }) {
+	if (props.items.length === 0) {
+		return props.empty ? <span css={{ color: colors.textMuted }}>{props.empty}</span> : null
+	}
+	return (
+		<span css={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', overflow: 'hidden' }}>
+			{props.items.map((item) => (
+				<span key={item} css={props.active ? activeChipCss : chipCss}>
+					{item}
+				</span>
+			))}
+		</span>
+	)
+}
+
+export const recordBodyCss: CSSObject = {
+	padding: spacing.lg,
+	display: 'grid',
+	gap: spacing.lg,
+	minWidth: 0,
+	maxWidth: '100%',
 }
 const footerCss: CSSObject = {
 	display: 'grid',

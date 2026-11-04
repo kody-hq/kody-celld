@@ -108,6 +108,7 @@ function view(
 		case 'accountSessions':
 		case 'accountApiTokens':
 		case 'accountMcpOauthClients':
+		case 'accountMemories':
 		case 'accountSecrets':
 		case 'accountSecretApprove':
 			return renderStartDocument(request, options)
