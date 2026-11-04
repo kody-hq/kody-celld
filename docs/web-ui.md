@@ -6,7 +6,8 @@ design system of [kody-hq/kody](https://github.com/kody-hq/kody), using
 TanStack Start, Redact, and Emotion for the public brand guide, community
 catalog/detail pages, sign-in, setup, one-time links, MCP OAuth consent,
 integration connect, secret-set handoffs, every operator-console page,
-and the account overview, browser-session, API-token, and MCP-client pages.
+and the account overview, browser-session, API-token, MCP-client, secret,
+and package-access approval pages.
 The remaining account/private/package pages still use Remix 3 components and
 streaming SSR during migration.
 Typed URL builders are framework-independent, matching hosted's
@@ -32,10 +33,11 @@ Start password form; session revocation keeps native POST forms and progressive
 confirmation. Password/session policy and audit writes remain in the Worker.
 API-token issuance uses the existing one-time reveal and clipboard controls;
 token and OAuth-grant revocation retain native forms and Worker-owned policy.
-Start one-time credential documents install a blocking lifecycle guard before
-the receipt is parsed. It hides the document on departure and replaces a
-back/forward-cache restoration with a fresh GET, rechecking authentication
-without replaying the issuance POST. Ordinary GET pages do not load the guard.
+Start credential receipts and account secret-entry forms install a blocking lifecycle
+guard before the body is parsed. It clears marked sensitive fields and hides
+the document on departure, then replaces a back/forward-cache restoration with
+a fresh GET, rechecking authentication without replaying the credential POST.
+Other ordinary GET pages do not load the guard.
 Protected account and secret-setup requests also expire a browser-session cookie that the
 registry rejects. Requests without that cookie cannot clear it, and the
 operator-console cookie is left alone. Cookie changes let

@@ -133,6 +133,7 @@ type FieldProps = {
 	pattern?: string
 	note?: string
 	multiline?: boolean
+	sensitive?: boolean
 	/** Wider label/field for auth screens; default is the account field. */
 	size?: 'auth' | 'account'
 }
@@ -148,6 +149,7 @@ export function Field(props: FieldProps) {
 				<textarea
 					id={id}
 					name={p.name}
+					data-sensitive-value={p.sensitive ? '' : undefined}
 					required={p.required}
 					spellCheck={false}
 					defaultValue={p.value ?? ''}
@@ -158,6 +160,7 @@ export function Field(props: FieldProps) {
 					id={id}
 					name={p.name}
 					type="password"
+					data-sensitive-value={p.sensitive ? '' : undefined}
 					placeholder={p.placeholder}
 					autoComplete={p.autoComplete}
 					autoFocus={p.autoFocus}
@@ -171,6 +174,7 @@ export function Field(props: FieldProps) {
 					id={id}
 					name={p.name}
 					type={p.type ?? 'text'}
+					data-sensitive-value={p.sensitive ? '' : undefined}
 					list={undefined}
 					defaultValue={p.value}
 					placeholder={p.placeholder}

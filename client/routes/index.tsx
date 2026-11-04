@@ -11,8 +11,6 @@ import { AccountMcpServerAuthorize } from './account-mcp-server-authorize.tsx'
 import { AccountMcpServers } from './account-mcp-servers.tsx'
 import { AccountPackages } from './account-packages.tsx'
 import { AccountPackageDetail } from './account-package-detail.tsx'
-import { AccountSecrets } from './account-secrets.tsx'
-import { AccountSecretsApprove } from './account-secrets-approve.tsx'
 import { AccountWebhooks } from './account-webhooks.tsx'
 import { ErrorPage } from './error-page.tsx'
 import { PackageFiles } from './package-files.tsx'
@@ -32,10 +30,6 @@ export function RouteView(
 		switch (data.page) {
 			case 'error':
 				return <ErrorPage data={data} signedIn={handle.props.signedIn} />
-			case 'accountSecrets':
-				return <AccountSecrets data={data} pathname={pathname} />
-			case 'accountSecretApprove':
-				return <AccountSecretsApprove data={data} pathname={pathname} />
 			case 'accountPackages':
 				return <AccountPackages data={data} pathname={pathname} />
 			case 'accountPackageDetail':
@@ -68,6 +62,8 @@ export function RouteView(
 			case 'accountSessions':
 			case 'accountApiTokens':
 			case 'accountMcpOauthClients':
+			case 'accountSecrets':
+			case 'accountSecretApprove':
 				throw new Error(
 					'Migrated account pages require the Start document renderer',
 				)
