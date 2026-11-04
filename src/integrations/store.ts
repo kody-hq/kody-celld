@@ -72,6 +72,8 @@ type IntegrationRow = {
 	client_secret_iv: string | null
 	client_secret_ciphertext: string | null
 	client_secret_key_id: string | null
+	client_secret_client_id: string | null
+	client_secret_token_url: string | null
 	access_iv: string | null
 	access_ciphertext: string | null
 	access_key_id: string | null
@@ -122,6 +124,8 @@ export const integrationSchema = `
 		client_secret_iv TEXT,
 		client_secret_ciphertext TEXT,
 		client_secret_key_id TEXT,
+		client_secret_client_id TEXT,
+		client_secret_token_url TEXT,
 		access_iv TEXT,
 		access_ciphertext TEXT,
 		access_key_id TEXT,
@@ -157,6 +161,36 @@ export const integrationSchema = `
 	);
 	CREATE INDEX IF NOT EXISTS integration_connects_name ON integration_connects (name, created_at);
 `
+
+/**
+ * Adds the client-secret binding columns to tables created before them. A
+ * legacy secret is bound to the client id and token URL it is stored with now.
+ */
+export function ensureIntegrationColumns(sql: SqlStorage) {
+	const columns = sql
+		.exec<{ name: string }>(`SELECT name FROM pragma_table_info('integrations')`)
+		.toArray()
+		.map((row) => row.name)
+	if (columns.includes('client_secret_client_id') && columns.includes('client_secret_token_url')) return
+	for (const column of ['client_secret_client_id', 'client_secret_token_url']) {
+		if (!columns.includes(column)) sql.exec(`ALTER TABLE integrations ADD COLUMN ${column} TEXT`)
+	}
+	sql.exec(
+		`UPDATE integrations SET client_secret_client_id = json_extract(config_json, '$.clientId'),
+		   client_secret_token_url = json_extract(config_json, '$.tokenUrl')
+		 WHERE client_secret_ciphertext IS NOT NULL AND client_secret_client_id IS NULL`,
+	)
+}
+
+/** A stored client secret only belongs to the exact client id and token URL it was saved with. */
+function storedSecretFor(row: IntegrationRow, config: Pick<IntegrationConfig, 'clientId' | 'tokenUrl'>) {
+	const sealedSecret = sealed(row.client_secret_iv, row.client_secret_ciphertext, row.client_secret_key_id)
+	if (!sealedSecret) return { kind: 'none' as const }
+	if (row.client_secret_client_id !== config.clientId || row.client_secret_token_url !== config.tokenUrl) {
+		return { kind: 'unbound' as const }
+	}
+	return { kind: 'bound' as const, sealed: sealedSecret }
+}
 
 const tokenRequestTimeoutMs = 15_000
 const maxTokenResponseBytes = 64 * 1024
@@ -194,8 +228,11 @@ export function integrationEventPayload(record: IntegrationRecord) {
 
 export class IntegrationStore {
 	private readonly inFlightRefresh = new Map<string, Promise<TokenResolution>>()
+	private readonly host: IntegrationStoreHost
 
-	constructor(private readonly host: IntegrationStoreHost) {}
+	constructor(host: IntegrationStoreHost) {
+		this.host = host
+	}
 
 	private row(name: string) {
 		return this.host.sql.exec<IntegrationRow>('SELECT * FROM integrations WHERE name = ?', name).toArray()[0] ?? null
@@ -205,7 +242,7 @@ export class IntegrationStore {
 		const config = JSON.parse(row.config_json) as IntegrationConfig
 		return {
 			...config,
-			hasClientSecret: row.client_secret_ciphertext !== null,
+			hasClientSecret: storedSecretFor(row, config).kind === 'bound',
 			status: row.status as IntegrationStatus,
 			tokenType: row.token_type,
 			expiresAt: row.expires_at,
@@ -254,7 +291,9 @@ export class IntegrationStore {
 	 * Creates or updates the app + connection description. `clientSecret`
 	 * undefined keeps the stored secret, null clears it (public PKCE client),
 	 * a string replaces it. Changing token endpoints or client id invalidates
-	 * the stored tokens, so the connection drops back to pending.
+	 * the stored tokens, so the connection drops back to pending. A new client
+	 * id or token URL also drops the stored secret unless a new one comes with
+	 * it, so a secret never reaches an endpoint it was not saved for.
 	 */
 	async save(config: IntegrationConfig, clientSecret: string | null | undefined): Promise<IntegrationRecord> {
 		const existing = this.row(config.name)
@@ -263,36 +302,46 @@ export class IntegrationStore {
 		if (!existing) {
 			this.host.sql.exec(
 				`INSERT INTO integrations (name, config_json, client_secret_iv, client_secret_ciphertext, client_secret_key_id,
-				   status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`,
+				   client_secret_client_id, client_secret_token_url, status, created_at, updated_at)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
 				config.name,
 				JSON.stringify(config),
 				secret?.iv ?? null,
 				secret?.ciphertext ?? null,
 				secret?.keyId ?? null,
+				secret ? config.clientId : null,
+				secret ? config.tokenUrl : null,
 				now,
 				now,
 			)
 			return this.require(config.name)
 		}
 		const previous = JSON.parse(existing.config_json) as IntegrationConfig
+		const endpointChanged = previous.tokenUrl !== config.tokenUrl || previous.clientId !== config.clientId
 		const credentialsChanged =
-			previous.tokenUrl !== config.tokenUrl ||
-			previous.clientId !== config.clientId ||
+			endpointChanged ||
 			previous.flow !== config.flow ||
 			previous.authorizeUrl !== config.authorizeUrl ||
 			(previous.scopes.join(' ') !== config.scopes.join(' ') && config.flow === 'authorization_code')
-		this.host.sql.exec(
-			'UPDATE integrations SET config_json = ?, updated_at = ? WHERE name = ?',
-			JSON.stringify(config),
-			now,
-			config.name,
-		)
-		if (secret !== undefined) {
+		if (secret === undefined && !endpointChanged) {
 			this.host.sql.exec(
-				'UPDATE integrations SET client_secret_iv = ?, client_secret_ciphertext = ?, client_secret_key_id = ? WHERE name = ?',
+				'UPDATE integrations SET config_json = ?, updated_at = ? WHERE name = ?',
+				JSON.stringify(config),
+				now,
+				config.name,
+			)
+		} else {
+			// One write: the config and the secret bound to its client id + token URL change together.
+			this.host.sql.exec(
+				`UPDATE integrations SET config_json = ?, client_secret_iv = ?, client_secret_ciphertext = ?, client_secret_key_id = ?,
+				   client_secret_client_id = ?, client_secret_token_url = ?, updated_at = ? WHERE name = ?`,
+				JSON.stringify(config),
 				secret?.iv ?? null,
 				secret?.ciphertext ?? null,
 				secret?.keyId ?? null,
+				secret ? config.clientId : null,
+				secret ? config.tokenUrl : null,
+				now,
 				config.name,
 			)
 		}
@@ -348,6 +397,13 @@ export class IntegrationStore {
 			throw new KodyError(
 				'integration_flow_mismatch',
 				`Integration "${name}" uses ${record.flow}; connect it with integrationTokenRefresh instead.`,
+			)
+		}
+		const row = this.row(name)
+		if (row && storedSecretFor(row, record).kind === 'unbound') {
+			throw new KodyError(
+				'integration_client_secret_required',
+				`The stored client secret for "${name}" was saved for a different clientId or tokenUrl; re-save the integration with its clientSecret before connecting.`,
 			)
 		}
 		const id = randomId('cn')
@@ -509,8 +565,14 @@ export class IntegrationStore {
 		if (!isCredentialTransportAllowed(tokenUrl, this.host.insecureAllowance)) {
 			throw new KodyError('integration_requires_https', `tokenUrl ${tokenUrl.origin} must use https.`, { status: 403 })
 		}
-		const clientSecretSealed = sealed(row.client_secret_iv, row.client_secret_ciphertext, row.client_secret_key_id)
-		const clientSecret = clientSecretSealed ? await this.open(clientSecretSealed) : null
+		const stored = storedSecretFor(row, record)
+		if (stored.kind === 'unbound') {
+			throw new KodyError(
+				'integration_client_secret_required',
+				`The stored client secret for "${record.name}" was saved for a different clientId or tokenUrl; re-save the integration with its clientSecret.`,
+			)
+		}
+		const clientSecret = stored.kind === 'bound' ? await this.open(stored.sealed) : null
 		if (grant.grantType === 'client_credentials' && clientSecret === null) {
 			throw new KodyError('integration_client_secret_required', 'client_credentials needs a clientSecret.')
 		}

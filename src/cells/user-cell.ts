@@ -65,6 +65,7 @@ import { mcpConfigFromEnv } from '../mcp-client/policy.ts'
 import { McpServerStore, mcpServerSchema, type McpDiscoveryOutcome, type McpServerRecord } from '../mcp-client/store.ts'
 import {
 	IntegrationStore,
+	ensureIntegrationColumns,
 	integrationSchema,
 	type ConnectRecord,
 	type ConnectTicket,
@@ -643,6 +644,7 @@ export class UserCell extends DurableObject<Env> {
 			CREATE INDEX IF NOT EXISTS email_delivery_events_message ON email_delivery_events(message_id, at DESC);
 		`)
 		this.ctx.storage.sql.exec(integrationSchema)
+		ensureIntegrationColumns(this.ctx.storage.sql)
 		this.ctx.storage.sql.exec(secretProviderSchema)
 		this.ctx.storage.sql.exec(mcpServerSchema)
 		this.ctx.storage.sql.exec(mcpOAuthSchema)
