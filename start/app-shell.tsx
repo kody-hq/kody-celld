@@ -34,7 +34,10 @@ export function AppShell({
 					currentPathname={pathname}
 				/>
 			)}
-			<main id="main" css={{ flex: '1 1 auto', width: '100%', boxSizing: 'border-box' }}>
+			{/* Clip decorative bleed (the brand guide hero glow, #156) so it never
+			    widens the mobile layout viewport. clip, unlike hidden, makes no
+			    scroll container, so sticky children keep working. */}
+			<main id="main" css={{ flex: '1 1 auto', width: '100%', boxSizing: 'border-box', overflowX: 'clip' }}>
 				{flash ? (
 					<div
 						data-page-flash
