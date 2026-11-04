@@ -74,21 +74,19 @@ export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 		const headers = new Headers(request.headers)
 		headers.delete(RUN_HEADER)
 		const body = request.body && sendsBody(request.method) ? await request.arrayBuffer() : null
-		const record = (hop: GatewayHop, event: GatewayRecordEvent) => {
+		const record = async (hop: GatewayHop, event: GatewayRecordEvent) => {
 			if (!runId) return
-			this.ctx.waitUntil(
-				this.env.USER.getByName(this.ctx.props.userId).runRecordGatewayEvent({
-					runId,
-					event: {
-						at: new Date().toISOString(),
-						method: hop.method,
-						url: redactUrl(hop.url),
-						host: requestHost(hop.url),
-						...event,
-						...(hop.redirect > 0 ? { redirect: hop.redirect } : {}),
-					},
-				}),
-			)
+			await this.env.USER.getByName(this.ctx.props.userId).runRecordGatewayEvent({
+				runId,
+				event: {
+					at: new Date().toISOString(),
+					method: hop.method,
+					url: redactUrl(hop.url),
+					host: requestHost(hop.url),
+					...event,
+					...(hop.redirect > 0 ? { redirect: hop.redirect } : {}),
+				},
+			})
 		}
 
 		// Redirects are followed here, never by fetch(), so every hop gets the
@@ -110,7 +108,7 @@ export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 			}
 			if (result.kind === 'denied') {
 				const { denial } = result
-				record(hop, {
+				await record(hop, {
 					outcome: 'denied',
 					status: denial.status,
 					secrets: denial.secrets,
@@ -127,7 +125,7 @@ export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 				throw new TypeError(`Redirect (${response.status}) not allowed: the request set redirect: 'error'.`)
 			}
 			if (hop.redirect >= MAX_REDIRECTS) {
-				record(hop, { outcome: 'denied', status: 502, secrets: [], reason: 'redirect_limit_exceeded' })
+				await record(hop, { outcome: 'denied', status: 502, secrets: [], reason: 'redirect_limit_exceeded' })
 				return landed(deny(502, 'redirect_limit_exceeded', `Stopped after ${MAX_REDIRECTS} redirects.`, {}), hop)
 			}
 			hop = nextHop(hop, response.status, nextUrl)
@@ -138,7 +136,7 @@ export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 	 * One request, no redirect following: the gateway decision for this exact
 	 * URL, then forward (placeholders replaced) or a denial for the caller.
 	 */
-	private async sendHop(hop: GatewayHop, record: (event: GatewayRecordEvent) => void): Promise<HopResult> {
+	private async sendHop(hop: GatewayHop, record: (event: GatewayRecordEvent) => Promise<void>): Promise<HopResult> {
 		const { url, headers } = hop
 		const host = requestHost(url)
 		if (this.isOwnAdminSurface(url)) {
@@ -155,7 +153,7 @@ export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 
 		if (!hasPlaceholders) {
 			const response = await forward(hop, url, headers, hop.body)
-			record({ outcome: 'forwarded', status: response.status, secrets: [] })
+			await record({ outcome: 'forwarded', status: response.status, secrets: [] })
 			return { kind: 'sent', response }
 		}
 
@@ -340,11 +338,11 @@ export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 				if (!refreshDenied) {
 					await response.body?.cancel()
 					response = await inject()
-					record({ outcome: 'injected', status: response.status, secrets, reason: 'integration_refreshed' })
+					await record({ outcome: 'injected', status: response.status, secrets, reason: 'integration_refreshed' })
 					return { kind: 'sent', response }
 				}
 			}
-			record({ outcome: 'injected', status: response.status, secrets })
+			await record({ outcome: 'injected', status: response.status, secrets })
 			return { kind: 'sent', response }
 		} catch (error) {
 			if (error instanceof InjectionError) {
@@ -357,7 +355,7 @@ export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 				})
 			}
 			const reason = redactValues(error instanceof Error ? error.message : String(error), replacements)
-			record({ outcome: 'error', status: null, secrets, reason })
+			await record({ outcome: 'error', status: null, secrets, reason })
 			// oxlint-disable-next-line preserve-caught-error -- the cause can carry an injected value
 			throw new TypeError(reason)
 		}

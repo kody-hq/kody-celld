@@ -162,7 +162,7 @@ export class RuntimeHost extends WorkerEntrypoint<Env, RuntimeProps> {
 	async mcpCall(server: string, tool: string, args: unknown, call: CallContext) {
 		const started = Date.now()
 		const userCell = this.env.USER.getByName(this.ctx.props.userId)
-		const record = (event: {
+		const record = async (event: {
 			outcome: 'forwarded' | 'injected' | 'denied' | 'error'
 			url: string
 			secrets: Array<string>
@@ -176,20 +176,18 @@ export class RuntimeHost extends WorkerEntrypoint<Env, RuntimeProps> {
 				host = parsed.hostname
 				url = `${parsed.origin}${parsed.pathname}`
 			} catch {}
-			this.ctx.waitUntil(
-				userCell.runRecordGatewayEvent({
-					runId: call.runId,
-					event: {
-						at: new Date().toISOString(),
-						method: 'MCP',
-						host,
-						status: null,
-						mcp: { server, tool, ms: Date.now() - started },
-						...event,
-						url,
-					},
-				}),
-			)
+			await userCell.runRecordGatewayEvent({
+				runId: call.runId,
+				event: {
+					at: new Date().toISOString(),
+					method: 'MCP',
+					host,
+					status: null,
+					mcp: { server, tool, ms: Date.now() - started },
+					...event,
+					url,
+				},
+			})
 		}
 		try {
 			const result = await callMcpTool(mcpDeps({ env: this.env, userCell }), {
@@ -199,7 +197,7 @@ export class RuntimeHost extends WorkerEntrypoint<Env, RuntimeProps> {
 				packageName: this.ctx.props.packageName,
 			})
 			const injected = result.authKind !== 'none'
-			record({
+			await record({
 				outcome: injected ? 'injected' : 'forwarded',
 				url: result.url,
 				secrets: injected ? [`mcp:${server}`] : [],
@@ -208,7 +206,7 @@ export class RuntimeHost extends WorkerEntrypoint<Env, RuntimeProps> {
 			return publicResult
 		} catch (error) {
 			const json = errorToJson(error)
-			record({
+			await record({
 				outcome: json.error.startsWith('mcp_server') || json.error === 'mcp_host_not_allowed' ? 'denied' : 'error',
 				url: '',
 				secrets: [],
