@@ -1,7 +1,7 @@
 {
   "kodyRepo": "kody-hq/kody",
-  "kodyCommit": "e3149c45fdb85f8c8831ed4dd8a5edded576484e",
-  "updatedAt": "2026-11-04T00:00:34.400Z",
+  "kodyCommit": "2be908623574fe48a01b6a3e9ff32bba7ce17201",
+  "updatedAt": "2026-11-12T23:28:51.342Z",
   "notes": "Verbatim files must match upstream bytes at kodyCommit. Adapted files share a path with hosted Kody but are intentionally different; sync:kody reports their diffs and does not overwrite them.",
   "files": [
     {
@@ -25,7 +25,7 @@
     {
       "path": "client/popover-open.ts",
       "source": "packages/worker/client/popover-open.ts",
-      "sha256": "1d7defe9775d70b67a8c9b407ab1afb609866ac2363cd4080182c1f97b95a9bc",
+      "sha256": "88c1d2794ba4239074141ffa909654415f712953dd3d7f1fdcb9c7c16792e5c1",
       "kind": "ui"
     },
     {
@@ -181,7 +181,7 @@
     {
       "path": "start/components/copy-text-button.tsx",
       "source": "packages/worker/start/components/copy-text-button.tsx",
-      "sha256": "bdc075bc347a3b793ee6fac19c85b4941b9b97c7636e1674a602b9e80501fc5e",
+      "sha256": "9a45bf8b2a43d20cf66a1ee85e5ffe6bb238aadec09bfc48c96272b707017cb4",
       "kind": "ui"
     },
     {
@@ -271,7 +271,7 @@
     {
       "path": "start/components/copy-code-block.tsx",
       "source": "packages/worker/start/components/copy-code-block.tsx",
-      "sha256": "3d70938ac62a5349a63c6ebd4ea88bed8619ea75d39727c0962b4ba3ce3b867a"
+      "sha256": "02b7da2171cdbf893af9a8b8c5cadf1bbd2964f16b515122f4a7178284350b3a"
     },
     {
       "path": "start/components/doc-youtube-embed.tsx",
@@ -287,6 +287,24 @@
       "path": "start/components/markdown-heading-anchor.tsx",
       "source": "packages/worker/start/components/markdown-heading-anchor.tsx",
       "sha256": "22c91f9eb6cbb49a13daef42d0c0708a88bd6d3d2075a7737a9a3e35102a0fcf"
+    },
+    {
+      "path": "client/ui-actor.ts",
+      "source": "packages/worker/client/ui-actor.ts",
+      "sha256": "5a59a1946ed8b6652471b42fa5a15a0372028945ff59c7b9b31fafe1ddcaee39",
+      "kind": "ui"
+    },
+    {
+      "path": "client/routes/clipboard-feedback-state.ts",
+      "source": "packages/worker/client/routes/clipboard-feedback-state.ts",
+      "sha256": "fffdd07b13bbf6bccfbd65d90ca79509419cd869bd01ebec0b17b9a571514a73",
+      "kind": "ui"
+    },
+    {
+      "path": "universal/ui-context.ts",
+      "source": "packages/worker/universal/ui-context.ts",
+      "sha256": "08b6b040fd36d245dca873c99058cbd5c51af0ff6b39f2201084d1d067e278b4",
+      "kind": "ui"
     }
   ],
   "adapted": [
