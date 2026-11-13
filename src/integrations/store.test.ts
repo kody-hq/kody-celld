@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { DatabaseSync } from 'node:sqlite'
 import { describe, it } from 'node:test'
 import { buildMasterKeyring } from '../lib/crypto.ts'
+import { lastUsedWriteIntervalMs } from '../lib/last-used.ts'
 import { parseIntegrationConfig } from './oauth.ts'
 import { ensureIntegrationColumns, IntegrationStore, integrationSchema } from './store.ts'
 
@@ -201,5 +202,31 @@ describe('IntegrationStore client secret binding', () => {
 		assert.equal(store.get('acme')!.hasClientSecret, false)
 		assert.equal((await store.refresh('acme')).ok, false)
 		assert.equal(requests.length, 0)
+	})
+})
+
+describe('IntegrationStore token last-used debounce', () => {
+	it('stamps the first use, skips repeats inside the window, and stamps again after it', async () => {
+		const { store, sql } = await makeStore()
+		await store.save(m2m(), oldSecret)
+		assert.equal((await store.refresh('acme')).ok, true)
+		const lastUsed = () =>
+			sql
+				.exec<{ last_used_at: string | null }>("SELECT last_used_at FROM integrations WHERE name = 'acme'")
+				.toArray()[0]!.last_used_at
+		const resolve = async () =>
+			assert.equal((await store.tokenResolve({ name: 'acme', packageName: null, host: 'api.acme.example' })).ok, true)
+
+		sql.exec("UPDATE integrations SET last_used_at = NULL WHERE name = 'acme'")
+		await resolve()
+		const first = lastUsed()
+		assert.ok(first)
+		await resolve()
+		assert.equal(lastUsed(), first)
+
+		const stale = new Date(Date.now() - lastUsedWriteIntervalMs - 1_000).toISOString()
+		sql.exec("UPDATE integrations SET last_used_at = ? WHERE name = 'acme'", stale)
+		await resolve()
+		assert.ok(lastUsed()! > stale)
 	})
 })

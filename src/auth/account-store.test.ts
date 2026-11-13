@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { DatabaseSync } from 'node:sqlite'
 import { describe, it } from 'node:test'
 import { AccountStore, accountSchema, apiTokenId, signinMaxFailures } from './account-store.ts'
+import { lastUsedWriteIntervalMs } from '../lib/last-used.ts'
 import { hashPassword } from './password.ts'
 
 /** Just enough of Durable Object `SqlStorage` for the store. */
@@ -183,6 +184,30 @@ describe('AccountStore API tokens', () => {
 		assert.equal(s.tokenRevoke('someone_else', token!.id), false)
 		assert.equal(s.tokenRevoke(user, token!.id), true)
 		assert.equal(s.tokenList(user).length, 0)
+	})
+})
+
+describe('AccountStore token last-used debounce', () => {
+	it('stamps the first use, skips repeats inside the window, and stamps again after it', () => {
+		const { db, store: s } = store()
+		const hash = 'b'.repeat(64)
+		db.prepare('INSERT INTO tokens (token_hash, user_id, label, created_at) VALUES (?, ?, ?, ?)').run(
+			hash,
+			user,
+			'laptop',
+			'2026-01-01T00:00:00.000Z',
+		)
+		const lastUsed = () =>
+			(db.prepare('SELECT last_used_at FROM tokens WHERE token_hash = ?').get(hash) as { last_used_at: string | null })
+				.last_used_at
+		const at = (offsetMs: number) => new Date(Date.parse('2026-01-01T00:00:00.000Z') + offsetMs)
+
+		s.tokenTouch(hash, at(0))
+		assert.equal(lastUsed(), '2026-01-01T00:00:00.000Z')
+		s.tokenTouch(hash, at(lastUsedWriteIntervalMs - 1))
+		assert.equal(lastUsed(), '2026-01-01T00:00:00.000Z')
+		s.tokenTouch(hash, at(lastUsedWriteIntervalMs + 1))
+		assert.equal(lastUsed(), at(lastUsedWriteIntervalMs + 1).toISOString())
 	})
 })
 

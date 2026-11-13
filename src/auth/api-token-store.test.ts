@@ -4,6 +4,7 @@ import { describe, it } from 'node:test'
 import { ApiTokenStore, apiTokenPolicy, apiTokenSchema, resolveApiTokenLifetime } from './api-token-store.ts'
 import { generateApiTokenSecret, parseApiToken, formatApiToken } from '../lib/api-token-format.ts'
 import { sha256Hex } from '../lib/crypto.ts'
+import { lastUsedWriteIntervalMs } from '../lib/last-used.ts'
 
 function makeStore() {
 	const db = new DatabaseSync(':memory:')
@@ -241,6 +242,41 @@ describe('ApiTokenStore', () => {
 			'2026-01-01T00:02:00.000Z',
 		)
 		assert.equal(await store.resolve(created.token, new Date(time.getTime() + 120_000)), null)
+	})
+
+	it('debounces touches: first use writes, repeats inside the window skip, later uses write', async () => {
+		const { store } = makeStore()
+		const created = await mint(store, { name: 'hot', lifetime: 'long', now: time })
+		const parsed = parseApiToken(created.token)!
+		const at = (offsetMs: number) => new Date(time.getTime() + offsetMs)
+		const current = () => store.getCurrent(userId, parsed.tokenId, time)!
+
+		assert.ok(await store.resolve(created.token, at(1_000)))
+		assert.equal(current().last_used_at, at(1_000).toISOString())
+		const firstExpiry = current().expires_at
+
+		assert.ok(await store.resolve(created.token, at(lastUsedWriteIntervalMs - 1)), 'skipped touches still resolve')
+		assert.equal(current().last_used_at, at(1_000).toISOString())
+		assert.equal(current().expires_at, firstExpiry)
+
+		assert.ok(await store.resolve(created.token, at(lastUsedWriteIntervalMs + 1_001)))
+		assert.equal(current().last_used_at, at(lastUsedWriteIntervalMs + 1_001).toISOString())
+	})
+
+	it('caps the debounce at a quarter of the idle TTL so short tokens keep sliding', async () => {
+		const { store } = makeStore()
+		const created = await mint(store, { name: 'short idle', idleTtlSeconds: 60, maxLifetimeSeconds: 3600, now: time })
+		const parsed = parseApiToken(created.token)!
+		const at = (offsetMs: number) => new Date(time.getTime() + offsetMs)
+		const current = () => store.getCurrent(userId, parsed.tokenId, time)!
+
+		assert.ok(await store.resolve(created.token, at(0)))
+		assert.equal(current().expires_at, '2026-01-01T00:01:00.000Z')
+		assert.ok(await store.resolve(created.token, at(14_000)))
+		assert.equal(current().expires_at, '2026-01-01T00:01:00.000Z', 'a 14 s slide is inside the 15 s window')
+		assert.ok(await store.resolve(created.token, at(15_000)))
+		assert.equal(current().expires_at, '2026-01-01T00:01:15.000Z')
+		assert.equal(current().last_used_at, '2026-01-01T00:00:15.000Z')
 	})
 
 	it('rejects expired, revoked, and wrong-secret credentials', async () => {

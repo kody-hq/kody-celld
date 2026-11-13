@@ -275,7 +275,7 @@ export class RegistryCell extends DurableObject<Env> {
 			)
 			.toArray()[0]
 		if (!row) return null
-		this.ctx.storage.sql.exec('UPDATE tokens SET last_used_at = ? WHERE token_hash = ?', new Date().toISOString(), hash)
+		this.accounts.tokenTouch(hash)
 		return { id: row.id, email: row.email, createdAt: row.created_at }
 	}
 
