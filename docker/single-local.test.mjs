@@ -128,6 +128,19 @@ describe('single-local helpers', () => {
 		assert.throws(() => ensureMetadataIndex(database), /celld changed its local store schema/)
 	})
 
+	it('ensureMetadataIndex fails loudly when objects_metadata has a different shape', () => {
+		const state = join(scratch, 'other-index')
+		mkdirSync(state, { recursive: true })
+		const database = objectsDbPath(state)
+		const db = new DatabaseSync(database)
+		db.exec(`
+			CREATE TABLE objects (key TEXT PRIMARY KEY, body BLOB NOT NULL, etag INTEGER NOT NULL, modified_ms INTEGER NOT NULL, attributes TEXT NOT NULL);
+			CREATE INDEX objects_metadata ON objects(key, etag);
+		`)
+		db.close()
+		assert.throws(() => ensureMetadataIndex(database), /covers \[key, etag\]/)
+	})
+
 	it('ensureMetadataIndex fails loudly when the store has no objects table', () => {
 		const state = join(scratch, 'no-objects')
 		mkdirSync(state, { recursive: true })

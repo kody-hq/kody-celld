@@ -74,6 +74,7 @@ export function readDeployPointerEtag(databasePath) {
 
 const OBJECT_COLUMNS = ['key', 'body', 'etag', 'modified_ms', 'attributes']
 export const METADATA_INDEX = 'objects_metadata'
+const METADATA_INDEX_COLUMNS = ['key', 'etag', 'modified_ms', 'attributes', '<expr>']
 
 /**
  * Index celld's local store so listings stop reading object bodies
@@ -98,8 +99,23 @@ export function ensureMetadataIndex(databasePath) {
 					'celld changed its local store schema, revisit ensureMetadataIndex',
 			)
 		}
-		const existing = db.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'index' AND name = ?").get(METADATA_INDEX)
-		if (existing) return { created: false, elapsedMs: 0 }
+		const existing = db
+			.prepare("SELECT tbl_name FROM sqlite_schema WHERE type = 'index' AND name = ?")
+			.get(METADATA_INDEX)
+		if (existing) {
+			// Expression columns (length(body)) have cid -2 and no name.
+			const indexed = db
+				.prepare('SELECT cid, name FROM pragma_index_xinfo(?) WHERE key = 1 ORDER BY seqno')
+				.all(METADATA_INDEX)
+				.map((row) => (row.cid === -2 ? '<expr>' : row.name))
+			if (existing.tbl_name !== 'objects' || indexed.join(',') !== METADATA_INDEX_COLUMNS.join(',')) {
+				throw new Error(
+					`${databasePath}: index ${METADATA_INDEX} on ${existing.tbl_name} covers [${indexed.join(', ')}], expected objects [${METADATA_INDEX_COLUMNS.join(', ')}]; ` +
+						'listings would still read object bodies, revisit ensureMetadataIndex',
+				)
+			}
+			return { created: false, elapsedMs: 0 }
+		}
 		const started = Date.now()
 		db.exec(`CREATE INDEX ${METADATA_INDEX} ON objects(key, etag, modified_ms, attributes, length(body))`)
 		return { created: true, elapsedMs: Date.now() - started }
