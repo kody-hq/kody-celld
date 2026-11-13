@@ -1,5 +1,6 @@
 import { randomId, randomToken, sha256Hex } from '../lib/crypto.ts'
 import { KodyError } from '../lib/errors.ts'
+import { lastUsedStaleBefore } from '../lib/last-used.ts'
 import { hashPassword, passwordNeedsRehash, validatePassword, verifyPassword } from './password.ts'
 
 export const signinTokenKinds = ['invite', 'magic', 'reset'] as const
@@ -309,6 +310,16 @@ export class AccountStore {
 				createdAt: row.created_at,
 				lastUsedAt: row.last_used_at,
 			}))
+	}
+
+	/** Stamps `last_used_at` at most once per `lastUsedWriteIntervalMs`, so resolving a token is usually read-only. */
+	tokenTouch(tokenHash: string, now = new Date()) {
+		this.sql.exec(
+			'UPDATE tokens SET last_used_at = ? WHERE token_hash = ? AND (last_used_at IS NULL OR last_used_at < ?)',
+			now.toISOString(),
+			tokenHash,
+			lastUsedStaleBefore(now),
+		)
 	}
 
 	tokenRevoke(userId: string, tokenId: string) {

@@ -7,6 +7,7 @@ import {
 	type MasterKeyring,
 } from '../lib/crypto.ts'
 import { KodyError } from '../lib/errors.ts'
+import { lastUsedStaleBefore } from '../lib/last-used.ts'
 import { isCredentialTransportAllowed, isHostApproved } from '../secrets/host-policy.ts'
 import {
 	buildAuthorizeUrl,
@@ -761,7 +762,13 @@ export class IntegrationStore {
 			}
 		}
 		if (input.forceRefresh || isTokenExpired(record.expiresAt)) return this.refresh(input.name)
-		this.host.sql.exec('UPDATE integrations SET last_used_at = ? WHERE name = ?', nowIso(), input.name)
+		const now = new Date()
+		this.host.sql.exec(
+			'UPDATE integrations SET last_used_at = ? WHERE name = ? AND (last_used_at IS NULL OR last_used_at < ?)',
+			now.toISOString(),
+			input.name,
+			lastUsedStaleBefore(now),
+		)
 		return { ok: true, token: await this.open(accessSealed), record, refreshed: false }
 	}
 

@@ -1,6 +1,7 @@
 import { formatApiToken, generateApiTokenId, generateApiTokenSecret, parseApiToken } from '../lib/api-token-format.ts'
 import { sha256Hex } from '../lib/crypto.ts'
 import { KodyError } from '../lib/errors.ts'
+import { lastUsedStaleBefore, lastUsedWriteIntervalMs } from '../lib/last-used.ts'
 
 export const apiTokenPolicy = {
 	minIdleTtlSeconds: 60,
@@ -197,6 +198,18 @@ function normalizeScopes(values: ReadonlyArray<unknown>) {
 	return [...new Set(values as ReadonlyArray<string>)].sort()
 }
 
+/**
+ * Whether a successful request must write the token row. Skips while
+ * `last_used_at` is fresh and the slide would extend `expires_at` by less than
+ * the debounce window, capped at a quarter of the idle TTL so a token in use
+ * always keeps at least three quarters of it (hosted Kody's `slideApiTokenExpiry` rule).
+ */
+function touchDue(record: ApiTokenRecord, now: Date, expiresAt: string) {
+	if (record.last_used_at === null || record.last_used_at < lastUsedStaleBefore(now)) return true
+	const debounceMs = Math.min(lastUsedWriteIntervalMs, (record.idle_ttl_seconds * 1000) / 4)
+	return Date.parse(expiresAt) - Date.parse(record.expires_at) >= debounceMs
+}
+
 function slidingExpiry(now: Date, idleTtlSeconds: number, maxExpiresAt: string) {
 	return new Date(Math.min(now.getTime() + idleTtlSeconds * 1000, Date.parse(maxExpiresAt))).toISOString()
 }
@@ -313,15 +326,18 @@ export class ApiTokenStore {
 	async resolve(token: string, now = new Date()): Promise<{ userId: string; tokenId: string } | null> {
 		const parsed = parseApiToken(token)
 		if (!parsed) return null
+		// Hash before reading so nothing awaits between the read and the touch decision.
+		const secretHash = await sha256Hex(parsed.secret)
 		const row = this.sql
 			.exec<ApiTokenSqlRow>('SELECT * FROM api_tokens WHERE id = ? LIMIT 1', parsed.tokenId)
 			.toArray()[0]
 		if (!row) return null
 		const record = mapRow(row)
-		if (!timingSafeEqual(await sha256Hex(parsed.secret), record.token_hash)) return null
+		if (!timingSafeEqual(secretHash, record.token_hash)) return null
 		if (status(record, now) !== 'active') return null
 		const nowIso = now.toISOString()
 		const expiresAt = slidingExpiry(now, record.idle_ttl_seconds, record.max_expires_at)
+		if (!touchDue(record, now, expiresAt)) return { userId: record.user_id, tokenId: record.id }
 		const updated = this.sql.exec(
 			`UPDATE api_tokens SET expires_at = ?, last_used_at = ?, updated_at = ?
 			 WHERE id = ? AND token_hash = ? AND revoked_at IS NULL AND expires_at > ?`,
