@@ -11,6 +11,7 @@ import type {
 	OAuthClientMetadata,
 	OAuthTokens,
 } from '@modelcontextprotocol/sdk/shared/auth.js'
+import { shareRegistrableDomain } from '../apps/shared-registrable-domain.ts'
 import { hostMatchesAllowlist } from '../lib/host-allowlist.ts'
 import { KodyError } from '../lib/errors.ts'
 import type { McpOAuthClientMode } from './oauth-store.ts'
@@ -70,30 +71,43 @@ export function assertAuthorizationServerIssuer(discovery: OAuthDiscoveryState) 
 }
 
 /**
- * Mix-up defence (#53): the authorization and token endpoints must be on the issuer's origin. Every public MCP
- * authorization server surveyed (Linear, Notion, Atlassian, Sentry, Asana, Canva, Zapier, PayPal, Supabase, GitHub)
- * and Home Assistant keep both there.
+ * Mix-up defence (#53, #60; parity with kody-hq/kody#3629): the authorization and token endpoints must be on the
+ * issuer's origin, or, when the issuer and the endpoint are both https, share its registrable domain (Public Suffix
+ * List with private entries, so github.io or workers.dev tenants never count as one site). A host with no registrable
+ * domain (IP, localhost, a bare suffix) needs the exact origin, so LAN http servers such as Home Assistant keep the
+ * old rule. Datadog, Slack and Figma split endpoints across sibling hosts; Google-style splits across registrable
+ * domains stay refused. `registration_endpoint` is out of scope.
  */
 export function assertEndpointsOnIssuerOrigin(discovery: OAuthDiscoveryState) {
 	const metadata = discovery.authorizationServerMetadata as Record<string, unknown> | undefined
-	const issuerOrigin = new URL(String(metadata?.issuer)).origin
+	const issuerUrl = new URL(String(metadata?.issuer))
+	const issuerOrigin = issuerUrl.origin
 	for (const field of ['authorization_endpoint', 'token_endpoint'] as const) {
 		const value = metadata?.[field]
 		if (typeof value !== 'string' || !value) continue
-		let origin: string | null = null
+		let endpointUrl: URL | null = null
 		try {
-			origin = new URL(value).origin
+			endpointUrl = new URL(value)
 		} catch {
 			/* refused below */
 		}
-		if (origin !== issuerOrigin) {
+		if (!endpointUrl || !endpointSharesIssuerSite(issuerUrl, endpointUrl)) {
 			throw new KodyError(
 				'mcp_oauth_failed',
-				`Authorization server ${field} (${origin ?? value.slice(0, 200)}) is on a different origin than its issuer (${issuerOrigin}).`,
+				`Authorization server ${field} (${endpointUrl?.origin ?? value.slice(0, 200)}) is not on its issuer's origin or registrable domain (${issuerOrigin}).`,
 				{ status: 502 },
 			)
 		}
 	}
+}
+
+function endpointSharesIssuerSite(issuerUrl: URL, endpointUrl: URL): boolean {
+	if (endpointUrl.origin === issuerUrl.origin) return true
+	return (
+		issuerUrl.protocol === 'https:' &&
+		endpointUrl.protocol === 'https:' &&
+		shareRegistrableDomain(issuerUrl.hostname, endpointUrl.hostname)
+	)
 }
 
 /** The authorization_endpoint URL from discovery metadata (same field Continue redirects to). */
@@ -320,7 +334,8 @@ export async function refreshMcpTokens(input: {
 	fetchFn: typeof fetch
 }): Promise<OAuthTokens> {
 	if (!input.discovery) throw new Error('No cached OAuth discovery for this server; authorize again.')
-	// Re-check #53 on the cached discovery so a pre-check row (or a tampered cache) cannot bypass it.
+	// Re-check the cached discovery so a pre-check row (or a tampered cache) cannot bypass the start-time checks.
+	assertAuthorizationServerIssuer(input.discovery)
 	assertEndpointsOnIssuerOrigin(input.discovery)
 	const resource = (input.discovery.resourceMetadata as { resource?: string } | undefined)?.resource
 	return refreshAuthorization(input.discovery.authorizationServerUrl, {

@@ -11,6 +11,8 @@ import {
 	mcpOAuthScopes,
 	mcpOAuthUrls,
 	pickClientMode,
+	assertAuthorizationServerIssuer,
+	assertEndpointsOnIssuerOrigin,
 	probeMcpOAuth,
 	refreshMcpTokens,
 } from './oauth.ts'
@@ -220,7 +222,7 @@ describe('endpoint origins (#53)', () => {
 		['authorization_endpoint', 'http://172.30.1.6/authorize'],
 		['token_endpoint', 'http://172.30.1.6/token'],
 	] as const) {
-		it(`refuses metadata whose ${field} is on a different origin than the issuer`, async () => {
+		it(`refuses metadata whose ${field} is on a different LAN origin than the issuer`, async () => {
 			const server = startTestMcpServer({ oauth: { mode: 'dynamic' } })
 			server.setRespond((u) =>
 				u.pathname === '/.well-known/oauth-authorization-server'
@@ -237,7 +239,7 @@ describe('endpoint origins (#53)', () => {
 			)
 			await assert.rejects(
 				probeMcpOAuth(serverUrl, oauthPolicyFetch(config, server.fetch)),
-				new RegExp(`mcp_oauth_failed[\\s\\S]*${field} .*different origin`),
+				new RegExp(`mcp_oauth_failed[\\s\\S]*${field} .*not on its issuer's origin or registrable domain`),
 			)
 		})
 	}
@@ -259,7 +261,286 @@ describe('endpoint origins (#53)', () => {
 				} as never,
 				fetchFn: fetch,
 			}),
-			/mcp_oauth_failed[\s\S]*token_endpoint .*different origin/,
+			/mcp_oauth_failed[\s\S]*token_endpoint .*not on its issuer's origin or registrable domain/,
+		)
+	})
+})
+
+describe('endpoint sites: registrable domain (#60, parity with kody-hq/kody#3629)', () => {
+	const offSite = (field: string) =>
+		new RegExp(`mcp_oauth_failed[\\s\\S]*${field} .*not on its issuer's origin or registrable domain`)
+	const site = (issuer: string, endpoints: { authorize: string; token: string }, authorizationServerUrl = issuer) =>
+		({
+			authorizationServerUrl,
+			authorizationServerMetadata: {
+				issuer,
+				authorization_endpoint: endpoints.authorize,
+				token_endpoint: endpoints.token,
+				response_types_supported: ['code'],
+				code_challenge_methods_supported: ['S256'],
+			},
+		}) as never
+
+	// Live metadata as of 2026-11-12.
+	const providers = {
+		datadog: site(
+			'https://mcp.us5.datadoghq.com/v1/mcp',
+			{
+				authorize: 'https://us5.datadoghq.com/oauth2/v1/authorize',
+				token: 'https://us5.datadoghq.com/api/v2/oauth2/token',
+			},
+			'https://mcp.us5.datadoghq.com/v1/mcp',
+		),
+		slack: site(
+			'https://mcp.slack.com',
+			{
+				authorize: 'https://slack.com/oauth/v2_user/authorize',
+				token: 'https://slack.com/api/oauth.v2.user.access',
+			},
+			'https://mcp.slack.com/',
+		),
+		figma: site(
+			'https://api.figma.com',
+			{ authorize: 'https://www.figma.com/oauth/mcp', token: 'https://api.figma.com/v1/oauth/token' },
+			'https://api.figma.com/',
+		),
+	}
+
+	for (const [name, discovery] of Object.entries(providers)) {
+		it(`accepts ${name}'s live metadata (sibling hosts on one registrable domain)`, () => {
+			assert.doesNotThrow(() => assertEndpointsOnIssuerOrigin(discovery))
+			assert.doesNotThrow(() => assertAuthorizationServerIssuer(discovery))
+		})
+	}
+
+	it('still accepts exact-origin endpoints, https and LAN http', () => {
+		assert.doesNotThrow(() =>
+			assertEndpointsOnIssuerOrigin(
+				site('https://auth.example', { authorize: 'https://auth.example/a', token: 'https://auth.example/t' }),
+			),
+		)
+		assert.doesNotThrow(() =>
+			assertEndpointsOnIssuerOrigin(
+				site('http://172.30.1.5:8123', {
+					authorize: 'http://172.30.1.5:8123/auth/authorize',
+					token: 'http://172.30.1.5:8123/auth/token',
+				}),
+			),
+		)
+	})
+
+	it('refuses cross-site endpoints', () => {
+		for (const field of ['authorization_endpoint', 'token_endpoint'] as const) {
+			const endpoints = {
+				authorize: 'https://slack.com/oauth/v2_user/authorize',
+				token: 'https://slack.com/api/oauth.v2.user.access',
+			}
+			if (field === 'authorization_endpoint') endpoints.authorize = 'https://evil.example/authorize'
+			else endpoints.token = 'https://evil.example/token'
+			assert.throws(() => assertEndpointsOnIssuerOrigin(site('https://mcp.slack.com', endpoints)), offSite(field))
+		}
+		for (const authorize of [
+			'https://slack.com.evil.example/authorize',
+			'https://evilslack.com/authorize',
+			'https://slack.co/authorize',
+		]) {
+			assert.throws(
+				() =>
+					assertEndpointsOnIssuerOrigin(
+						site('https://mcp.slack.com', { authorize, token: 'https://slack.com/api/oauth.v2.user.access' }),
+					),
+				offSite('authorization_endpoint'),
+			)
+		}
+		assert.throws(
+			() =>
+				assertEndpointsOnIssuerOrigin(
+					site('https://accounts.google.com', {
+						authorize: 'https://accounts.google.com/o/oauth2/v2/auth',
+						token: 'https://oauth2.googleapis.com/token',
+					}),
+				),
+			offSite('token_endpoint'),
+			'Google-style splits across registrable domains stay refused',
+		)
+	})
+
+	it('refuses sibling tenants on private Public Suffix List domains', () => {
+		for (const suffix of ['github.io', 'workers.dev', 'pages.dev', 'vercel.app', 'herokuapp.com', 'netlify.app']) {
+			assert.throws(
+				() =>
+					assertEndpointsOnIssuerOrigin(
+						site(`https://a.${suffix}`, {
+							authorize: `https://b.${suffix}/authorize`,
+							token: `https://a.${suffix}/token`,
+						}),
+					),
+				offSite('authorization_endpoint'),
+				suffix,
+			)
+			assert.throws(
+				() =>
+					assertEndpointsOnIssuerOrigin(
+						site(`https://a.${suffix}`, {
+							authorize: `https://a.${suffix}/authorize`,
+							token: `https://b.${suffix}/token`,
+						}),
+					),
+				offSite('token_endpoint'),
+				suffix,
+			)
+			assert.throws(
+				() =>
+					assertEndpointsOnIssuerOrigin(
+						site(`https://a.${suffix}`, {
+							authorize: `https://${suffix}/authorize`,
+							token: `https://a.${suffix}/token`,
+						}),
+					),
+				offSite('authorization_endpoint'),
+				`bare ${suffix}`,
+			)
+		}
+		assert.doesNotThrow(() =>
+			assertEndpointsOnIssuerOrigin(
+				site('https://mcp.a.workers.dev', {
+					authorize: 'https://auth.a.workers.dev/authorize',
+					token: 'https://a.workers.dev/token',
+				}),
+			),
+		)
+	})
+
+	it('requires the exact origin for IPs, localhost and public suffixes', () => {
+		for (const [issuer, authorize] of [
+			['https://127.0.0.1', 'https://127.0.0.1:8443/authorize'],
+			['https://10.0.0.1', 'https://10.0.0.2/authorize'],
+			['http://172.30.1.5', 'http://172.30.1.6/authorize'],
+			['https://[::1]', 'https://[::1]:8443/authorize'],
+			['https://localhost', 'https://localhost:8443/authorize'],
+			['https://localhost', 'https://127.0.0.1/authorize'],
+			['https://co.uk', 'https://a.co.uk/authorize'],
+			['https://a.co.uk', 'https://co.uk/authorize'],
+		] as const) {
+			assert.throws(
+				() => assertEndpointsOnIssuerOrigin(site(issuer, { authorize, token: `${issuer}/token` })),
+				offSite('authorization_endpoint'),
+				`${issuer} vs ${authorize}`,
+			)
+		}
+	})
+
+	it('only relaxes for https: an http endpoint or issuer on a shared domain needs the exact origin', () => {
+		assert.throws(
+			() =>
+				assertEndpointsOnIssuerOrigin(
+					site('https://mcp.slack.com', {
+						authorize: 'http://slack.com/oauth/v2_user/authorize',
+						token: 'https://slack.com/api/oauth.v2.user.access',
+					}),
+				),
+			offSite('authorization_endpoint'),
+		)
+		assert.throws(
+			() =>
+				assertEndpointsOnIssuerOrigin(
+					site('http://mcp.home.example.com', {
+						authorize: 'http://home.example.com/authorize',
+						token: 'http://mcp.home.example.com/token',
+					}),
+				),
+			offSite('authorization_endpoint'),
+		)
+		assert.throws(
+			() =>
+				assertEndpointsOnIssuerOrigin(
+					site('https://mcp.slack.com', {
+						authorize: 'https://slack.com/oauth/v2_user/authorize',
+						token: 'not a url',
+					}),
+				),
+			offSite('token_endpoint'),
+		)
+	})
+
+	it('keeps skipping registration_endpoint', () => {
+		assert.doesNotThrow(() =>
+			assertEndpointsOnIssuerOrigin({
+				authorizationServerUrl: 'https://auth.example',
+				authorizationServerMetadata: {
+					issuer: 'https://auth.example',
+					authorization_endpoint: 'https://auth.example/authorize',
+					token_endpoint: 'https://auth.example/token',
+					registration_endpoint: 'https://evil.example/register',
+				},
+			} as never),
+		)
+	})
+
+	it('still refuses an issuer that does not echo the discovery URL', () => {
+		assert.throws(
+			() =>
+				assertAuthorizationServerIssuer(
+					site(
+						'https://mcp.slack.com',
+						{
+							authorize: 'https://slack.com/oauth/v2_user/authorize',
+							token: 'https://slack.com/api/oauth.v2.user.access',
+						},
+						'https://slack.com',
+					),
+				),
+			/mcp_oauth_failed[\s\S]*does not match/,
+		)
+	})
+
+	it('refresh refuses cached discovery whose issuer does not echo the discovery URL', async () => {
+		await assert.rejects(
+			refreshMcpTokens({
+				client: { client_id: 'c' },
+				refreshToken: 'rt',
+				discovery: site(
+					'https://mcp.slack.com',
+					{
+						authorize: 'https://slack.com/oauth/v2_user/authorize',
+						token: 'https://slack.com/api/oauth.v2.user.access',
+					},
+					'https://slack.com',
+				),
+				fetchFn: (async () => {
+					throw new Error('must not be called')
+				}) as typeof fetch,
+			}),
+			/mcp_oauth_failed[\s\S]*does not match/,
+		)
+	})
+
+	it('refresh accepts sibling-host cached discovery and refuses a private-PSL sibling', async () => {
+		let tokenUrl: string | null = null
+		const tokens = await refreshMcpTokens({
+			client: { client_id: 'c' },
+			refreshToken: 'rt',
+			discovery: providers.slack,
+			fetchFn: (async (input: RequestInfo | URL) => {
+				tokenUrl = String(input instanceof Request ? input.url : input)
+				return Response.json({ access_token: 'at', token_type: 'Bearer' })
+			}) as typeof fetch,
+		})
+		assert.equal(tokens.access_token, 'at')
+		assert.equal(tokenUrl, 'https://slack.com/api/oauth.v2.user.access')
+		await assert.rejects(
+			refreshMcpTokens({
+				client: { client_id: 'c' },
+				refreshToken: 'rt',
+				discovery: site('https://a.github.io', {
+					authorize: 'https://a.github.io/authorize',
+					token: 'https://b.github.io/token',
+				}),
+				fetchFn: (async () => {
+					throw new Error('must not be called')
+				}) as typeof fetch,
+			}),
+			offSite('token_endpoint'),
 		)
 	})
 })
