@@ -527,7 +527,10 @@ describe('OAuth servers', () => {
 					})
 				: null,
 		)
-		await assert.rejects(startMcpOAuth(deps, 'oa'), /mcp_oauth_failed[\s\S]*different origin than its issuer/)
+		await assert.rejects(
+			startMcpOAuth(deps, 'oa'),
+			/mcp_oauth_failed[\s\S]*not on its issuer's origin or registrable domain/,
+		)
 		assert.deepEqual(sql.exec('SELECT state FROM mcp_server_oauth_pending').toArray(), [])
 	})
 
