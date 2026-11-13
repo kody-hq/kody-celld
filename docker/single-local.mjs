@@ -72,6 +72,58 @@ export function readDeployPointerEtag(databasePath) {
 	}
 }
 
+const OBJECT_COLUMNS = ['key', 'body', 'etag', 'modified_ms', 'attributes']
+export const METADATA_INDEX = 'objects_metadata'
+const METADATA_INDEX_COLUMNS = ['key', 'etag', 'modified_ms', 'attributes', '<expr>']
+
+/**
+ * Index celld's local store so listings stop reading object bodies
+ * (kody-hq/kody-celld#179). celld 0.6 lists the store with
+ * `SELECT key, etag, modified_ms, attributes, length(body) FROM objects ORDER BY key`
+ * and filters prefixes in Rust; `body` sits before those columns in each row,
+ * so every listing walked every object's overflow pages. This covering index
+ * serves that query from the index alone. The name and definition match the
+ * index proposed for celld's LocalStore, so a celld that creates it makes this
+ * a no-op. Remove once the pinned celld ships it.
+ */
+export function ensureMetadataIndex(databasePath) {
+	const db = new DatabaseSync(databasePath, { timeout: 30_000 })
+	try {
+		const columns = db
+			.prepare('SELECT name FROM pragma_table_info(?)')
+			.all('objects')
+			.map((row) => row.name)
+		if (OBJECT_COLUMNS.some((column) => !columns.includes(column))) {
+			throw new Error(
+				`${databasePath}: objects table has columns [${columns.join(', ')}], expected [${OBJECT_COLUMNS.join(', ')}]; ` +
+					'celld changed its local store schema, revisit ensureMetadataIndex',
+			)
+		}
+		const existing = db
+			.prepare("SELECT tbl_name FROM sqlite_schema WHERE type = 'index' AND name = ?")
+			.get(METADATA_INDEX)
+		if (existing) {
+			// Expression columns (length(body)) have cid -2 and no name.
+			const indexed = db
+				.prepare('SELECT cid, name FROM pragma_index_xinfo(?) WHERE key = 1 ORDER BY seqno')
+				.all(METADATA_INDEX)
+				.map((row) => (row.cid === -2 ? '<expr>' : row.name))
+			if (existing.tbl_name !== 'objects' || indexed.join(',') !== METADATA_INDEX_COLUMNS.join(',')) {
+				throw new Error(
+					`${databasePath}: index ${METADATA_INDEX} on ${existing.tbl_name} covers [${indexed.join(', ')}], expected objects [${METADATA_INDEX_COLUMNS.join(', ')}]; ` +
+						'listings would still read object bodies, revisit ensureMetadataIndex',
+				)
+			}
+			return { created: false, elapsedMs: 0 }
+		}
+		const started = Date.now()
+		db.exec(`CREATE INDEX ${METADATA_INDEX} ON objects(key, etag, modified_ms, attributes, length(body))`)
+		return { created: true, elapsedMs: Date.now() - started }
+	} finally {
+		db.close()
+	}
+}
+
 function parseArgs(argv) {
 	const out = {
 		command: argv[0] ?? '',
@@ -313,7 +365,13 @@ async function main(argv) {
 		case 'deploy': {
 			if (!options.state) throw new Error('--state is required')
 			if (!options.port) throw new Error('--port is required')
-			await deployLocal(options)
+			const { database } = await deployLocal(options)
+			const index = ensureMetadataIndex(database)
+			if (index.created) {
+				process.stderr.write(
+					`[kody-celld] single deploy: indexed ${database} for metadata listings in ${index.elapsedMs}ms (#179)\n`,
+				)
+			}
 			return
 		}
 		default:
