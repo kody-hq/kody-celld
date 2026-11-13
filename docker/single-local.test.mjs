@@ -7,7 +7,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { after, describe, it } from 'node:test'
-import { celldDevNodeId, objectsDbPath, readDeployPointerEtag, resolveProjectDir } from './single-local.mjs'
+import {
+	celldDevNodeId,
+	ensureMetadataIndex,
+	METADATA_INDEX,
+	objectsDbPath,
+	readDeployPointerEtag,
+	resolveProjectDir,
+} from './single-local.mjs'
 
 const scratch = mkdtempSync(join(tmpdir(), 'kody-single-local-'))
 after(() => rmSync(scratch, { recursive: true, force: true }))
@@ -70,6 +77,61 @@ describe('single-local helpers', () => {
 		db.exec('CREATE TABLE unrelated (id INTEGER)')
 		db.close()
 		assert.equal(readDeployPointerEtag(database), null)
+	})
+
+	it('ensureMetadataIndex serves celld listings from the index, idempotently', () => {
+		const state = join(scratch, 'indexed')
+		mkdirSync(state, { recursive: true })
+		const database = objectsDbPath(state)
+		const db = new DatabaseSync(database)
+		db.exec(`
+			CREATE TABLE objects (
+				key TEXT PRIMARY KEY,
+				body BLOB NOT NULL,
+				etag INTEGER NOT NULL,
+				modified_ms INTEGER NOT NULL,
+				attributes TEXT NOT NULL
+			);
+		`)
+		db.prepare('INSERT INTO objects VALUES (?, ?, ?, ?, ?)').run(
+			'cells/a/ltx/e1/0000/1.ltx',
+			Buffer.alloc(9000),
+			1,
+			0,
+			'[]',
+		)
+		db.close()
+
+		assert.equal(ensureMetadataIndex(database).created, true)
+		assert.deepEqual(ensureMetadataIndex(database), { created: false, elapsedMs: 0 })
+
+		const check = new DatabaseSync(database, { readOnly: true })
+		// The exact statement celld 0.6 LocalStore::metadata runs for every listing.
+		const listing =
+			"SELECT key, CAST(X'' AS BLOB), etag, modified_ms, attributes, length(body) FROM objects ORDER BY key"
+		const plan = check.prepare(`EXPLAIN QUERY PLAN ${listing}`).all()
+		assert.deepEqual(
+			plan.map((row) => row.detail),
+			[`SCAN objects USING COVERING INDEX ${METADATA_INDEX}`],
+		)
+		assert.deepEqual(check.prepare(listing).all()[0].key, 'cells/a/ltx/e1/0000/1.ltx')
+		check.close()
+	})
+
+	it('ensureMetadataIndex fails loudly when the celld store schema changes', () => {
+		const state = join(scratch, 'drifted')
+		mkdirSync(state, { recursive: true })
+		const database = objectsDbPath(state)
+		const db = new DatabaseSync(database)
+		db.exec('CREATE TABLE objects (key TEXT PRIMARY KEY, body BLOB NOT NULL)')
+		db.close()
+		assert.throws(() => ensureMetadataIndex(database), /celld changed its local store schema/)
+	})
+
+	it('ensureMetadataIndex fails loudly when the store has no objects table', () => {
+		const state = join(scratch, 'no-objects')
+		mkdirSync(state, { recursive: true })
+		assert.throws(() => ensureMetadataIndex(objectsDbPath(state)), /objects table has columns \[\]/)
 	})
 
 	it('entrypoint runs deploy then execs the direct node (no long-lived celld.dev)', () => {

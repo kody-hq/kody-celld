@@ -74,9 +74,21 @@ because bucket durability never spawns that maintenance loop.
 After upgrading an already-large volume, leave the node running: cells must
 activate, finish any paged hydrate, and take a write before a pass can delete,
 and each pass deletes at most 64 epochs per cell. Cold-restore listing cost
-shrinks as superseded objects go away; an indexed prefix lookup in celld's
-local store is still the proper fix for large current-epoch stores and belongs
-upstream.
+shrinks as superseded objects go away.
+
+### Local store metadata index (single node)
+
+celld 0.6 lists its local store by reading every row's metadata and filtering
+prefixes in Rust, and `body` sits before the metadata columns in each row, so
+every listing read every object body. On a 1.1 GB store an idle node read about
+2 GB/s and used two cores
+([issue #179](https://github.com/kody-hq/kody-celld/issues/179)). The `single`
+deploy step therefore adds a covering index, `objects_metadata`, to
+`objects.sqlite3` right after the deploy and before the node starts; the same
+store then reads about 12 MB/s idle. Building it on an existing volume reads
+the store once (about 0.6 s per GB). The step fails loudly if celld changes the
+`objects` table columns. It goes away once the pinned celld indexes its own
+store.
 
 ## Runtime limits
 
