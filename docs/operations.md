@@ -76,6 +76,34 @@ activate, finish any paged hydrate, and take a write before a pass can delete,
 and each pass deletes at most 64 epochs per cell. Cold-restore listing cost
 shrinks as superseded objects go away.
 
+### Covered L0 cleanup (single node)
+
+celld deletes LTX objects only by whole epoch, so inside the current and
+previous epoch every L0 object stays even after a compaction (L1 and up, or a
+handoff snapshot) holds the same transactions. On a busy single node that is
+most of the store
+([issue #179](https://github.com/kody-hq/kody-celld/issues/179)). After the
+deploy step and before the node starts, `docker/local-ltx-gc.mjs` deletes an L0
+object only when a level 1+ object of the same cell and epoch covers its whole
+TXID range, that covering object is older than `CELLD_LTX_RETENTION_SECS`, and
+the ported celld restore plan for the epoch reaches the same transaction
+without it. Epochs are never removed here, so the previous-epoch fallback and
+point-in-time restores inside the grace reach exactly as far as before. It runs
+in one transaction (a crash rolls back), skips an epoch whose restore plan
+already fails, throws if a deletion would move a restore point, and does
+nothing when `CELLD_LTX_RETENTION_SECS` is `0`.
+
+To see what the next start would delete without deleting anything:
+
+```sh
+docker exec <container> node /app/docker/single-local.mjs ltx-gc --state /data/celld/dev --dry-run
+```
+
+SQLite reuses the freed pages, so the file stops growing but does not shrink.
+To return the space to the disk, stop the container and run
+`sqlite3 /data/celld/dev/objects.sqlite3 VACUUM` (needs free space about the
+size of the store).
+
 ### Local store metadata index (single node)
 
 celld 0.6 lists its local store by reading every row's metadata and filtering
