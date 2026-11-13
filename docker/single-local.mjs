@@ -362,8 +362,8 @@ function reportLtxGc(database, { dryRun }) {
 		return
 	}
 	const result = runLocalLtxGc(database, { dryRun, graceMs })
-	for (const { epoch, reason } of result.kept) {
-		process.stderr.write(`[kody-celld] ltx-gc: kept ${epoch}: ${reason}\n`)
+	for (const { scope, reason } of result.kept) {
+		process.stderr.write(`[kody-celld] ltx-gc: kept ${scope}: ${reason}\n`)
 	}
 	if (dryRun) for (const key of result.delete) process.stdout.write(`${key}\n`)
 	process.stderr.write(

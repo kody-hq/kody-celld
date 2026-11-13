@@ -5,7 +5,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { after, describe, it } from 'node:test'
-import { parseLtxKey, planLocalLtxGc, planRestore, retentionGraceMs, runLocalLtxGc } from './local-ltx-gc.mjs'
+import {
+	buildChain,
+	parseLtxKey,
+	planLocalLtxGc,
+	planRestore,
+	retentionGraceMs,
+	runLocalLtxGc,
+} from './local-ltx-gc.mjs'
 
 const day = 24 * 60 * 60 * 1000
 const now = 100 * day
@@ -139,11 +146,51 @@ describe('local LTX cleanup (#179)', () => {
 		assert.throws(() => retentionGraceMs({ CELLD_LTX_RETENTION_SECS: '1d' }), /whole seconds/)
 	})
 
-	it('keeps an epoch whose restore plan already fails instead of guessing', () => {
+	it('keeps a cell whose restore already fails instead of guessing', () => {
 		const path = makeStore([...l0s('g', 2, 1, 3), [ltx('g', 2, 9, 1n, 2n), old], [ltx('g', 2, 0, 9n, 9n), old]])
 		const result = runLocalLtxGc(path, { dryRun: false, graceMs: day, nowMs: now })
 		assert.deepEqual(result.delete, [])
-		assert.match(result.kept[0].reason, /non-contiguous/)
+		assert.match(result.kept[0].reason, /restore already fails.*non-contiguous/)
+	})
+
+	it('keeps a cell when the covering fold crosses a continuation cut, so the epoch chain link survives', () => {
+		// e2 continues e1 after txid 4 (no snapshot); e1 folded 3..6 after the cut.
+		const objects = [
+			[ltx('x', 1, 9, 1n, 2n), old],
+			...l0s('x', 1, 3, 6),
+			[ltx('x', 1, 1, 3n, 6n), old],
+			...l0s('x', 2, 5, 8),
+		]
+		const path = makeStore(objects)
+		const result = runLocalLtxGc(path, { dryRun: false, graceMs: day, nowMs: now })
+		assert.deepEqual(result.delete, [])
+		assert.match(result.kept[0].reason, /restore would change from "spans=e1@1,e2@5 reach=8"/)
+		assert.equal(keys(path).length, objects.length)
+	})
+
+	it('follows a continuation chain across epochs when the fold stays inside the cut', () => {
+		const path = makeStore([
+			[ltx('y', 1, 9, 1n, 2n), old],
+			...l0s('y', 1, 3, 4),
+			[ltx('y', 1, 1, 3n, 4n), old],
+			...l0s('y', 2, 5, 8),
+		])
+		const result = runLocalLtxGc(path, { dryRun: false, graceMs: day, nowMs: now })
+		assert.deepEqual(
+			result.delete,
+			l0s('y', 1, 3, 4).map(([key]) => key),
+		)
+		const left = keys(path)
+		const epochs = [1, 2].map((epoch) => ({ epoch, files: epochFiles(left, 'y', epoch) }))
+		const spans = buildChain(epochs)
+		assert.deepEqual(
+			spans.map((s) => [s.epoch, s.lo]),
+			[
+				[1, 1n],
+				[2, 5n],
+			],
+		)
+		assert.equal(planRestore(spans.flatMap((s) => s.files)).at(-1).max, 8n)
 	})
 
 	it('rolls back to the untouched store when the process dies mid-cleanup', async () => {

@@ -10,9 +10,10 @@
  * - that covering object is older than the retention grace
  *   (CELLD_LTX_RETENTION_SECS, the same grace epoch GC uses), so no
  *   point-in-time restore inside the grace can need the L0 range;
- * - the restore plan for that epoch (ported below from celld) succeeds before
- *   and after, reaching the same TXID. Otherwise the whole epoch is kept and,
- *   if only the "after" plan breaks, the run throws.
+ * - every latest restore of the cell (celld's epoch chain from the newest
+ *   epoch, and from each older epoch for a reader that listed before a newer
+ *   one existed; both ported below) resolves to the same chain and txid
+ *   without it. Otherwise the whole cell is kept and reported.
  * Epochs themselves are untouched, so the previous-epoch fallback and the
  * epoch GC rules stay exactly as celld defines them.
  *
@@ -114,41 +115,89 @@ export function planRestore(files, txid = 0n) {
 }
 
 /**
+ * Pure port of denoland/celld v0.6.1 `EpochChain::build`
+ * (crates/ltx/src/client/epochs.rs): walk down from the newest epoch until one
+ * opens at txid 1, clipping each lower epoch to the txids before the next
+ * span's first and skipping one that does not end exactly at that cut.
+ * Returns the spans oldest first; the union of their files is what the planner sees.
+ * @param {{ epoch: number, files: { level: number, min: bigint, max: bigint }[] }[]} epochs ascending
+ */
+export function buildChain(epochs) {
+	const spans = []
+	for (let i = epochs.length - 1; i >= 0; i--) {
+		let files = epochs[i].files
+		const above = spans[spans.length - 1]
+		if (above) {
+			files = files.filter((f) => f.max < above.lo)
+			if (files.length === 0 || files.reduce((m, f) => (f.max > m ? f.max : m), 0n) !== above.lo - 1n) continue
+		}
+		if (files.length === 0) continue
+		const lo = files.reduce((m, f) => (f.min < m ? f.min : m), files[0].min)
+		spans.push({ epoch: epochs[i].epoch, lo, files })
+		if (lo === 1n) break
+	}
+	if (spans.length === 0) throw new Error('transaction not available')
+	return spans.reverse()
+}
+
+/** What a latest restore of `epochs` (ascending) resolves to: chain spans and the txid reached, or the error. */
+function restoreOutcome(epochs) {
+	try {
+		const spans = buildChain(epochs)
+		const plan = planRestore(spans.flatMap((s) => s.files))
+		return `spans=${spans.map((s) => `e${s.epoch}@${s.lo}`).join(',')} reach=${plan[plan.length - 1].max}`
+	} catch (error) {
+		return `error: ${error.message}`
+	}
+}
+
+/**
  * @param {{ key: string, modifiedMs: number, bytes: number }[]} rows store listing sorted by key
  * @param {{ nowMs: number, graceMs: number }} options
  */
 export function planLocalLtxGc(rows, { nowMs, graceMs }) {
 	if (!(graceMs > 0)) throw new Error(`local LTX cleanup needs a positive retention grace, got ${graceMs}ms`)
-	const epochs = new Map()
+	const cells = new Map()
 	for (const row of rows) {
 		const parsed = parseLtxKey(row.key)
 		if (!parsed) continue
-		const id = `${parsed.cell}/e${parsed.epoch}`
-		if (!epochs.has(id)) epochs.set(id, [])
-		epochs.get(id).push({ ...row, ...parsed })
+		if (!cells.has(parsed.cell)) cells.set(parsed.cell, new Map())
+		const epochs = cells.get(parsed.cell)
+		if (!epochs.has(parsed.epoch)) epochs.set(parsed.epoch, [])
+		epochs.get(parsed.epoch).push({ ...row, ...parsed })
 	}
 	const remove = []
 	const kept = []
-	for (const [id, files] of epochs) {
-		const covers = files.filter((f) => f.level >= 1 && nowMs - f.modifiedMs >= graceMs)
-		const covered = new Set(files.filter((f) => f.level === 0 && covers.some((g) => g.min <= f.min && g.max >= f.max)))
+	for (const [cell, byEpoch] of cells) {
+		const epochs = [...byEpoch.entries()].sort(([a], [b]) => a - b).map(([epoch, files]) => ({ epoch, files }))
+		const covered = new Set()
+		for (const { files } of epochs) {
+			const covers = files.filter((f) => f.level >= 1 && nowMs - f.modifiedMs >= graceMs)
+			for (const f of files) {
+				if (f.level === 0 && covers.some((g) => g.min <= f.min && g.max >= f.max)) covered.add(f)
+			}
+		}
 		if (covered.size === 0) continue
-		let before
-		try {
-			before = planRestore(files)
-		} catch (error) {
-			kept.push({ epoch: id, reason: `restore plan already fails: ${error.message}` })
+		const without = epochs.map(({ epoch, files }) => ({ epoch, files: files.filter((f) => !covered.has(f)) }))
+		// Every restore a reader can run: from the newest epoch, and from each
+		// older one for a reader that listed before a newer epoch existed.
+		const outcomes = epochs.map((_, i) => [
+			restoreOutcome(epochs.slice(0, i + 1)),
+			restoreOutcome(without.slice(0, i + 1)),
+		])
+		const broken = outcomes.find(([before]) => before.startsWith('error'))
+		if (broken) {
+			kept.push({ scope: cell, reason: `restore already fails, nothing deleted: ${broken[0]}` })
 			continue
 		}
-		const after = planRestore(files.filter((f) => !covered.has(f)))
-		const reach = (plan) => plan[plan.length - 1].max
-		if (reach(after) !== reach(before)) {
-			throw new Error(
-				`${id}: dropping covered L0 objects would move the restore point from ${reach(before)} to ${reach(after)}`,
-			)
+		const changed = outcomes.find(([before, after]) => before !== after)
+		if (changed) {
+			kept.push({ scope: cell, reason: `restore would change from "${changed[0]}" to "${changed[1]}"` })
+			continue
 		}
 		remove.push(...covered)
 	}
+	remove.sort((a, b) => (a.key < b.key ? -1 : 1))
 	return {
 		delete: remove.map((f) => f.key),
 		bytes: remove.reduce((sum, f) => sum + f.bytes, 0),

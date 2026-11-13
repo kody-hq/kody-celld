@@ -86,12 +86,13 @@ most of the store
 deploy step and before the node starts, `docker/local-ltx-gc.mjs` deletes an L0
 object only when a level 1+ object of the same cell and epoch covers its whole
 TXID range, that covering object is older than `CELLD_LTX_RETENTION_SECS`, and
-the ported celld restore plan for the epoch reaches the same transaction
-without it. Epochs are never removed here, so the previous-epoch fallback and
+every latest restore of the cell (celld's epoch chain from the newest epoch,
+and from each older epoch) resolves to the same chain and transaction without
+it. Epochs are never removed here, so the previous-epoch fallback and
 point-in-time restores inside the grace reach exactly as far as before. It runs
-in one transaction (a crash rolls back), skips an epoch whose restore plan
-already fails, throws if a deletion would move a restore point, and does
-nothing when `CELLD_LTX_RETENTION_SECS` is `0`.
+in one transaction (a crash rolls back), keeps and logs any cell whose restore
+already fails or would change, and does nothing when
+`CELLD_LTX_RETENTION_SECS` is `0`.
 
 To see what the next start would delete without deleting anything:
 
