@@ -334,7 +334,8 @@ export async function refreshMcpTokens(input: {
 	fetchFn: typeof fetch
 }): Promise<OAuthTokens> {
 	if (!input.discovery) throw new Error('No cached OAuth discovery for this server; authorize again.')
-	// Re-check #53 on the cached discovery so a pre-check row (or a tampered cache) cannot bypass it.
+	// Re-check the cached discovery so a pre-check row (or a tampered cache) cannot bypass the start-time checks.
+	assertAuthorizationServerIssuer(input.discovery)
 	assertEndpointsOnIssuerOrigin(input.discovery)
 	const resource = (input.discovery.resourceMetadata as { resource?: string } | undefined)?.resource
 	return refreshAuthorization(input.discovery.authorizationServerUrl, {

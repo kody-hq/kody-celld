@@ -494,6 +494,27 @@ describe('endpoint sites: registrable domain (#60, parity with kody-hq/kody#3629
 		)
 	})
 
+	it('refresh refuses cached discovery whose issuer does not echo the discovery URL', async () => {
+		await assert.rejects(
+			refreshMcpTokens({
+				client: { client_id: 'c' },
+				refreshToken: 'rt',
+				discovery: site(
+					'https://mcp.slack.com',
+					{
+						authorize: 'https://slack.com/oauth/v2_user/authorize',
+						token: 'https://slack.com/api/oauth.v2.user.access',
+					},
+					'https://slack.com',
+				),
+				fetchFn: (async () => {
+					throw new Error('must not be called')
+				}) as typeof fetch,
+			}),
+			/mcp_oauth_failed[\s\S]*does not match/,
+		)
+	})
+
 	it('refresh accepts sibling-host cached discovery and refuses a private-PSL sibling', async () => {
 		let tokenUrl: string | null = null
 		const tokens = await refreshMcpTokens({
