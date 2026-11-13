@@ -24,6 +24,7 @@ import { realpathSync, existsSync, mkdirSync, openSync, closeSync } from 'node:f
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
+import { retentionGraceMs, runLocalLtxGc } from './local-ltx-gc.mjs'
 import { setTimeout as delay } from 'node:timers/promises'
 
 const DEPLOY_POINTER = 'deploy/current.json'
@@ -132,6 +133,7 @@ function parseArgs(argv) {
 		port: '8080',
 		host: '127.0.0.1',
 		celldFlags: [],
+		dryRun: false,
 	}
 	const rest = argv.slice(1)
 	for (let i = 0; i < rest.length; i++) {
@@ -146,6 +148,10 @@ function parseArgs(argv) {
 		}
 		if (arg === '--state') {
 			out.state = rest[++i] ?? ''
+			continue
+		}
+		if (arg === '--dry-run') {
+			out.dryRun = true
 			continue
 		}
 		if (arg === '--port') {
@@ -348,6 +354,23 @@ async function deployLocal(options) {
 	}
 }
 
+/** Covered-L0 cleanup (local-ltx-gc.mjs); a no-op when CELLD_LTX_RETENTION_SECS keeps celld's no-deletion default. */
+function reportLtxGc(database, { dryRun }) {
+	const graceMs = retentionGraceMs()
+	if (graceMs === 0) {
+		process.stderr.write('[kody-celld] ltx-gc: CELLD_LTX_RETENTION_SECS is 0 or unset, nothing is deleted\n')
+		return
+	}
+	const result = runLocalLtxGc(database, { dryRun, graceMs })
+	for (const { scope, reason } of result.kept) {
+		process.stderr.write(`[kody-celld] ltx-gc: kept ${scope}: ${reason}\n`)
+	}
+	if (dryRun) for (const key of result.delete) process.stdout.write(`${key}\n`)
+	process.stderr.write(
+		`[kody-celld] ltx-gc: ${dryRun ? 'would delete' : 'deleted'} ${result.delete.length} covered L0 objects (${result.bytes} bytes) from ${database} (#179)\n`,
+	)
+}
+
 async function main(argv) {
 	const options = parseArgs(argv)
 	switch (options.command) {
@@ -372,11 +395,17 @@ async function main(argv) {
 					`[kody-celld] single deploy: indexed ${database} for metadata listings in ${index.elapsedMs}ms (#179)\n`,
 				)
 			}
+			reportLtxGc(database, { dryRun: false })
+			return
+		}
+		case 'ltx-gc': {
+			if (!options.state) throw new Error('--state is required')
+			reportLtxGc(objectsDbPath(options.state), { dryRun: options.dryRun })
 			return
 		}
 		default:
 			throw new Error(
-				`usage: single-local.mjs deploy|node-env|node-id --project DIR --state DIR [--port N] [--host IP] [-- celld.dev flags]`,
+				`usage: single-local.mjs deploy|node-env|node-id|ltx-gc --project DIR --state DIR [--port N] [--host IP] [--dry-run] [-- celld.dev flags]`,
 			)
 	}
 }
