@@ -1,7 +1,7 @@
 # Contributing
 
-This repository is source-available under the Business Source License 1.1
-([BUSL-1.1](./LICENSE)). Outside pull requests need a signed inbound Contributor
+This repository is source-available under the [Kody License](./LICENSE), a
+modified Functional Source License 1.1. Outside pull requests need a signed inbound Contributor
 License Agreement. You keep copyright; the CLA is the license grant that keeps
 kody-celld a single-licensor tree.
 

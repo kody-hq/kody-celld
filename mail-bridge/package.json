@@ -2,7 +2,7 @@
   "name": "kody-mail-bridge",
   "version": "0.1.0",
   "private": true,
-  "license": "BUSL-1.1",
+  "license": "LicenseRef-Kody-FSL-1.1-ALv2-Personal",
   "description": "SMTP sidecar for kody-celld: receives mail for the Kody email domain and forwards it to POST /email/inbound/bridge; exposes POST /send so Kody can deliver through any SMTP relay.",
   "type": "module",
   "main": "server.mjs",
