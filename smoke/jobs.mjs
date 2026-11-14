@@ -26,13 +26,12 @@ export async function smokeJobs({ mcp, user, waitForCron }) {
 	assert(manual.ok && manual.result.trigger === 'manual' && manual.result.ticks >= 1, 'manual job run failed', manual)
 	log('jobRunNow', { ticks: manual.result.ticks, trigger: manual.result.trigger })
 
-	// Simulate the cron trigger firing now unless the scheduled cron already claimed the job.
-	if (!backfillAlreadyClaimed) {
-		const dispatch = await admin.dispatchJobs()
-		assert(dispatch.status === 200, 'admin dispatch failed', dispatch.json)
-		const ranBackfill = dispatch.json.ran.find((entry) => entry.jobId === backfill.id)
-		assert(ranBackfill?.ok, 'dispatcher should have run the past-due once job', dispatch.json)
-	}
+	// Simulate the cron trigger firing now. celld's minute cron can claim the job at any moment before
+	// this dispatch, so either one may run it; the run history below proves it ran exactly once.
+	const dispatch = await admin.dispatchJobs()
+	assert(dispatch.status === 200, 'admin dispatch failed', dispatch.json)
+	const ranBackfill = dispatch.json.ran.find((entry) => entry.jobId === backfill.id)
+	assert(!ranBackfill || ranBackfill.ok, 'dispatcher run of the past-due once job failed', dispatch.json)
 	const again = await admin.dispatchJobs()
 	assert(!again.json.ran.some((entry) => entry.jobId === backfill.id), '"once" job must not run twice', again.json)
 	const backfillAfter = await waitFor(
@@ -43,12 +42,14 @@ export async function smokeJobs({ mcp, user, waitForCron }) {
 		},
 		{ timeoutMs: 90_000, intervalMs: 1_000 },
 	)
+	assert(backfillAfter.runs.length === 1, 'past-due once job should have run exactly once', backfillAfter.runs)
 	assert(
 		backfillAfter.runs[0].trigger === 'cron' && backfillAfter.runs[0].result.trigger === 'cron',
 		'job run history should carry the trigger',
 		backfillAfter.runs[0],
 	)
 	log('dispatcher ran past-due once job exactly once', {
+		ranBy: ranBackfill ? 'admin dispatch' : 'celld cron',
 		lastStatus: backfillAfter.job.lastStatus,
 		nextRunAt: backfillAfter.job.nextRunAt,
 	})
