@@ -116,9 +116,11 @@ the calling method:
 [kody-celld] cell-write UserCell rows=1 via=UserCell.jobsClaimDue UPDATE jobs SET next_run_at = ?, ...
 ```
 
-Only the statement text is logged, never bound values. Statements that change
-no rows (for example `INSERT ... ON CONFLICT DO NOTHING` on an existing row)
-are not logged and do not commit an L0 object. Writes celld makes itself are
+Only the statement text is logged: bound values and inline string or blob
+literals are blanked. Lines are written as each statement runs, so several
+lines can belong to one transaction, and a statement whose transaction later
+rolls back is still logged. Statements that change no rows (for example
+`INSERT ... ON CONFLICT DO NOTHING` on an existing row) are not logged. Writes celld makes itself are
 not app SQL and are not logged: the reserved `.cron` cell re-arms its alarm
 about once a minute for the `* * * * *` trigger. Leave the switch off in normal
 operation; it logs one line per written statement.
