@@ -11,9 +11,7 @@ export function logCellWrites(ctx: DurableObjectState, cell: string, env: { KODY
 	sql.exec = ((query: string, ...bindings: Array<SqlStorageValue>) => {
 		const cursor = exec(query, ...bindings)
 		if (cursor.rowsWritten > 0) {
-			console.log(
-				`[kody-celld] cell-write ${cell} rows=${cursor.rowsWritten} via=${caller()} ${query.replace(/\s+/g, ' ').trim().slice(0, 200)}`,
-			)
+			console.log(`[kody-celld] cell-write ${cell} rows=${cursor.rowsWritten} via=${caller()} ${redact(query)}`)
 		}
 		return cursor
 	}) as typeof sql.exec
@@ -23,4 +21,13 @@ function caller() {
 	const frames = (new Error().stack ?? '').split('\n').slice(1)
 	const frame = frames.find((line) => !line.includes('cell-write-log.ts:')) ?? ''
 	return /at (?:async )?([\w$.<>]+)/.exec(frame)?.[1] ?? 'unknown'
+}
+
+/** Package SQL may inline values, so string and blob literals are blanked like bound values. */
+function redact(query: string) {
+	return query
+		.replace(/[xX]?'(?:[^']|'')*'/g, "'?'")
+		.replace(/\s+/g, ' ')
+		.trim()
+		.slice(0, 200)
 }

@@ -39,6 +39,13 @@ test('cell write logging names the cell, caller and statement of row-changing SQ
 	)
 	assert.doesNotMatch(lines[0] ?? '', /bound-secret-value/)
 
+	const inlined = fakeCtx(1)
+	logCellWrites(inlined.ctx, 'PackageStorageCell', { KODY_DEBUG_CELL_WRITES: '1' })
+	const [inlinedLine] = captureLogs(() =>
+		inlined.sql.exec("INSERT INTO kv VALUES ('api-key', 'it''s secret', X'deadbeef')"),
+	)
+	assert.match(inlinedLine ?? '', /INSERT INTO kv VALUES \('\?', '\?', '\?'\)$/)
+
 	const read = fakeCtx(0)
 	logCellWrites(read.ctx, 'UserCell', { KODY_DEBUG_CELL_WRITES: '1' })
 	assert.deepEqual(
