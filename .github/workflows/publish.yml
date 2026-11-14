@@ -85,7 +85,7 @@ jobs:
           labels: |
             org.opencontainers.image.title=kody-celld
             org.opencontainers.image.description=Self-hosted Kody core on Deno celld
-            org.opencontainers.image.licenses=FSL-1.1-ALv2
+            org.opencontainers.image.licenses=BUSL-1.1
       - id: build
         uses: docker/build-push-action@v6
         with:

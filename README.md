@@ -422,7 +422,18 @@ what you're building on kody-celld, and help shape self-hosted Kody.
 
 ## License
 
-[FSL-1.1-ALv2](./LICENSE) — the same Functional Source License as
-[kody-hq/kody](https://github.com/kody-hq/kody). Use, modify, and
-self-host freely; competing commercial use is not permitted until the
-Apache-2.0 future license kicks in.
+Free for personal use. For any other use, email support@kody.codes.
+
+kody-celld is licensed under the [Business Source License 1.1](./LICENSE)
+(BUSL-1.1), the same license as [kody-hq/kody](https://github.com/kody-hq/kody).
+The Additional Use Grant allows personal, noncommercial production use and keeps
+the competing-use restriction from the previous license. Each version becomes
+available under the Apache License 2.0 on the second anniversary of its first
+public release.
+
+Releases and commits published before this change stay under
+[FSL-1.1-ALv2](https://fsl.software/), the license they were released under,
+including its two-year Apache 2.0 conversion.
+
+Third-party components in this repository and in the container image, such as
+celld, Node.js, npm dependencies and fonts, keep their own licenses.
