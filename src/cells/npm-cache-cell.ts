@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers'
 import type { Env } from '../env.ts'
 import { NpmCacheStore, type NpmCacheStats } from '../execute/npm-cache-store.ts'
+import { logCellWrites } from '../lib/cell-write-log.ts'
 
 export type { NpmCacheStats }
 
@@ -16,6 +17,7 @@ export class NpmCacheCell extends DurableObject<Env> {
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env)
+		logCellWrites(ctx, 'NpmCacheCell', env)
 		this.store = new NpmCacheStore(this.ctx.storage.sql)
 	}
 

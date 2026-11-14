@@ -32,6 +32,8 @@ export type Env = LimitEnv &
 		KODY_MASTER_KEY: string
 		/** Comma-separated retired master keys still allowed to decrypt until `POST /admin/secrets/rekey` re-seals everything. */
 		KODY_MASTER_KEY_PREVIOUS?: string
+		/** `1` logs every row-changing SQL statement per cell (docs/operations.md). */
+		KODY_DEBUG_CELL_WRITES?: string
 		KODY_PUBLIC_URL: string
 		/** Package-app origin (`https://apps.example` or `https://*.apps.example`); unset = apps off. docs/package-apps.md */
 		KODY_APP_BASE_URL?: string

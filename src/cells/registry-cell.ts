@@ -20,6 +20,7 @@ import {
 	type CommunityPackage,
 } from '../packages/community-store.ts'
 import type { PackageFiles, PackageManifest } from '../packages/manifest.ts'
+import { logCellWrites } from '../lib/cell-write-log.ts'
 
 export type UserRecord = { id: string; email: string; createdAt: string }
 
@@ -67,6 +68,7 @@ export type AuditEntry = {
 export class RegistryCell extends DurableObject<Env> {
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env)
+		logCellWrites(ctx, 'RegistryCell', env)
 		this.ctx.storage.sql.exec(`
 			CREATE TABLE IF NOT EXISTS users (
 				id TEXT PRIMARY KEY,

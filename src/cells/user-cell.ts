@@ -103,6 +103,7 @@ import {
 	type WorkflowSourceType,
 	type WorkflowStatus,
 } from '../jobs/workflow-types.ts'
+import { logCellWrites } from '../lib/cell-write-log.ts'
 
 export type SecretMetadata = {
 	name: string
@@ -427,6 +428,7 @@ function constantTimeEqual(a: string, b: string) {
 export class UserCell extends DurableObject<Env> {
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env)
+		logCellWrites(ctx, 'UserCell', env)
 		this.ctx.storage.sql.exec(`
 			CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 			CREATE TABLE IF NOT EXISTS secrets (
