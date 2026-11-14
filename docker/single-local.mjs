@@ -397,7 +397,12 @@ export function ltxGcIntervalMs(env = process.env) {
 	const raw = env.KODY_LTX_GC_INTERVAL_SECS
 	if (raw === undefined || raw === '') return 3600 * 1000
 	if (!/^\d+$/.test(raw)) throw new Error(`KODY_LTX_GC_INTERVAL_SECS must be whole seconds, got ${JSON.stringify(raw)}`)
-	return Number(raw) * 1000
+	const ms = Number(raw) * 1000
+	// setTimeout fires at once for delays over 2^31 - 1 ms.
+	if (ms > 2 ** 31 - 1) {
+		throw new Error(`KODY_LTX_GC_INTERVAL_SECS must be at most 2147483 (about 24 days), got ${JSON.stringify(raw)}`)
+	}
+	return ms
 }
 
 async function ltxGcLoop(database) {

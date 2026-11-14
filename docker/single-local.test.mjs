@@ -175,6 +175,8 @@ describe('single-local helpers', () => {
 		assert.equal(ltxGcIntervalMs({ KODY_LTX_GC_INTERVAL_SECS: '0' }), 0)
 		assert.equal(ltxGcIntervalMs({ KODY_LTX_GC_INTERVAL_SECS: '600' }), 600_000)
 		assert.throws(() => ltxGcIntervalMs({ KODY_LTX_GC_INTERVAL_SECS: '1h' }), /whole seconds/)
+		assert.equal(ltxGcIntervalMs({ KODY_LTX_GC_INTERVAL_SECS: '2147483' }), 2_147_483_000)
+		assert.throws(() => ltxGcIntervalMs({ KODY_LTX_GC_INTERVAL_SECS: '2592000' }), /at most 2147483/)
 		assert.equal(pagedRestoreBytes({}), 256 * 2 ** 20)
 		assert.equal(pagedRestoreBytes({ CELLD_LTX_PAGED_MIN_MB: '8' }), 8 * 2 ** 20)
 		assert.equal(pagedRestoreBytes({ CELLD_LTX_PAGED: 'false', CELLD_LTX_PAGED_MIN_MB: '8' }), Infinity)
