@@ -241,4 +241,69 @@ describe('local LTX cleanup (#179)', () => {
 		const files = epochFiles(keys(path), 'p', 7)
 		assert.equal(planRestore(files).at(-1).max, 10n)
 	})
+
+	it('online passes keep a cell big enough for a paged restore, start passes clean it', () => {
+		const objects = [...l0s('big', 1, 1, 10), [ltx('big', 1, 9, 1n, 6n), old, 1000]]
+		const online = runLocalLtxGc(makeStore(objects), { dryRun: true, graceMs: day, nowMs: now, pageableBytes: 2000 })
+		assert.deepEqual(online.delete, [])
+		assert.match(online.kept[0].reason, /2000 bytes is at or over the paged restore size/)
+		assert.equal(
+			runLocalLtxGc(makeStore(objects), { dryRun: true, graceMs: day, nowMs: now, pageableBytes: 2001 }).delete.length,
+			6,
+		)
+		assert.equal(runLocalLtxGc(makeStore(objects), { dryRun: true, graceMs: day, nowMs: now }).delete.length, 6)
+	})
+
+	it('keeps latest and in-grace restores after repeated passes under concurrent writes and compactions', async () => {
+		const path = makeStore([...l0s('w', 2, 1, 50), [ltx('w', 2, 9, 1n, 1n), old], [ltx('w', 2, 1, 2n, 50n), old]])
+		// A celld stand-in: one L0 per commit, and every 25 txids an L1 compaction of them.
+		const writer = spawn(
+			process.execPath,
+			[
+				'--input-type=module',
+				'-e',
+				`import { DatabaseSync } from 'node:sqlite'
+				const hex = (n) => n.toString(16).padStart(16, '0')
+				const key = (level, min, max) => 'cells/w/ltx/e2/' + level.toString(16).padStart(4, '0') + '/' + hex(min) + '-' + hex(max) + '.ltx'
+				const db = new DatabaseSync(${JSON.stringify(path)}, { timeout: 30000 })
+				const put = db.prepare("INSERT INTO objects VALUES (?, zeroblob(100), 1, ?, '{}')")
+				let txid = 50
+				const pause = new Int32Array(new SharedArrayBuffer(4))
+				const deadline = Date.now() + 1500
+				while (Date.now() < deadline) {
+					txid++
+					put.run(key(0, txid, txid), ${old})
+					if (txid % 25 === 0) put.run(key(1, txid - 24, txid), ${old})
+					Atomics.wait(pause, 0, 0, 1)
+				}
+				db.close()
+				process.stdout.write(String(txid))`,
+			],
+			{ stdio: ['ignore', 'pipe', 'inherit'] },
+		)
+		let out = ''
+		writer.stdout.on('data', (chunk) => (out += chunk))
+		const exited = new Promise((resolve) => writer.on('exit', resolve))
+		let passes = 0
+		let deleted = 0
+		while (writer.exitCode === null) {
+			deleted += runLocalLtxGc(path, { dryRun: false, graceMs: day, nowMs: now }).delete.length
+			passes++
+			await new Promise((r) => setTimeout(r, 20))
+		}
+		assert.equal(await exited, 0)
+		const last = BigInt(out)
+		assert.ok(passes > 5 && deleted > 0, `ran ${passes} passes, deleted ${deleted}`)
+		const left = keys(path)
+		const files = epochFiles(left, 'w', 2)
+		assert.equal(planRestore(files).at(-1).max, last, 'latest restore reaches the last committed txid')
+		const covered = Number(last) - (Number(last) % 25)
+		for (let txid = covered + 1; txid <= Number(last); txid++) {
+			assert.ok(left.includes(ltx('w', 2, 0, BigInt(txid), BigInt(txid))), `uncompacted L0 ${txid} kept`)
+		}
+		// Every txid committed after the newest (aged) compaction stays point-in-time restorable.
+		for (let txid = BigInt(covered); txid <= last; txid++) {
+			assert.equal(planRestore(files, txid).at(-1).max, txid, `restore to ${txid}`)
+		}
+	})
 })

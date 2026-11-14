@@ -154,6 +154,10 @@ function parseArgs(argv) {
 			out.dryRun = true
 			continue
 		}
+		if (arg === '--online') {
+			out.online = true
+			continue
+		}
 		if (arg === '--port') {
 			out.port = rest[++i] ?? ''
 			continue
@@ -354,14 +358,18 @@ async function deployLocal(options) {
 	}
 }
 
-/** Covered-L0 cleanup (local-ltx-gc.mjs); a no-op when CELLD_LTX_RETENTION_SECS keeps celld's no-deletion default. */
-function reportLtxGc(database, { dryRun }) {
+/**
+ * Covered-L0 cleanup (local-ltx-gc.mjs); a no-op when CELLD_LTX_RETENTION_SECS keeps celld's no-deletion default.
+ * `online` passes run beside the node, so they also keep any cell celld could have restored paged.
+ */
+function reportLtxGc(database, { dryRun, online = false }) {
 	const graceMs = retentionGraceMs()
 	if (graceMs === 0) {
 		process.stderr.write('[kody-celld] ltx-gc: CELLD_LTX_RETENTION_SECS is 0 or unset, nothing is deleted\n')
 		return
 	}
-	const result = runLocalLtxGc(database, { dryRun, graceMs })
+	const pageableBytes = online ? pagedRestoreBytes() : Infinity
+	const result = runLocalLtxGc(database, { dryRun, graceMs, pageableBytes })
 	for (const { scope, reason } of result.kept) {
 		process.stderr.write(`[kody-celld] ltx-gc: kept ${scope}: ${reason}\n`)
 	}
@@ -369,6 +377,50 @@ function reportLtxGc(database, { dryRun }) {
 	process.stderr.write(
 		`[kody-celld] ltx-gc: ${dryRun ? 'would delete' : 'deleted'} ${result.delete.length} covered L0 objects (${result.bytes} bytes) from ${database} (#179)\n`,
 	)
+}
+
+/** Chain size from which celld restores a cell paged (CELLD_LTX_PAGED, CELLD_LTX_PAGED_MIN_MB; celld v0.6.1 ltx_repl.rs). */
+export function pagedRestoreBytes(env = process.env) {
+	const paged = env.CELLD_LTX_PAGED
+	if (paged !== undefined && paged !== '' && !['0', 'false', '1', 'true'].includes(paged)) {
+		throw new Error(`CELLD_LTX_PAGED must be 0, 1, true or false, got ${JSON.stringify(paged)}`)
+	}
+	if (paged === '0' || paged === 'false') return Infinity
+	const raw = env.CELLD_LTX_PAGED_MIN_MB
+	if (raw === undefined || raw === '') return 256 * 2 ** 20
+	if (!/^\d+$/.test(raw)) throw new Error(`CELLD_LTX_PAGED_MIN_MB must be whole MiB, got ${JSON.stringify(raw)}`)
+	return Number(raw) * 2 ** 20
+}
+
+/** Seconds between online covered-L0 passes while the node runs (KODY_LTX_GC_INTERVAL_SECS, default 3600, 0 off). */
+export function ltxGcIntervalMs(env = process.env) {
+	const raw = env.KODY_LTX_GC_INTERVAL_SECS
+	if (raw === undefined || raw === '') return 3600 * 1000
+	if (!/^\d+$/.test(raw)) throw new Error(`KODY_LTX_GC_INTERVAL_SECS must be whole seconds, got ${JSON.stringify(raw)}`)
+	const ms = Number(raw) * 1000
+	// setTimeout fires at once for delays over 2^31 - 1 ms.
+	if (ms > 2 ** 31 - 1) {
+		throw new Error(`KODY_LTX_GC_INTERVAL_SECS must be at most 2147483 (about 24 days), got ${JSON.stringify(raw)}`)
+	}
+	return ms
+}
+
+async function ltxGcLoop(database) {
+	const intervalMs = ltxGcIntervalMs()
+	if (intervalMs === 0 || retentionGraceMs() === 0) {
+		process.stderr.write(
+			'[kody-celld] ltx-gc: no online passes (KODY_LTX_GC_INTERVAL_SECS or CELLD_LTX_RETENTION_SECS is 0)\n',
+		)
+		return
+	}
+	for (;;) {
+		await delay(intervalMs)
+		try {
+			reportLtxGc(database, { dryRun: false, online: true })
+		} catch (error) {
+			process.stderr.write(`[kody-celld] ltx-gc: online pass FAILED, store left as it was: ${error?.stack || error}\n`)
+		}
+	}
 }
 
 async function main(argv) {
@@ -400,12 +452,17 @@ async function main(argv) {
 		}
 		case 'ltx-gc': {
 			if (!options.state) throw new Error('--state is required')
-			reportLtxGc(objectsDbPath(options.state), { dryRun: options.dryRun })
+			reportLtxGc(objectsDbPath(options.state), { dryRun: options.dryRun, online: options.online })
+			return
+		}
+		case 'ltx-gc-loop': {
+			if (!options.state) throw new Error('--state is required')
+			await ltxGcLoop(objectsDbPath(options.state))
 			return
 		}
 		default:
 			throw new Error(
-				`usage: single-local.mjs deploy|node-env|node-id|ltx-gc --project DIR --state DIR [--port N] [--host IP] [--dry-run] [-- celld.dev flags]`,
+				`usage: single-local.mjs deploy|node-env|node-id|ltx-gc|ltx-gc-loop --project DIR --state DIR [--port N] [--host IP] [--dry-run] [--online] [-- celld.dev flags]`,
 			)
 	}
 }
