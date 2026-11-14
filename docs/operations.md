@@ -105,6 +105,55 @@ To return the space to the disk, stop the container and run
 `sqlite3 /data/celld/dev/objects.sqlite3 VACUUM` (needs free space about the
 size of the store).
 
+### Seeing what commits in a cell
+
+Every committed cell transaction becomes one L0 LTX object, so the L0 growth
+rate is the write rate. Set `KODY_DEBUG_CELL_WRITES=1` (any mode; restart to
+apply) to log each SQL statement that changes rows, with the cell class and
+the calling method:
+
+```text
+[kody-celld] cell-write UserCell rows=1 via=UserCell.jobsClaimDue UPDATE jobs SET next_run_at = ?, ...
+```
+
+Only the statement text is logged: bound values and inline string or blob
+literals are blanked. Lines are written as each statement runs, so several
+lines can belong to one transaction, and a statement whose transaction later
+rolls back is still logged. Statements that change no rows (for example
+`INSERT ... ON CONFLICT DO NOTHING` on an existing row) are not logged. Writes celld makes itself are
+not app SQL and are not logged: the reserved `.cron` cell re-arms its alarm
+about once a minute for the `* * * * *` trigger. Leave the switch off in normal
+operation; it logs one line per written statement.
+
+What a quiet single node writes (measured with the switch on):
+
+- Idle with no jobs: nothing in `RegistryCell` or `UserCell`.
+- Each scheduled job run: five `UserCell` transactions (`jobsClaimDue`,
+  `jobRunStart`, `runStart`, `runFinish`, `jobRunFinish`) plus whatever the
+  job itself writes (for example `PackageStorageCell`).
+- Authenticated MCP or API requests: at most one `RegistryCell` token
+  `last_used_at` write per token per five minutes, and one browser session
+  refresh per minute. OAuth access-token checks do not write; token issue,
+  refresh and revoke do.
+- Sign-ins and every management change (secrets, packages, tokens, webhooks,
+  integrations) append one `RegistryCell` audit row.
+
+### HTTP read-header timeout warnings
+
+```text
+WARN celld: HTTP connections failed ... cause="timeout" ... error=read header from client timeout
+```
+
+celld closes a connection that sends no complete request head within 30
+seconds, which includes an idle keep-alive waiting for its next request, and
+logs it (rate limited to one line per second, with a running total). It is
+harmless. The `peer` names the client: the Docker bridge gateway
+(`172.17.0.1` style) means a client on the host side of the published port,
+typically a reverse proxy or browser holding keep-alive connections open, or a
+TCP-only uptime check. The image's own healthcheck runs inside the container
+against `127.0.0.1` with complete requests and does not cause it. To silence
+it, set the proxy's upstream keep-alive timeout below 30 seconds.
+
 ### Local store metadata index (single node)
 
 celld 0.6 lists its local store by reading every row's metadata and filtering

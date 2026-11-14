@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers'
 import type { Env } from '../env.ts'
 import { KodyError } from '../lib/errors.ts'
 import { hasReservedTableWrite, reservedTableExclusionSql, reservedTablePrefixes } from './package-storage-reserved.ts'
+import { logCellWrites } from '../lib/cell-write-log.ts'
 
 export type StorageListOptions = {
 	prefix?: string | undefined
@@ -25,6 +26,7 @@ export type SqlResult = {
 export class PackageStorageCell extends DurableObject<Env> {
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env)
+		logCellWrites(ctx, 'PackageStorageCell', env)
 		this.ctx.storage.sql.exec(`
 			CREATE TABLE IF NOT EXISTS __kody_kv (
 				key TEXT PRIMARY KEY,

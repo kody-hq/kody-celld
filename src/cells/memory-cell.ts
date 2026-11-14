@@ -18,6 +18,7 @@ import {
 	type MemorySearchResult,
 	type MemoryStatus,
 } from '../memory/model.ts'
+import { logCellWrites } from '../lib/cell-write-log.ts'
 
 export type { MemoryInput, MemoryMatch, MemoryRecord, MemorySearchInput, MemorySearchResult, MemoryStatus }
 export { memoryLimits, memoryStatuses } from '../memory/model.ts'
@@ -75,6 +76,7 @@ function toRecord(row: MemoryRow): MemoryRecord {
 export class MemoryCell extends DurableObject<Env> {
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env)
+		logCellWrites(ctx, 'MemoryCell', env)
 		this.ctx.storage.sql.exec(`
 			CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 			CREATE TABLE IF NOT EXISTS memories (
