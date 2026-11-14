@@ -10,8 +10,10 @@ import { after, describe, it } from 'node:test'
 import {
 	celldDevNodeId,
 	ensureMetadataIndex,
+	ltxGcIntervalMs,
 	METADATA_INDEX,
 	objectsDbPath,
+	pagedRestoreBytes,
 	readDeployPointerEtag,
 	resolveProjectDir,
 } from './single-local.mjs'
@@ -166,5 +168,24 @@ describe('single-local helpers', () => {
 		// Epoch GC maintenance requires fleet durability (celld default).
 		assert.match(body, /CELLD_DURABILITY=fleet/)
 		assert.match(body, /bucket durability never runs epoch GC/)
+	})
+
+	it('parses the online cleanup interval and celld paged restore size strictly', () => {
+		assert.equal(ltxGcIntervalMs({}), 3_600_000)
+		assert.equal(ltxGcIntervalMs({ KODY_LTX_GC_INTERVAL_SECS: '0' }), 0)
+		assert.equal(ltxGcIntervalMs({ KODY_LTX_GC_INTERVAL_SECS: '600' }), 600_000)
+		assert.throws(() => ltxGcIntervalMs({ KODY_LTX_GC_INTERVAL_SECS: '1h' }), /whole seconds/)
+		assert.equal(pagedRestoreBytes({}), 256 * 2 ** 20)
+		assert.equal(pagedRestoreBytes({ CELLD_LTX_PAGED_MIN_MB: '8' }), 8 * 2 ** 20)
+		assert.equal(pagedRestoreBytes({ CELLD_LTX_PAGED: 'false', CELLD_LTX_PAGED_MIN_MB: '8' }), Infinity)
+		assert.equal(pagedRestoreBytes({ CELLD_LTX_PAGED: '0' }), Infinity)
+		assert.throws(() => pagedRestoreBytes({ CELLD_LTX_PAGED: 'yes' }), /CELLD_LTX_PAGED/)
+		assert.throws(() => pagedRestoreBytes({ CELLD_LTX_PAGED_MIN_MB: '1.5' }), /whole MiB/)
+	})
+
+	it('entrypoint starts the online cleanup loop beside the single node', () => {
+		const body = readFileSync(new URL('./entrypoint.sh', import.meta.url), 'utf8')
+		const loop = body.indexOf('single-local.mjs ltx-gc-loop --state "$single_state" &')
+		assert.ok(loop > 0 && loop < body.indexOf('exec celld \\\n\t\t--no-control-plane'))
 	})
 })

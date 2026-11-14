@@ -83,8 +83,9 @@ previous epoch every L0 object stays even after a compaction (L1 and up, or a
 handoff snapshot) holds the same transactions. On a busy single node that is
 most of the store
 ([issue #179](https://github.com/kody-hq/kody-celld/issues/179)). After the
-deploy step and before the node starts, `docker/local-ltx-gc.mjs` deletes an L0
-object only when a level 1+ object of the same cell and epoch covers its whole
+deploy step and before the node starts, and then every
+`KODY_LTX_GC_INTERVAL_SECS` (default `3600`, `0` for start only) while it runs,
+`docker/local-ltx-gc.mjs` deletes an L0 object only when a level 1+ object of the same cell and epoch covers its whole
 TXID range, that covering object is older than `CELLD_LTX_RETENTION_SECS`, and
 every latest restore of the cell (celld's epoch chain from the newest epoch,
 and from each older epoch) resolves to the same chain and transaction without
@@ -93,6 +94,17 @@ point-in-time restores inside the grace reach exactly as far as before. It runs
 in one transaction (a crash rolls back), keeps and logs any cell whose restore
 already fails or would change, and does nothing when
 `CELLD_LTX_RETENTION_SECS` is `0`.
+
+The passes while the node runs use the same rules and are safe beside it:
+celld's compactor only reads L0 above what the level above already covers, a
+new activation plans its restore from a fresh listing that the cleanup
+transaction cannot change under it, and a covered L0 is only a candidate once
+its covering object is older than the grace, so no planned restore started
+inside the grace can need it. The one difference is paged restore: celld can
+open a cell whose restore chain is at least `CELLD_LTX_PAGED_MIN_MB` (default
+256 MiB) lazily and fault pages in from the objects it planned on, so running
+passes skip any cell that large and leave it to the next start. A failed pass
+logs `ltx-gc: online pass FAILED` and changes nothing.
 
 To see what the next start would delete without deleting anything:
 

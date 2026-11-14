@@ -165,6 +165,10 @@ run_single() {
 	eval "$(node /app/docker/single-local.mjs node-env --project /app --state "$single_state")"
 	export CELLD_INTERNAL_DEV_STORE CELLD_WATCH CELLD_NODE
 
+	# The same covered-L0 cleanup also runs beside the node on a timer, so L0
+	# objects do not pile up between restarts (#179, docs/operations.md).
+	node /app/docker/single-local.mjs ltx-gc-loop --state "$single_state" &
+
 	echo "[kody-celld] single node: MCP at $KODY_PUBLIC_URL/mcp (listening on 0.0.0.0:$port)"
 	echo "[kody-celld] single node: running celld directly against the local store (node=$CELLD_NODE, CELLD_LTX_RETENTION_SECS=$CELLD_LTX_RETENTION_SECS, CELLD_DURABILITY=${CELLD_DURABILITY:-fleet})"
 	exec celld \

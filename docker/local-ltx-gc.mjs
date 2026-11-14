@@ -153,9 +153,10 @@ function restoreOutcome(epochs) {
 
 /**
  * @param {{ key: string, modifiedMs: number, bytes: number }[]} rows store listing sorted by key
- * @param {{ nowMs: number, graceMs: number }} options
+ * @param {{ nowMs: number, graceMs: number, pageableBytes?: number }} options pageableBytes: keep any cell
+ *   this large, because a paged activation of it may still fault pages from the objects it planned on
  */
-export function planLocalLtxGc(rows, { nowMs, graceMs }) {
+export function planLocalLtxGc(rows, { nowMs, graceMs, pageableBytes = Infinity }) {
 	if (!(graceMs > 0)) throw new Error(`local LTX cleanup needs a positive retention grace, got ${graceMs}ms`)
 	const cells = new Map()
 	for (const row of rows) {
@@ -178,6 +179,14 @@ export function planLocalLtxGc(rows, { nowMs, graceMs }) {
 			}
 		}
 		if (covered.size === 0) continue
+		const cellBytes = epochs.reduce((sum, { files }) => sum + files.reduce((n, f) => n + f.bytes, 0), 0)
+		if (cellBytes >= pageableBytes) {
+			kept.push({
+				scope: cell,
+				reason: `${cellBytes} bytes is at or over the paged restore size, kept until the next start`,
+			})
+			continue
+		}
 		const without = epochs.map(({ epoch, files }) => ({ epoch, files: files.filter((f) => !covered.has(f)) }))
 		// Every restore a reader can run: from the newest epoch, and from each
 		// older one for a reader that listed before a newer epoch existed.
@@ -207,15 +216,16 @@ export function planLocalLtxGc(rows, { nowMs, graceMs }) {
 
 /**
  * @param {string} databasePath the local store's objects.sqlite3
- * @param {{ dryRun: boolean, graceMs: number, nowMs?: number }} options
+ * @param {{ dryRun: boolean, graceMs: number, pageableBytes?: number, nowMs?: number }} options
  */
-export function runLocalLtxGc(databasePath, { dryRun, graceMs, nowMs = Date.now() }) {
+export function runLocalLtxGc(databasePath, { dryRun, graceMs, pageableBytes, nowMs = Date.now() }) {
 	const db = new DatabaseSync(databasePath, { timeout: 30_000, readOnly: dryRun })
 	try {
-		if (dryRun) return { dryRun, ...planLocalLtxGc(db.prepare(listLtx).all(), { nowMs, graceMs }) }
+		const options = { nowMs, graceMs, pageableBytes }
+		if (dryRun) return { dryRun, ...planLocalLtxGc(db.prepare(listLtx).all(), options) }
 		db.exec('BEGIN IMMEDIATE')
 		try {
-			const plan = planLocalLtxGc(db.prepare(listLtx).all(), { nowMs, graceMs })
+			const plan = planLocalLtxGc(db.prepare(listLtx).all(), options)
 			const remove = db.prepare('DELETE FROM objects WHERE key = ?')
 			for (const key of plan.delete) {
 				if (Number(remove.run(key).changes) !== 1) throw new Error(`${databasePath}: ${key} vanished mid-cleanup`)
