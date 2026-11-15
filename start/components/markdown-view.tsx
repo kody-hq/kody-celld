@@ -375,7 +375,15 @@ function renderToken(token: Token, key: number, options: ResolvedRenderOptions):
 			if (options.linkPolicy === 'first-party') {
 				const watch = parseDocWatchBlock(token.raw)
 				if (watch) {
-					return <DocYoutubeEmbed key={key} videoId={watch.videoId} title={watch.title} label={watch.label} />
+					return (
+						<DocYoutubeEmbed
+							key={key}
+							videoId={watch.videoId}
+							title={watch.title}
+							label={watch.label}
+							vertical={watch.vertical}
+						/>
+					)
 				}
 				const alertKind = firstPartyAlertKind(token)
 				if (alertKind) {

@@ -15,6 +15,212 @@ import {
  */
 export const hoverMq = '@media (hover: hover) and (pointer: fine)'
 
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
+export type ButtonSize = 'xs' | 'sm' | 'md' | 'lg'
+
+export type ButtonStyleOptions = {
+	/**
+	 * `primary` is the filled call to action, `secondary` its outlined
+	 * sibling, `ghost` a borderless control for toolbars and quiet actions,
+	 * and `danger` the outlined destructive action that fills on hover.
+	 */
+	variant?: ButtonVariant
+	/**
+	 * `sm` (default, 36px) for ordinary content and settings actions, `md`
+	 * (40px) for form submits, `lg` (48px) for prominent calls to action, `xs`
+	 * for value-sized controls that ride along with an id or a toolbar.
+	 */
+	size?: ButtonSize
+	/** Square button holding only an icon; pair it with an accessible name. */
+	iconOnly?: boolean
+	mobileFullWidth?: boolean
+}
+
+const buttonSizes = {
+	xs: {
+		paddingBlock: '0.375rem',
+		height: '1.75rem',
+		coarseHeight: '2.25rem',
+		paddingInline: '0.5rem',
+		gap: '0.25rem',
+		font: '650 0.75rem/1rem',
+		radius: '0.375rem',
+		squircleRadius: '0.75rem',
+	},
+	sm: {
+		paddingBlock: '0.5rem',
+		height: '2.25rem',
+		coarseHeight: '2.75rem',
+		paddingInline: '0.875rem',
+		gap: '0.375rem',
+		font: '650 0.875rem/1.25rem',
+		radius: '0.625rem',
+		squircleRadius: '1.125rem',
+	},
+	md: {
+		paddingBlock: '0.625rem',
+		height: '2.5rem',
+		coarseHeight: '2.75rem',
+		paddingInline: '1.125rem',
+		gap: '0.5rem',
+		font: '650 1rem/1.25rem',
+		radius: '0.625rem',
+		squircleRadius: '1.125rem',
+	},
+	lg: {
+		paddingBlock: '1rem',
+		height: '3rem',
+		coarseHeight: '3rem',
+		paddingInline: '1.7rem',
+		gap: '0.5rem',
+		font: '650 1rem/1',
+		radius: '0.625rem',
+		squircleRadius: '1.125rem',
+	},
+} as const satisfies Record<ButtonSize, Record<string, string>>
+
+/**
+ * Squircle corners: a rounded rectangle everywhere, a superellipse where
+ * `corner-shape` is supported. Buttons get it through `getButtonCss`;
+ * specialized controls that are not buttons (tabs, segmented filters, toggles)
+ * use it directly so no control falls back to the full-radius pill.
+ */
+export function getSquircleCss(size: ButtonSize = 'sm') {
+	const { radius, squircleRadius } = buttonSizes[size]
+	return {
+		borderRadius: radius,
+		'@supports (corner-shape: squircle)': {
+			borderRadius: squircleRadius,
+			cornerShape: 'squircle',
+		},
+	}
+}
+
+const pressTransform = 'translateY(0) scale(0.97)'
+
+function getButtonVariantCss(variant: ButtonVariant) {
+	switch (variant) {
+		case 'primary':
+			return {
+				backgroundColor: colors.primary,
+				color: colors.onPrimary,
+				[hoverMq]: {
+					'&:not(:disabled):hover': {
+						backgroundColor: colors.primaryHover,
+						color: colors.onPrimary,
+						transform: 'translateY(-1px)',
+						boxShadow: `0 6px 20px -8px oklch(from ${colors.primary} l c h / 0.6)`,
+					},
+					'&:not(:disabled):active': { transform: pressTransform },
+				},
+			}
+		case 'secondary':
+			return {
+				backgroundColor: 'transparent',
+				color: colors.text,
+				boxShadow: `inset 0 0 0 1.5px ${colors.border}`,
+				[hoverMq]: {
+					'&:not(:disabled):hover': {
+						backgroundColor: colors.surface,
+						color: colors.text,
+						transform: 'translateY(-1px)',
+						boxShadow: `inset 0 0 0 1.5px ${colors.textMuted}`,
+					},
+					'&:not(:disabled):active': { transform: pressTransform },
+				},
+			}
+		case 'ghost':
+			return {
+				backgroundColor: 'transparent',
+				color: colors.text,
+				[hoverMq]: {
+					'&:not(:disabled):hover': {
+						backgroundColor: `color-mix(in srgb, ${colors.text} 8%, transparent)`,
+						color: colors.text,
+					},
+				},
+			}
+		case 'danger':
+			return {
+				backgroundColor: 'transparent',
+				color: colors.danger,
+				boxShadow: `inset 0 0 0 1.5px ${colors.danger}`,
+				'@supports (color: oklch(from red l c h / 0.45))': {
+					boxShadow: `inset 0 0 0 1.5px oklch(from ${colors.danger} l c h / 0.45)`,
+				},
+				[hoverMq]: {
+					'&:not(:disabled):hover': {
+						backgroundColor: `oklch(from ${colors.danger} l c h / 0.12)`,
+						transform: 'translateY(-1px)',
+						boxShadow: `inset 0 0 0 1.5px ${colors.danger}`,
+					},
+					'&:not(:disabled):active': { transform: pressTransform },
+				},
+			}
+	}
+}
+
+function buildButtonCss(options: ButtonStyleOptions) {
+	const size = buttonSizes[options.size ?? 'sm']
+	return {
+		boxSizing: 'border-box' as const,
+		display: 'inline-flex',
+		alignItems: 'center',
+		justifyContent: 'center',
+		gap: size.gap,
+		minHeight: size.height,
+		padding: options.iconOnly
+			? 0
+			: `${size.paddingBlock} ${size.paddingInline}`,
+		...(options.iconOnly ? { minWidth: size.height, flex: 'none' } : {}),
+		margin: 0,
+		border: 'none',
+		font: `${size.font} ${typography.fontFamilyDisplay}`,
+		textAlign: 'center' as const,
+		textDecoration: 'none',
+		whiteSpace: 'nowrap' as const,
+		cursor: 'pointer',
+		...getSquircleCss(options.size),
+		'@media (any-pointer: coarse)': {
+			minHeight: size.coarseHeight,
+			...(options.iconOnly ? { minWidth: size.coarseHeight } : {}),
+		},
+		transition: `background-color 160ms ${transitions.easeOut}, color 160ms ${transitions.easeOut}, transform 160ms ${transitions.easeOut}, box-shadow 160ms ${transitions.easeOut}, opacity 160ms ${transitions.easeOut}`,
+		'&:disabled, &[aria-disabled="true"]': {
+			cursor: 'not-allowed',
+			opacity: 0.7,
+		},
+		// Press feedback works everywhere, including touch.
+		'&:not(:disabled):active': { transform: pressTransform },
+		...getButtonVariantCss(options.variant ?? 'primary'),
+		...(options.mobileFullWidth ? { [mq.mobile]: { width: '100%' } } : {}),
+		// Declared last so reduced motion wins over both the press and the lift.
+		'@media (prefers-reduced-motion: reduce)': {
+			transition: `background-color ${transitions.normal}, border-color ${transitions.normal}, color ${transitions.normal}, opacity ${transitions.normal}, box-shadow ${transitions.normal}`,
+			'&:not(:disabled):hover': { transform: 'none' },
+			'&:not(:disabled):active': { transform: 'none' },
+		},
+	}
+}
+
+const buttonCssCache = new Map<string, ReturnType<typeof buildButtonCss>>()
+
+/**
+ * The one button look: every button and button-styled link renders through
+ * `<Button>` (start/components/button.tsx), which applies this. Call it
+ * directly only for elements `<Button>` cannot be (a `<label>` for a file
+ * input, a `<summary>`, static HTML via `renderButtonStylesheet`).
+ */
+export function getButtonCss(options: ButtonStyleOptions = {}) {
+	const key = `${options.variant ?? 'primary'}:${options.size ?? 'sm'}:${options.iconOnly ? 1 : 0}:${options.mobileFullWidth ? 1 : 0}`
+	let css = buttonCssCache.get(key)
+	if (!css) {
+		css = buildButtonCss(options)
+		buttonCssCache.set(key, css)
+	}
+	return css
+}
+
 type CssObject = CSSObject
 
 function isPlainObject(value: unknown): value is CssObject {
