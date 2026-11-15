@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import test, { describe, it } from 'node:test'
+import { DatabaseSync } from 'node:sqlite'
+import { normalizeSqlParams } from '../lib/storage-sql-statement.ts'
 import { RUNTIME_MODULE_SOURCE } from './runtime-module.ts'
 
 type CredentialInfo = {
@@ -22,6 +24,7 @@ type RuntimeModule = {
 			credentialOpen: (args: CredentialOpenArgs, call: unknown) => Promise<CredentialInfo | Array<CredentialInfo>>
 			mcpCall?: (name: string, tool: string, args: unknown, call: unknown) => Promise<unknown>
 			capability?: (name: string, args: unknown, call: unknown) => Promise<unknown>
+			storageSql?: (packageName: string, query: string, params: unknown) => Promise<unknown>
 		}
 	}): void
 	__run(context: Record<string, unknown>, fn: () => unknown): Promise<unknown>
@@ -29,6 +32,7 @@ type RuntimeModule = {
 		named(name: string, options?: { scope?: string }): Promise<CredentialClient>
 	}
 	credentials(key: string): Promise<Array<CredentialClient>>
+	packageStorage(packageName: string): { sql(query: string, ...args: Array<unknown>): Promise<unknown> }
 	email: {
 		getMessage(messageId: unknown): Promise<Record<string, unknown>>
 		getAttachment(attachmentId: unknown): Promise<Record<string, unknown>>
@@ -582,5 +586,55 @@ describe('runtime module events', () => {
 			if (previous === undefined) Reflect.deleteProperty(globalThis, key)
 			else Reflect.set(globalThis, key, previous)
 		}
+	})
+})
+
+describe('packageStorage().sql bindings', () => {
+	// The host side of RuntimeHost.storageSql + PackageStorageCell.sql, on node:sqlite.
+	const sqlRuntime = async () => {
+		const module = await runtime()
+		const db = new DatabaseSync(':memory:')
+		const bound: Array<Array<string | number | null>> = []
+		module.__init({
+			KODY: {
+				credentialOpen: async () => opened(),
+				storageSql: async (_packageName, query, params) => {
+					const bindings = normalizeSqlParams(params)
+					bound.push(bindings)
+					return db
+						.prepare(query)
+						.all(...bindings)
+						.map((row) => ({ ...row }))
+				},
+			},
+		})
+		return { store: module.packageStorage('@kody-test/sql'), bound }
+	}
+
+	it('binds sql(query, []), sql(query, [a]) and sql(query, [a, b]) like hosted', async () => {
+		const { store, bound } = await sqlRuntime()
+		await store.sql('CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)', [])
+		await store.sql('INSERT INTO settings (key, value) VALUES (?, ?)', ['k', 'v'])
+		assert.deepEqual(await store.sql('SELECT value FROM settings WHERE key = ?', ['k']), [{ value: 'v' }])
+		assert.deepEqual(await store.sql('SELECT count(*) AS n FROM settings'), [{ n: 1 }])
+		assert.deepEqual(bound, [[], ['k', 'v'], ['k'], []])
+	})
+
+	it('binds nothing for variadic arguments, matching hosted', async () => {
+		const { store, bound } = await sqlRuntime()
+		await store.sql('SELECT 1 AS one', 'k')
+		await store.sql('SELECT 1 AS one', 'a', 'b')
+		assert.deepEqual(bound, [[], []])
+	})
+
+	it('rejects an array element instead of binding it as JSON text', async () => {
+		const { store } = await sqlRuntime()
+		await store.sql('CREATE TABLE settings (value TEXT)', [])
+		await assert.rejects(
+			store.sql('INSERT INTO settings (value) VALUES (?)', [['k']]),
+			/storage\.sql params only support strings, numbers, booleans, and null\./,
+		)
+		await store.sql('INSERT INTO settings (value) VALUES (?)', [JSON.stringify(['k'])])
+		assert.deepEqual(await store.sql('SELECT value FROM settings', []), [{ value: '["k"]' }])
 	})
 })

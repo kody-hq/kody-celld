@@ -167,6 +167,12 @@
       "kind": "shared"
     },
     {
+      "path": "src/lib/storage-sql-statement.ts",
+      "source": "packages/shared/src/storage-sql-statement.ts",
+      "sha256": "76b3215ca5505d5112969cbfe65a1ba130d1ebf50502bf06e4de3493e7e7cb7e",
+      "kind": "shared"
+    },
+    {
       "path": "start/brand/kody-logo.ts",
       "source": "packages/worker/start/brand/kody-logo.ts",
       "sha256": "b0cc1bbac29d396b975651fb5394b063efa0be232052455d904b35587bac7bf9",

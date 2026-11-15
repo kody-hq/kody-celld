@@ -112,9 +112,10 @@ export default async function main() { return await packageStorage().get('count'
 export default async function main() {
   const s = packageStorage()
   await s.set('k', 1)
-  await s.sql('CREATE TABLE IF NOT EXISTS notes (id TEXT)')
-  await s.sql("INSERT INTO notes VALUES ('a')")
-  return 'seeded'
+  await s.sql('CREATE TABLE IF NOT EXISTS notes (id TEXT, body TEXT)', [])
+  await s.sql('INSERT INTO notes (id, body) VALUES (?, ?)', ['a', 'first'])
+  const found = await s.sql('SELECT body FROM notes WHERE id = ?', ['a'])
+  return found.rows[0]?.body === 'first' ? 'seeded' : 'sql bindings mismatch: ' + JSON.stringify(found.rows)
 }`,
 		},
 	})

@@ -304,7 +304,7 @@ export function packageStorage(__declaringPackage) {
 		delete: (key) => host().storageDelete(packageName, key),
 		list: (options) => host().storageList(packageName, options ?? {}),
 		clear: () => host().storageClear(packageName),
-		sql: (query, ...params) => host().storageSql(packageName, query, params),
+		sql: (query, params = []) => host().storageSql(packageName, query, params),
 	}
 }
 

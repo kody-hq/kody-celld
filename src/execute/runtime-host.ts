@@ -8,6 +8,7 @@ import type { CredentialCandidate } from '../credentials/resolve.ts'
 import { resolveCredentials } from '../credentials/resolve.ts'
 import type { Env } from '../env.ts'
 import { errorToJson, KodyError } from '../lib/errors.ts'
+import { normalizeSqlParams } from '../lib/storage-sql-statement.ts'
 import { callMcpTool } from '../mcp-client/service.ts'
 
 /** `app: true` only for isolates `serveApp` loads (package apps). */
@@ -258,14 +259,7 @@ export class RuntimeHost extends WorkerEntrypoint<Env, RuntimeProps> {
 		await this.storage(packageName).clear()
 	}
 
-	async storageSql(packageName: string, query: string, params: Array<unknown>) {
-		const bound = params.map((value): SqlStorageValue => {
-			if (value === null || value === undefined) return null
-			if (typeof value === 'number' || typeof value === 'string') return value
-			if (typeof value === 'boolean') return value ? 1 : 0
-			if (value instanceof ArrayBuffer) return value
-			return JSON.stringify(value)
-		})
-		return this.storage(packageName).sql(query, bound)
+	async storageSql(packageName: string, query: string, params: unknown) {
+		return this.storage(packageName).sql(query, normalizeSqlParams(params))
 	}
 }
