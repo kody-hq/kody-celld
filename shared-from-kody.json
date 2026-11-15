@@ -1,7 +1,7 @@
 {
   "kodyRepo": "kody-hq/kody",
-  "kodyCommit": "2be908623574fe48a01b6a3e9ff32bba7ce17201",
-  "updatedAt": "2026-11-12T23:28:51.342Z",
+  "kodyCommit": "36c4014e3150f0ca6a479dd90de31523dc21ed17",
+  "updatedAt": "2026-11-15T20:59:24.518Z",
   "notes": "Verbatim files must match upstream bytes at kodyCommit. Adapted files share a path with hosted Kody but are intentionally different; sync:kody reports their diffs and does not overwrite them.",
   "files": [
     {
@@ -181,7 +181,7 @@
     {
       "path": "start/components/copy-text-button.tsx",
       "source": "packages/worker/start/components/copy-text-button.tsx",
-      "sha256": "9a45bf8b2a43d20cf66a1ee85e5ffe6bb238aadec09bfc48c96272b707017cb4",
+      "sha256": "fb084e1d10268c4a2f876ea0db68813756d16122d9bcef63278b3d27cacb9a5d",
       "kind": "ui"
     },
     {
@@ -205,7 +205,7 @@
     {
       "path": "start/components/toaster.tsx",
       "source": "packages/worker/start/components/toaster.tsx",
-      "sha256": "cb2891582e0736002d12cb45fb384cade61ea3da6d7d755a60b4b78fbca3ab33",
+      "sha256": "c16fcd0ca7cbf3c4e928ce02930fe989817e8f828112c37a14d1dc3263d0e789",
       "kind": "ui"
     },
     {
@@ -217,7 +217,7 @@
     {
       "path": "start/pages/brand-guide.tsx",
       "source": "packages/worker/start/pages/brand-guide.tsx",
-      "sha256": "0eac1374b4cee48d2ac8a3155218750bbb290622b4ffb8b027c1fdcbd5116aa8",
+      "sha256": "afd0c690025cd2009fe29d1f2bd463be15fe323ace97f35cf4953f0d7bcefdbc",
       "kind": "ui"
     },
     {
@@ -229,7 +229,7 @@
     {
       "path": "universal/doc-youtube.ts",
       "source": "packages/worker/universal/doc-youtube.ts",
-      "sha256": "61fa527e4060531da46a4b17f5bb40b5e222746b3de11f0d78f95fc47902bcb0",
+      "sha256": "6e9cce50a83a7fa849da074346036ccf36fcb783a4afcb0f42664cc691f2e6e0",
       "kind": "ui"
     },
     {
@@ -276,7 +276,7 @@
     {
       "path": "start/components/doc-youtube-embed.tsx",
       "source": "packages/worker/start/components/doc-youtube-embed.tsx",
-      "sha256": "ec283fc12a705a159eccb8229a4d4dbc040a952e53db74ad895696376defc251"
+      "sha256": "ff5f9e308164c61c1f8dbcebc13d47b51b8847f2a98a00e8cb626cb0da21ccf3"
     },
     {
       "path": "start/components/youtube-light-player.tsx",
@@ -417,6 +417,11 @@
       "path": "start/public-assets.ts",
       "source": "packages/worker/start/public-assets.ts",
       "reason": "Celld serves public files at the origin root, outside the Start build namespace."
+    },
+    {
+      "path": "start/components/button.tsx",
+      "source": "packages/worker/start/components/button.tsx",
+      "reason": "Same Button contract and getButtonCss look; an href renders a plain <a> because celld keeps native document navigation instead of hosted SiteLink."
     }
   ]
 }
