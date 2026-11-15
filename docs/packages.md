@@ -250,10 +250,17 @@ await store.get('count')
 await store.list({ prefix: 'user:', limit: 50 })
 await store.delete('count')
 await store.sql('CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY, kind TEXT)')
-await store.sql('INSERT INTO events (kind) VALUES (?)', 'tick') // -> { rows, rowsWritten, ... }
+await store.sql('INSERT INTO events (kind) VALUES (?)', ['tick']) // -> { rows, rowsWritten, ... }
 await store.clear()
 store.id // 'package-storage:@kody-smoke/counter'
 ```
+
+`sql(query, params)` takes its bindings as one array, the same as hosted Kody:
+`sql(query, [a, b])` binds `a` and `b`, and `sql(query, [])` binds nothing. A
+non-array second argument binds nothing, so `sql(query, a, b)` does not bind
+`a` or `b`. Bindings accept strings, numbers, booleans (stored as `1` / `0`)
+and `null`; an array or object element throws, so `JSON.stringify` it first to
+store it as text.
 
 Each `(user, package)` gets its own `PackageStorageCell` Durable Object — a
 private SQLite database. `__kody_kv` is the KV table; anything else is the

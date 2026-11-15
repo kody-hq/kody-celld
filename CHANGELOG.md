@@ -5,6 +5,20 @@ Releases are now automated daily and their notes live in
 [GitHub Releases](https://github.com/kody-hq/kody-celld/releases); see
 [docs/contributing/releases.md](docs/contributing/releases.md).
 
+### `packageStorage().sql` takes its bindings as one array, like hosted Kody
+
+Thanks to @brandonperfetti for the precise report (#188). Celld's
+`packageStorage().sql(query, ...params)` read every argument after the query as
+a binding, while hosted Kody's is `sql(query, params)` with one array. Packages
+written for kody.codes broke on celld: `sql(query, [])` threw "Wrong number of
+parameter bindings", `sql(query, [key])` bound the JSON text `'["key"]'` and
+matched nothing, and `sql(query, [key, value])` threw. Celld now uses hosted's
+shared binding rules (`src/lib/storage-sql-statement.ts`, synced from
+kody-hq/kody). **Packages that used the variadic form must pass an array**:
+`sql(query, a, b)` now binds nothing, as on hosted. Array, object and
+`undefined` binding values now throw instead of binding as JSON text or `null`;
+`JSON.stringify` a value first to store it as text.
+
 ### Fleet deploys forward package app and secret provider settings
 
 `npm run fleet:render` (and so `fleet:deploy`) dropped `KODY_APP_BASE_URL`,
