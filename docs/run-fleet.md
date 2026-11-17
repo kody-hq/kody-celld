@@ -116,12 +116,14 @@ before every celld start. The entrypoint refuses to start a node without
 ### Tuning `CELLD_TTL_MS`
 
 Set `CELLD_TTL_MS` in `.env`; the compose file passes it to every node and the
-entrypoint waits that long. A longer lifetime lets a node ride out a longer
-bucket stall before it fences, and makes a crashed node's cells wait longer
-before a peer takes them over. It does not prevent the stuck recovery above:
-only a stable `CELLD_NODE` does. Keep the default unless you have measured
-bucket stalls longer than about a third of it (nodes renew at one third of the
-lifetime), and use the same value on every node.
+entrypoint waits that long. A node renews its lease every third of the lifetime
+and fences when no renewal lands within the lifetime, so it rides out a bucket
+stall of up to about two thirds of it (about 6.7 s at the default). A longer
+lifetime rides out a longer stall, but a crashed node's cells then wait that much
+longer before a peer takes them over, and every start waits one lifetime. It
+does not prevent the stuck recovery above: only a stable `CELLD_NODE` does. With
+stable IDs, a fleet that fenced during an outage recovers on its own once the
+bucket is reachable again. Use the same value on every node.
 
 ### Unsticking a fleet that already lost its node IDs
 
