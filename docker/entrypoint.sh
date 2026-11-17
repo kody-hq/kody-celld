@@ -187,9 +187,30 @@ run_deploy() {
 	exec celld deploy /app/wrangler.fleet.jsonc "$@"
 }
 
+# celld's supervisor contract (docs/guarantees.md, "The supervisor"): restart
+# without an attempt limit and wait at least one lease lifetime between
+# attempts. Docker's restart policy has no delay, so every node start waits
+# here. CELLD_NODE must be stable per node and disk: a fresh session ID after a
+# fleet-wide self-fence leaves the old session's log with no witness that can
+# answer for it (kody-hq/kody-celld#193, denoland/celld#249).
 run_node() {
 	: "${CELLD_BUCKET:?CELLD_BUCKET is required (s3://bucket[/prefix])}"
+	if [[ -z "${CELLD_NODE:-}" ]]; then
+		echo "[kody-celld] error: CELLD_NODE is required in node mode: a stable node-session ID per node and disk (docs/run-fleet.md#node-identity-and-restarts)" >&2
+		exit 64
+	fi
+	if [[ -z "${CELLD_TTL_MS:-}" ]]; then
+		CELLD_TTL_MS=10000
+	fi
+	if [[ ! "$CELLD_TTL_MS" =~ ^[1-9][0-9]*$ ]]; then
+		echo "[kody-celld] error: CELLD_TTL_MS must be a positive integer of milliseconds (got ${CELLD_TTL_MS})" >&2
+		exit 64
+	fi
+	export CELLD_TTL_MS
 	export CELLD_ADDR="${CELLD_ADDR:-0.0.0.0:$port}"
+	local wait_s=$(((CELLD_TTL_MS + 999) / 1000))
+	echo "[kody-celld] node $CELLD_NODE: waiting one lease lifetime (${wait_s}s, CELLD_TTL_MS=$CELLD_TTL_MS) before starting celld"
+	sleep "$wait_s"
 	exec celld "$@"
 }
 

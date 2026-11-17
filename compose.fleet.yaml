@@ -9,8 +9,10 @@
 # bundled one: drop compose.minio.yaml from COMPOSE_FILE and point CELLD_BUCKET,
 # S3_ENDPOINT and the AWS_* variables at it.
 #
-# Add nodes by copying the `node-b` block. Port 9000 (celld's peer/operator
-# listener) is never published; only Caddy is.
+# Add nodes by copying the `node-b` block with a new CELLD_NODE, --advertise
+# name and volume. Each CELLD_NODE stays paired with its volume for good
+# (docs/run-fleet.md#node-identity-and-restarts). Port 9000 (celld's
+# peer/operator listener) is never published; only Caddy is.
 x-bucket-env: &bucket-env
   CELLD_BUCKET: ${CELLD_BUCKET:-s3://kody-celld}
   S3_ENDPOINT: ${S3_ENDPOINT:-}
@@ -18,15 +20,20 @@ x-bucket-env: &bucket-env
   AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?set AWS_ACCESS_KEY_ID in .env}
   AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:?set AWS_SECRET_ACCESS_KEY in .env}
 
+x-node-env: &node-env
+  <<: *bucket-env
+  CELLD_TRUST_FORWARDED_HEADERS: '1'
+  # Node lease lifetime; empty = the entrypoint's default (docker/entrypoint.sh).
+  CELLD_TTL_MS: ${CELLD_TTL_MS:-}
+  RUST_LOG: ${CELLD_RUST_LOG:-warn}
+
+# The entrypoint waits one lease lifetime before each celld start, so Docker's
+# restart policy honors celld's supervisor contract.
 x-node: &node
   build: .
   image: ${KODY_IMAGE:-ghcr.io/kody-hq/kody-celld:latest}
   init: true
   restart: unless-stopped
-  environment:
-    <<: *bucket-env
-    CELLD_TRUST_FORWARDED_HEADERS: '1'
-    RUST_LOG: ${CELLD_RUST_LOG:-warn}
   extra_hosts:
     - 'host.docker.internal:host-gateway'
   depends_on:
@@ -126,12 +133,18 @@ services:
 
   node-a:
     <<: *node
+    environment:
+      <<: *node-env
+      CELLD_NODE: node-a
     command: ['node', '--internal-listen', '0.0.0.0:9000', '--advertise', 'node-a:9000']
     volumes:
       - node-a-state:/var/lib/celld
 
   node-b:
     <<: *node
+    environment:
+      <<: *node-env
+      CELLD_NODE: node-b
     command: ['node', '--internal-listen', '0.0.0.0:9000', '--advertise', 'node-b:9000']
     volumes:
       - node-b-state:/var/lib/celld
