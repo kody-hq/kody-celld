@@ -5,6 +5,21 @@ Releases are now automated daily and their notes live in
 [GitHub Releases](https://github.com/kody-hq/kody-celld/releases); see
 [docs/contributing/releases.md](docs/contributing/releases.md).
 
+### Fleet nodes keep a stable `CELLD_NODE` and wait one lease lifetime before each start
+
+Thanks to @aravindballa for the detailed report and logs (#193). After a
+bucket outage fenced both nodes of `compose.fleet.yaml` at once, Docker
+restarted them under new random node-session IDs, so the dead sessions' logs had
+no witness left that could answer and recovery looped on `refusing to seal`
+forever. Cells those sessions owned, including the cron owner, stayed
+unreachable. Each node now sets `CELLD_NODE` to its service name, the `node`
+entrypoint mode waits `CELLD_TTL_MS` before every celld start (celld's
+supervisor contract), and `CELLD_TTL_MS` is passed through from `.env`. **Fleet
+operators with their own compose file or nodes must set a stable `CELLD_NODE`
+per node and disk**; `node` mode refuses to start without one. A fleet that is
+already stuck can be recovered with the steps in
+[docs/run-fleet.md](docs/run-fleet.md#unsticking-a-fleet-that-already-lost-its-node-ids).
+
 ### `packageStorage().sql` takes its bindings as one array, like hosted Kody
 
 Thanks to @brandonperfetti for the precise report (#188). Celld's

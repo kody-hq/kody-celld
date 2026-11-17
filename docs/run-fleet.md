@@ -60,6 +60,7 @@ deployed version, so nodes only need bucket access):
 
 ```sh
 export CELLD_WATCH=/var/lib/celld
+export CELLD_NODE=node-a                      # stable per node and disk; see below
 celld --bucket $CELLD_BUCKET \
       --listen 0.0.0.0:8080 \                 # public Worker listener (behind TLS terminator)
       --internal-listen 10.0.0.5:9000 \       # private NIC only
@@ -67,7 +68,8 @@ celld --bucket $CELLD_BUCKET \
       --trust-forwarded-headers               # only if the proxy sets X-Forwarded-Host/Proto
 ```
 
-Repeat on further nodes with their own private addresses. The cron trigger
+Repeat on further nodes with their own private addresses and their own
+`CELLD_NODE`. The cron trigger
 (`* * * * *`) is fleet-wide: celld elects one owner for the scheduled handler,
 so jobs dispatch once per minute, not once per node.
 
@@ -75,10 +77,93 @@ Systemd sketch:
 
 ```ini
 [Service]
-EnvironmentFile=/etc/kody-celld/node.env    # bucket + AWS_* + CELLD_* (no KODY_* needed here)
+EnvironmentFile=/etc/kody-celld/node.env    # bucket + AWS_* + CELLD_NODE + CELLD_* (no KODY_* needed here)
 ExecStart=/usr/local/bin/celld --bucket ${CELLD_BUCKET} --listen 0.0.0.0:8080 --internal-listen ${PRIVATE_IP}:9000 --advertise ${PRIVATE_IP}:9000 --trust-forwarded-headers
 Restart=always
+RestartSec=10s                               # at least CELLD_TTL_MS
+StartLimitIntervalSec=0                      # no attempt limit
 ```
+
+## Node identity and restarts
+
+celld's [supervisor contract](https://github.com/denoland/celld/blob/main/docs/guarantees.md#the-supervisor)
+says to restart a node without an attempt limit and to wait at least one lease
+lifetime (`CELLD_TTL_MS`, default 10000 ms) between attempts. A node that cannot
+renew its lease in the bucket within that lifetime fences itself and exits with
+code 3. When the bucket is unreachable, every node fences at about the same
+moment.
+
+Each node must also keep one `CELLD_NODE` for the life of its disk
+(`CELLD_WATCH`). celld acknowledges a fleet write once a peer has it on disk, so
+after a fence that peer is the only witness for the writes the dead session had
+not yet uploaded. Without `CELLD_NODE`, celld picks a random ID for every
+process, so the restarted peer answers as a different session and recovery
+refuses to seal the dead session's log (`no complete true witness ... refusing
+to seal`). Cells that session owned, including `.cron:kody-celld`, stay
+unreachable. With a stable ID, the restarted process recovers its own log at
+startup and answers its peers as the same witness.
+
+`compose.fleet.yaml` does both: each node sets `CELLD_NODE` to its service name
+next to its own volume, and the `node` entrypoint mode waits one lease lifetime
+before every celld start. The entrypoint refuses to start a node without
+`CELLD_NODE`. Rules for your own nodes:
+
+- Never run two processes with the same `CELLD_NODE`, and never move an ID to a
+  different disk. A new disk gets a new ID.
+- A bare-metal supervisor needs its own delay: `RestartSec` of at least
+  `CELLD_TTL_MS` for systemd, as in the sketch above.
+
+### Tuning `CELLD_TTL_MS`
+
+Set `CELLD_TTL_MS` in `.env`; the compose file passes it to every node and the
+entrypoint waits that long. A node renews its lease every third of the lifetime
+and fences when no renewal lands within the lifetime, so it rides out a bucket
+stall of up to about two thirds of it (about 6.7 s at the default). A longer
+lifetime rides out a longer stall, but a crashed node's cells then wait that much
+longer before a peer takes them over, and every start waits one lifetime. It
+does not prevent the stuck recovery above: only a stable `CELLD_NODE` does. With
+stable IDs, a fleet that fenced during an outage recovers on its own once the
+bucket is reachable again. Use the same value on every node.
+
+### Unsticking a fleet that already lost its node IDs
+
+celld has no command to force-seal a dead session. Its documented path is to
+start a process with the dead session's `CELLD_NODE` on the same disk, which
+recovers that log at startup (celld `docs/guarantees.md`, "The ownership
+record"). For a fleet stuck after a fence that ran without stable IDs:
+
+1. For each node, find the last session that ran on its disk before the fence:
+   the `node=node_...` field of that node's `node_lease_attempt` and
+   `SELF-FENCE` log lines (`docker compose logs node-a`). The stuck sessions are
+   the ones named in `node-log recovery for node_.../...` errors, and their
+   witnesses are the IDs in `no complete true witness among {...}`.
+2. Restart the node whose disk holds a witness with `CELLD_NODE` set to that old
+   ID, for example with a temporary compose override:
+
+   ```yaml
+   # compose.unstick.yaml
+   services:
+     node-b:
+       environment:
+         CELLD_NODE: node_08118e75f86dc85d0bb6831a098bfdd8
+   ```
+
+   ```sh
+   docker compose -f compose.fleet.yaml -f compose.minio.yaml -f compose.unstick.yaml up -d --no-deps node-b
+   ```
+
+   With `RUST_LOG=info` (`CELLD_RUST_LOG` in `.env`) the peer logs
+   `node log recovered and sealed` for the stuck session, and the
+   `refusing to seal` errors stop. Repeat for each node that holds a witness.
+
+3. Put the nodes back on their stable IDs **one node at a time**:
+   `docker compose up -d --no-deps node-b`, then wait for the next node until
+   the others log `node log recovered and sealed` for the old ID. A node
+   stopped while its peers are up hands its log to them. Restarting every node
+   at once repeats the fleet-wide loss of witnesses.
+
+Stopping the nodes or moving them to new addresses also ends the loop, but
+celld then declares a bounded loss of the writes only the old disks held.
 
 ## 5. TLS terminator
 
