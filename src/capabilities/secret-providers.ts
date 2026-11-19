@@ -25,6 +25,21 @@ function guardManagement(ctx: CapabilityContext) {
 	}
 }
 
+/**
+ * Runtime code (ad hoc execute) may lock a binding but never unlock it, directly or by unbinding
+ * and binding it again; that is done through the REST API (/v1/secret-providers/<id>).
+ */
+async function assertRuntimeNotUnlocking(ctx: CapabilityContext, providerId: string, locked: boolean | undefined) {
+	if (!ctx.fromRuntime || locked === true) return
+	const existing = await ctx.userCell.secretProviderGet(providerId)
+	if (!existing?.locked) return
+	throw new KodyError(
+		'secret_provider_locked',
+		`Secret provider "${providerId}" is locked to granted packages; unlocking or unbinding it is done through /v1/secret-providers/${providerId}, not from execute code.`,
+		{ status: 403 },
+	)
+}
+
 function parseProviderId(raw: string) {
 	const providerId = raw.trim().toLowerCase()
 	if (!secretProviderIdPattern.test(providerId)) {
@@ -75,6 +90,7 @@ export default async function main() {
 	async handler(args, ctx) {
 		guardManagement(ctx)
 		const providerId = parseProviderId(args.providerId)
+		if (args.locked === false) await assertRuntimeNotUnlocking(ctx, providerId, false)
 		const binding = await ctx.userCell.secretProviderBind({
 			providerId,
 			packageName: args.packageName,
@@ -186,6 +202,7 @@ export const secretProviderLock = defineCapability<{ providerId: string; locked:
 	async handler(args, ctx) {
 		guardManagement(ctx)
 		const providerId = parseProviderId(args.providerId)
+		await assertRuntimeNotUnlocking(ctx, providerId, args.locked)
 		const binding = await ctx.userCell.secretProviderSetLocked({ providerId, locked: args.locked })
 		await recordAudit(ctx.env, {
 			actor: `user:${ctx.user.id}`,
@@ -207,6 +224,7 @@ export const secretProviderUnbind = defineCapability<{ providerId: string }>({
 	async handler(args, ctx) {
 		guardManagement(ctx)
 		const providerId = parseProviderId(args.providerId)
+		await assertRuntimeNotUnlocking(ctx, providerId, undefined)
 		const result = await ctx.userCell.secretProviderUnbind(providerId)
 		await recordAudit(ctx.env, {
 			actor: `user:${ctx.user.id}`,

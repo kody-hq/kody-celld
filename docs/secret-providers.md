@@ -97,6 +97,8 @@ await kody.secretProviderUnbind({ providerId: '1password' })
   package that already holds some grant for the provider may name an item by
   alias (title/label); the provider resolves it, and the gateway re-checks the
   grant against the returned `canonicalRef` before injecting anything.
+- `execute` code may lock a binding but not unlock or unbind a locked one
+  (`403 secret_provider_locked`); do that through `/v1/secret-providers/<id>`.
 - Deleting the provider package, rebinding, locking, revoking a grant or
   unbinding all invalidate cached values for that provider.
 - All `secretProvider*` capabilities are refused from package code

@@ -1,6 +1,5 @@
 import { KodyError } from '../lib/errors.ts'
-import { hostMatchesAllowlist, isPrivateHostname } from '../lib/host-allowlist.ts'
-import { assertResolvedHostAllowed } from '../lib/resolved-host-guard.ts'
+import { assertOutboundUrlAllowed } from '../lib/resolved-host-guard.ts'
 import type { BrowserConfig } from './config.ts'
 
 export type WaitUntil = 'load' | 'domcontentloaded' | 'networkidle0' | 'networkidle2'
@@ -69,13 +68,7 @@ export async function assertRenderableUrl(raw: unknown, config: NonNullable<Brow
 	if (url.username || url.password) {
 		throw new KodyError('invalid_args', 'URLs with embedded credentials cannot be rendered.')
 	}
-	const host = url.hostname.toLowerCase()
-	if (!hostMatchesAllowlist(host, config.allowPrivateHosts) && isPrivateHostname(host)) {
-		throw refusePrivate(
-			`"${host}" is a loopback/private host. Add it to KODY_PRIVATE_HOSTS on the server to render it.`,
-		)
-	}
-	await assertResolvedHostAllowed(
+	await assertOutboundUrlAllowed(
 		url,
 		{ allowPrivateHosts: config.allowPrivateHosts, dnsResolverUrl: config.dnsResolverUrl },
 		{ refuse: refusePrivate },

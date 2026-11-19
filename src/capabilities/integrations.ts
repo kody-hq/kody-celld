@@ -1,5 +1,11 @@
 import { connectUrl, oauthRedirectUri } from '../integrations/connect.ts'
-import { parseIntegrationConfig, parseIntegrationUsage } from '../integrations/oauth.ts'
+import {
+	addedAllowedHosts,
+	parseIntegrationConfig,
+	parseIntegrationUsage,
+	usageLoosening,
+	type IntegrationUsage,
+} from '../integrations/oauth.ts'
 import type { ConnectRecord, IntegrationRecord } from '../integrations/store.ts'
 import { recordAudit } from '../lib/audit.ts'
 import { KodyError } from '../lib/errors.ts'
@@ -23,6 +29,30 @@ function guardManagement(ctx: CapabilityContext) {
 			{ status: 403 },
 		)
 	}
+}
+
+/**
+ * Runtime code (ad hoc execute) may narrow an integration but never widen where its token goes or
+ * who may use it; widening is done from the REST API (PUT /v1/integrations/<name>).
+ */
+async function assertRuntimeNotWidening(
+	ctx: CapabilityContext,
+	name: string,
+	next: { allowedHosts?: ReadonlyArray<string>; usage: IntegrationUsage },
+) {
+	if (!ctx.fromRuntime) return
+	const stored = await ctx.userCell.integrationGet(name)
+	if (!stored) return
+	const added = next.allowedHosts ? addedAllowedHosts(stored.allowedHosts, next.allowedHosts) : []
+	const loosened = usageLoosening(stored.usage, next.usage)
+	if (added.length === 0 && loosened === null) return
+	throw new KodyError(
+		'integration_locked',
+		added.length > 0
+			? `Integration "${name}" may not be sent to ${added.join(', ')}; adding allowedHosts is done through PUT /v1/integrations/${name}, not from execute code.`
+			: `Integration "${name}" ${loosened} is done through PUT /v1/integrations/${name}, not from execute code.`,
+		{ status: 403 },
+	)
 }
 
 function present(record: IntegrationRecord, ctx: CapabilityContext, connect?: ConnectRecord | null) {
@@ -119,6 +149,7 @@ export default async function main() {
 			throw new KodyError('invalid_args', 'clientSecret must be a string or null.')
 		}
 		const config = parseIntegrationConfig(raw)
+		await assertRuntimeNotWidening(ctx, config.name, config)
 		const previous = clientSecret === undefined ? await ctx.userCell.integrationGet(config.name) : null
 		const record = await ctx.userCell.integrationSave({ config, clientSecret })
 		const clientSecretDropped = previous?.hasClientSecret === true && !record.hasClientSecret
@@ -241,6 +272,7 @@ export const integrationSetUsage = defineCapability<{
 	async handler(args, ctx) {
 		guardManagement(ctx)
 		const usage = parseIntegrationUsage(args.usage)
+		await assertRuntimeNotWidening(ctx, args.name, { usage })
 		const record = await ctx.userCell.integrationSetUsage({ name: args.name, usage })
 		await recordAudit(ctx.env, {
 			actor: `user:${ctx.user.id}`,

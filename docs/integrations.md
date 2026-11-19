@@ -135,6 +135,18 @@ await kody.integrationSetUsage({ name: 'github', usage: 'any' })
 package not listed, before any token is decrypted. `usage` can also be set in
 `integrationSave`.
 
+Code running in `execute` may only narrow an integration: dropping hosts from
+`allowedHosts`, removing packages, or locking it. Adding a host, granting a
+package or unlocking it from `execute` fails with `403 integration_locked`; do
+that through `PUT /v1/integrations/<name>`. Any save that adds a host to
+`allowedHosts` also drops the stored tokens, so the user reconnects (and sees
+the new hosts) before the token reaches them.
+
+The token endpoint is fetched by the server, so it follows the shared
+private-host policy: a loopback, private or link-local `tokenUrl` (or one whose
+name resolves to such an address) fails with `403 private_host_refused` unless
+its host is listed in `KODY_PRIVATE_HOSTS`.
+
 ## Events
 
 Packages can subscribe to auth changes (`kody.subscriptions` in
@@ -155,8 +167,9 @@ Packages can subscribe to auth changes (`kody.subscriptions` in
 | `integrationDelete`       | drop everything including the encrypted client secret                 |
 
 All management capabilities are refused from package code
-(`forbidden_from_package`); only the MCP session / ad hoc `execute` may change
-integrations, so a package cannot re-point a token at another host.
+(`forbidden_from_package`); only ad hoc `execute` (narrowing only, see above) and the
+REST API may change integrations, so no sandbox code can re-point a token at
+another host.
 `POST /admin/secrets/rekey` re-seals integration secrets and tokens together
 with ordinary secrets during master-key rotation.
 

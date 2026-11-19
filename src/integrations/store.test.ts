@@ -26,7 +26,7 @@ function memorySql() {
 
 type SeenRequest = { url: string; body: string; authorization: string | null }
 
-async function makeStore(sql = memorySql()) {
+async function makeStore(sql = memorySql(), allowPrivateHosts: Array<string> = []) {
 	sql.exec(integrationSchema)
 	ensureIntegrationColumns(sql)
 	const ring = await buildMasterKeyring('integration-store-key')
@@ -35,8 +35,10 @@ async function makeStore(sql = memorySql()) {
 		sql,
 		userId: () => 'user_1',
 		keyring: async () => ring,
-		insecureAllowance: [],
+		hostPolicy: { allowPrivateHosts, dnsResolverUrl: `${resolverOrigin}/dns-query` },
 		fetch: async (input, init) => {
+			const url = new URL(String(input))
+			if (url.origin === resolverOrigin) return dnsAnswer(url)
 			const headers = new Headers(init?.headers)
 			requests.push({ url: String(input), body: String(init?.body ?? ''), authorization: headers.get('authorization') })
 			return new Response(JSON.stringify({ access_token: `at-${requests.length}`, token_type: 'Bearer' }), {
@@ -45,6 +47,16 @@ async function makeStore(sql = memorySql()) {
 		},
 	})
 	return { store, sql, requests }
+}
+
+const resolverOrigin = 'https://dns.test'
+
+/** DNS-over-HTTPS answers: internal.acme.example is a LAN name, everything else is public. */
+function dnsAnswer(url: URL) {
+	const name = url.searchParams.get('name')
+	const type = url.searchParams.get('type')
+	const address = name === 'internal.acme.example' ? '10.0.0.7' : '93.184.216.34'
+	return Response.json({ Status: 0, Answer: type === 'A' ? [{ type: 1, data: address }] : [] })
 }
 
 const oldSecret = 'old-client-secret-value'
@@ -228,5 +240,70 @@ describe('IntegrationStore token last-used debounce', () => {
 		sql.exec("UPDATE integrations SET last_used_at = ? WHERE name = 'acme'", stale)
 		await resolve()
 		assert.ok(lastUsed()! > stale)
+	})
+})
+
+describe('IntegrationStore allowedHosts changes', () => {
+	it('a save that adds an allowed host clears the stored tokens', async () => {
+		const { store } = await makeStore()
+		await store.save(authCode(), oldSecret)
+		await connect(store, 'acme')
+		assert.equal(store.get('acme')!.status, 'connected')
+		const widened = await store.save(
+			authCode({ allowedHosts: ['api.acme.example', 'collector.other.example'] }),
+			undefined,
+		)
+		assert.equal(widened.status, 'pending')
+		const resolution = await store.tokenResolve({ name: 'acme', packageName: null, host: 'collector.other.example' })
+		assert.equal(resolution.ok, false)
+		assert.equal(resolution.ok ? null : resolution.code, 'integration_not_connected')
+	})
+
+	it('a save that only narrows allowedHosts keeps the tokens', async () => {
+		const { store } = await makeStore()
+		await store.save(authCode({ allowedHosts: ['api.acme.example', 'uploads.acme.example'] }), oldSecret)
+		await connect(store, 'acme')
+		const narrowed = await store.save(authCode({ allowedHosts: ['api.acme.example'] }), undefined)
+		assert.equal(narrowed.status, 'connected')
+	})
+
+	it('a wildcard covering the old hosts still counts as an added host', async () => {
+		const { store } = await makeStore()
+		await store.save(authCode(), oldSecret)
+		await connect(store, 'acme')
+		assert.equal((await store.save(authCode({ allowedHosts: ['*.acme.example'] }), undefined)).status, 'pending')
+	})
+})
+
+describe('IntegrationStore token endpoint host policy', () => {
+	it('refuses private, loopback and metadata token endpoints before sending anything', async () => {
+		for (const tokenUrl of [
+			'https://169.254.169.254/token',
+			'https://127.0.0.1:8443/token',
+			'https://2130706433/token',
+			'https://[::ffff:10.0.0.1]/token',
+			'https://[fd00::1]/token',
+			'https://internal.acme.example/token',
+		]) {
+			const { store, requests } = await makeStore()
+			await store.save(m2m({ tokenUrl }), oldSecret)
+			const result = await store.refresh('acme')
+			assert.equal(result.ok, false, tokenUrl)
+			assert.equal(result.ok ? null : result.code, 'private_host_refused', tokenUrl)
+			assert.match(result.ok ? '' : result.message, /KODY_PRIVATE_HOSTS/)
+			assert.deepEqual(requests, [], tokenUrl)
+		}
+	})
+
+	it('a token endpoint listed in KODY_PRIVATE_HOSTS is allowed', async () => {
+		const { store, requests } = await makeStore(undefined, ['10.0.0.0/8', 'internal.acme.example'])
+		await store.save(m2m({ tokenUrl: 'https://internal.acme.example/token' }), oldSecret)
+		assert.equal((await store.refresh('acme')).ok, true)
+		await store.save(m2m({ tokenUrl: 'https://10.0.0.7/token' }), oldSecret)
+		assert.equal((await store.refresh('acme')).ok, true)
+		assert.deepEqual(
+			requests.map((r) => r.url),
+			['https://internal.acme.example/token', 'https://10.0.0.7/token'],
+		)
 	})
 })
