@@ -11,6 +11,8 @@ describe('safeNext', () => {
 		assert.equal(safeNext('https://evil.example'), '/account')
 		assert.equal(safeNext('//evil.example/x'), '/account')
 		assert.equal(safeNext('/\\evil.example'), '/account')
+		assert.equal(safeNext('/\t/evil.example'), '/account')
+		assert.equal(safeNext('/\n/evil.example'), '/account')
 		assert.equal(safeNext('account'), '/account')
 		assert.equal(safeNext('javascript:alert(1)', '/console'), '/console')
 	})

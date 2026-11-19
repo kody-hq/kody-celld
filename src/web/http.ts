@@ -21,6 +21,8 @@ export async function readForm(request: Request): Promise<Record<string, string>
 /** Only `/path` continuations are honored so a sign-in link cannot bounce off-site. */
 export function safeNext(value: string | null | undefined, fallback = '/account') {
 	if (!value || !value.startsWith('/') || value.startsWith('//') || value.includes('\\')) return fallback
+	// Browsers drop tabs and newlines from a URL, so `/<tab>/host` would become `//host`.
+	for (const char of value) if (char < ' ' || char === '\u007f') return fallback
 	return value
 }
 
