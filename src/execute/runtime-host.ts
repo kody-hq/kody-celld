@@ -1,4 +1,3 @@
-import { runMayOpenPackageStorage } from './storage-access.ts'
 import { WorkerEntrypoint } from 'cloudflare:workers'
 import { acceptAppRunReport } from '../apps/run-report.ts'
 import type { CapabilityContext } from '../capabilities/define.ts'
@@ -47,7 +46,8 @@ export class RuntimeHost extends WorkerEntrypoint<Env, RuntimeProps> {
 		}
 		// The name comes from the sandbox, so it only counts for a package the
 		// host itself put in this run.
-		if (!runMayOpenPackageStorage(this.ctx.props, packageName)) {
+		const { packageName: runPackage, graphPackages } = this.ctx.props
+		if (packageName !== runPackage && !graphPackages?.includes(packageName)) {
 			throw new KodyError('no_package_context', 'packageStorage() is only available for packages loaded in this run.')
 		}
 		return this.env.PACKAGE_STORAGE.getByName(packageStorageCellName(this.ctx.props.userId, packageName))

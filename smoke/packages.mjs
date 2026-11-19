@@ -85,6 +85,14 @@ export default async function main() { return await packageStorage().get('count'
 	)
 	log('ad hoc packageStorage() rejected')
 
+	// Naming a package that this run did not load opens nothing.
+	const notLoaded = await mcp.execute(
+		`import { packageStorage } from 'kody:runtime'
+export default async function main() { return await packageStorage('@kody-smoke/counter').get('count') }`,
+	)
+	assert(!notLoaded.ok, 'packageStorage() for a package outside the run must fail', notLoaded)
+	log('packageStorage() for a package outside the run rejected')
+
 	// Host-side inspection of the storage cell.
 	const inspect = await mcp.call('packageStorageInspect', { packageName: '@kody-smoke/counter' })
 	const countItem = inspect.items.find((item) => item.key === 'count')
