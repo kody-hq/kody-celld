@@ -94,7 +94,12 @@ export async function runModuleGraph(
 	input: RunModuleGraphInput,
 ): Promise<WrapperResponse> {
 	const isolateName = `kody-${await graphHash(input.user.id, input.graph.modules, input.packageName)}`
-	const props = { userId: input.user.id, email: input.user.email, packageName: input.packageName }
+	const props = {
+		userId: input.user.id,
+		email: input.user.email,
+		packageName: input.packageName,
+		graphPackages: input.graph.packages,
+	}
 	const worker = env.LOADER.get(isolateName, () => ({
 		compatibilityDate: '2026-01-01',
 		compatibilityFlags: ['nodejs_compat'],

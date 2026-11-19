@@ -1,3 +1,4 @@
+import { runMayOpenPackageStorage } from './storage-access.ts'
 import { WorkerEntrypoint } from 'cloudflare:workers'
 import { acceptAppRunReport } from '../apps/run-report.ts'
 import type { CapabilityContext } from '../capabilities/define.ts'
@@ -12,7 +13,14 @@ import { normalizeSqlParams } from '../lib/storage-sql-statement.ts'
 import { callMcpTool } from '../mcp-client/service.ts'
 
 /** `app: true` only for isolates `serveApp` loads (package apps). */
-export type RuntimeProps = { userId: string; email: string; packageName: string | null; app?: boolean }
+export type RuntimeProps = {
+	userId: string
+	email: string
+	packageName: string | null
+	app?: boolean
+	/** Saved packages the host built into this isolate's module graph. */
+	graphPackages?: Array<string>
+}
 type CallContext = {
 	runId?: string
 	packageName?: string | null
@@ -36,6 +44,11 @@ export class RuntimeHost extends WorkerEntrypoint<Env, RuntimeProps> {
 	private storage(packageName: unknown) {
 		if (typeof packageName !== 'string' || !packageNamePattern.test(packageName)) {
 			throw new KodyError('no_package_context', 'packageStorage() is only available inside saved package code.')
+		}
+		// The name comes from the sandbox, so it only counts for a package the
+		// host itself put in this run.
+		if (!runMayOpenPackageStorage(this.ctx.props, packageName)) {
+			throw new KodyError('no_package_context', 'packageStorage() is only available for packages loaded in this run.')
 		}
 		return this.env.PACKAGE_STORAGE.getByName(packageStorageCellName(this.ctx.props.userId, packageName))
 	}
