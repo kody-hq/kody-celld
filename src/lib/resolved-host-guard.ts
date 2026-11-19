@@ -1,7 +1,13 @@
 import { KodyError } from './errors.ts'
 import { hostMatchesAllowlist, isPrivateHostname } from './host-allowlist.ts'
 import { privateHostsEnvKey } from './private-hosts-env.ts'
-import { egressOrigin, egressTargetHeader, egressErrorHeader, egressRefusedStatus } from './egress-protocol.ts'
+import {
+	egressOrigin,
+	egressTargetHeader,
+	egressErrorHeader,
+	egressMessageHeader,
+	egressRefusedStatus,
+} from './egress-protocol.ts'
 
 export type ResolvedHostPolicy = { allowPrivateHosts: ReadonlyArray<string> }
 export type RefuseHost = (message: string) => Error
@@ -33,6 +39,7 @@ async function forward(
 ): Promise<Response> {
 	const headers = new Headers(init.headers)
 	headers.delete(egressErrorHeader)
+	headers.delete(egressMessageHeader)
 	headers.set(egressTargetHeader, url.href)
 	let response: Response
 	try {
@@ -46,7 +53,16 @@ async function forward(
 		throw new KodyError('egress_unavailable', 'The outbound forwarder is unavailable.', { status: 502 })
 	}
 	if (response.headers.has(egressErrorHeader)) {
-		const { message } = (await response.json()) as { message: string }
+		let message = 'The outbound connection failed.'
+		const encoded = response.headers.get(egressMessageHeader)
+		if (encoded) {
+			try {
+				message = decodeURIComponent(encoded)
+			} catch {
+				message = 'The outbound forwarder returned an invalid error message.'
+			}
+		}
+		await response.body?.cancel().catch(() => {})
 		if (response.status === egressRefusedStatus) throw (options.refuse ?? defaultRefuseHost)(message)
 		throw new KodyError('egress_unavailable', message, { status: 502 })
 	}

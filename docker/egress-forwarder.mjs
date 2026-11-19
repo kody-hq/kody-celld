@@ -6,7 +6,13 @@ import { pathToFileURL } from 'node:url'
 import { pipeline } from 'node:stream/promises'
 import { hostMatchesAllowlist, isPrivateHostname } from '../src/lib/host-allowlist.ts'
 import { privateHostsFromEnv } from '../src/lib/private-hosts-env.ts'
-import { egressOrigin, egressTargetHeader, egressErrorHeader, egressRefusedStatus } from '../src/lib/egress-protocol.ts'
+import {
+	egressOrigin,
+	egressTargetHeader,
+	egressErrorHeader,
+	egressMessageHeader,
+	egressRefusedStatus,
+} from '../src/lib/egress-protocol.ts'
 
 const hopHeaders = [
 	'connection',
@@ -24,7 +30,8 @@ function cleanHeaders(headers) {
 	const connection = String(result.connection ?? '')
 		.split(',')
 		.map((name) => name.trim().toLowerCase())
-	for (const name of [...hopHeaders, ...connection, egressTargetHeader, egressErrorHeader]) delete result[name]
+	for (const name of [...hopHeaders, ...connection, egressTargetHeader, egressErrorHeader, egressMessageHeader])
+		delete result[name]
 	return result
 }
 
@@ -117,11 +124,13 @@ export function createEgressForwarder(env) {
 				return
 			}
 			const refused = error instanceof Refused
+			const message = refused ? error.message : 'The outbound connection failed.'
 			response.writeHead(refused ? egressRefusedStatus : 502, {
 				'content-type': 'application/json',
 				[egressErrorHeader]: refused ? 'refused' : 'unavailable',
+				[egressMessageHeader]: encodeURIComponent(message),
 			})
-			response.end(JSON.stringify({ message: refused ? error.message : 'The outbound connection failed.' }))
+			response.end(JSON.stringify({ message }))
 		}
 	})
 }

@@ -2,7 +2,13 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { KodyError } from './errors.ts'
 import { outboundFetch, assertOutboundUrlAllowed } from './resolved-host-guard.ts'
-import { egressOrigin, egressTargetHeader, egressErrorHeader, egressRefusedStatus } from './egress-protocol.ts'
+import {
+	egressOrigin,
+	egressTargetHeader,
+	egressErrorHeader,
+	egressMessageHeader,
+	egressRefusedStatus,
+} from './egress-protocol.ts'
 
 const policy = { allowPrivateHosts: ['nas.example'] }
 
@@ -54,7 +60,7 @@ describe('outbound transport', () => {
 						{ message: 'private address' },
 						{
 							status: egressRefusedStatus,
-							headers: { [egressErrorHeader]: 'refused' },
+							headers: { [egressErrorHeader]: 'refused', [egressMessageHeader]: encodeURIComponent('private address') },
 						},
 					),
 				refuse,
@@ -63,6 +69,44 @@ describe('outbound transport', () => {
 		)
 		const upstream = new Response('upstream', { status: egressRefusedStatus })
 		assert.equal(await outboundFetch('https://public.example/', {}, policy, { fetch: async () => upstream }), upstream)
+	})
+
+	it('maps HEAD errors from headers without requiring a response body', async () => {
+		for (const [kind, status, code] of [
+			['refused', egressRefusedStatus, 'custom_refused'],
+			['unavailable', 502, 'egress_unavailable'],
+		] as const) {
+			const message = 'Outbound policy: "höst.example" could not be reached.'
+			await assert.rejects(
+				outboundFetch('https://public.example/', { method: 'HEAD' }, policy, {
+					fetch: async (_input, init) => {
+						assert.equal(init?.method, 'HEAD')
+						return new Response(null, {
+							status,
+							headers: {
+								[egressErrorHeader]: kind,
+								[egressMessageHeader]: encodeURIComponent(message),
+							},
+						})
+					},
+					refuse: (reason) => new KodyError('custom_refused', reason, { status: 403 }),
+				}),
+				{ name: `KodyError:${code}:${status === egressRefusedStatus ? 403 : 502}`, message },
+			)
+		}
+	})
+
+	it('keeps structured errors when the error message header is missing or malformed', async () => {
+		for (const encoded of [null, '%invalid']) {
+			const headers = new Headers({ [egressErrorHeader]: 'unavailable' })
+			if (encoded !== null) headers.set(egressMessageHeader, encoded)
+			await assert.rejects(
+				outboundFetch('https://public.example/', { method: 'HEAD' }, policy, {
+					fetch: async () => new Response(null, { status: 502, headers }),
+				}),
+				{ name: 'KodyError:egress_unavailable:502' },
+			)
+		}
 	})
 
 	it('fails closed when the forwarder cannot answer and preserves cancellation', async () => {

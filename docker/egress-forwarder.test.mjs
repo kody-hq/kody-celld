@@ -4,7 +4,12 @@ import http from 'node:http'
 import { once } from 'node:events'
 import { test } from 'node:test'
 import { createEgressForwarder } from './egress-forwarder.mjs'
-import { egressTargetHeader, egressErrorHeader, egressRefusedStatus } from '../src/lib/egress-protocol.ts'
+import {
+	egressTargetHeader,
+	egressErrorHeader,
+	egressMessageHeader,
+	egressRefusedStatus,
+} from '../src/lib/egress-protocol.ts'
 
 async function listen(t, server) {
 	server.listen(0, '127.0.0.1')
@@ -56,6 +61,25 @@ test('private answers in either family are refused before opening an upstream re
 	])
 	assert.equal((await send(origin, 'http://public.example/')).status, egressRefusedStatus)
 	assert.equal(request.mock.callCount(), 0)
+})
+
+test('HEAD refusals and connection errors retain their kind and message in headers', async (t) => {
+	const origin = await listen(t, createEgressForwarder({}))
+	const lookup = t.mock.method(dns, 'lookup', async () => [{ address: '10.0.0.5', family: 4 }])
+	const refused = await send(origin, 'http://public.example/', { method: 'HEAD' })
+	assert.equal(refused.status, egressRefusedStatus)
+	assert.equal(refused.headers.get(egressErrorHeader), 'refused')
+	assert.match(decodeURIComponent(refused.headers.get(egressMessageHeader)), /private address 10\.0\.0\.5/)
+	assert.equal(await refused.text(), '')
+	lookup.mock.mockImplementation(async () => [{ address: '93.184.216.34', family: 4 }])
+	t.mock.method(http, 'request', () => {
+		throw new Error('fixture connection failure')
+	})
+	const unavailable = await send(origin, 'http://public.example/', { method: 'HEAD' })
+	assert.equal(unavailable.status, 502)
+	assert.equal(unavailable.headers.get(egressErrorHeader), 'unavailable')
+	assert.equal(decodeURIComponent(unavailable.headers.get(egressMessageHeader)), 'The outbound connection failed.')
+	assert.equal(await unavailable.text(), '')
 })
 
 test('connect uses the validated address and a later private answer is refused', async (t) => {
@@ -122,7 +146,7 @@ test('allowlisted private names and ranges pass with original headers and stream
 				target: request.headers[egressTargetHeader],
 				body: Buffer.concat(chunks),
 			}
-			response.writeHead(201, { 'x-upstream': 'yes', [egressErrorHeader]: 'refused' })
+			response.writeHead(201, { 'x-upstream': 'yes', [egressErrorHeader]: 'refused', [egressMessageHeader]: 'spoofed' })
 			response.write('first')
 			response.end('second')
 		}),
@@ -140,6 +164,7 @@ test('allowlisted private names and ranges pass with original headers and stream
 		assert.equal(response.status, 201)
 		assert.equal(response.headers.get('x-upstream'), 'yes')
 		assert.equal(response.headers.get(egressErrorHeader), null)
+		assert.equal(response.headers.get(egressMessageHeader), null)
 		assert.equal(await response.text(), 'firstsecond')
 		assert.deepEqual(received, {
 			method: 'POST',

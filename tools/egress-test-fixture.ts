@@ -1,4 +1,9 @@
-import { egressTargetHeader, egressErrorHeader, egressRefusedStatus } from '../src/lib/egress-protocol.ts'
+import {
+	egressTargetHeader,
+	egressErrorHeader,
+	egressMessageHeader,
+	egressRefusedStatus,
+} from '../src/lib/egress-protocol.ts'
 import { hostMatchesAllowlist, isPrivateHostname } from '../src/lib/host-allowlist.ts'
 
 /** Fetch-boundary fixtures shared by outbound caller tests. */
@@ -22,6 +27,12 @@ export function forwarderRefusal(
 			message = `"${host}" resolves to private address ${privateAddress}. Add it to KODY_PRIVATE_HOSTS to allow it.`
 	}
 	return message
-		? Response.json({ message }, { status: egressRefusedStatus, headers: { [egressErrorHeader]: 'refused' } })
+		? Response.json(
+				{ message },
+				{
+					status: egressRefusedStatus,
+					headers: { [egressErrorHeader]: 'refused', [egressMessageHeader]: encodeURIComponent(message) },
+				},
+			)
 		: null
 }
