@@ -166,7 +166,7 @@ async function serveAppPage(
 
 	const isolateName = await appIsolateNameForGraph({ userId: user.id, hostedUrl, modules: graph.modules })
 	// `app: true` is what lets this isolate (and no other) call `appRunReport`.
-	const props = { userId: user.id, email: user.email, packageName: pkg.name, app: true }
+	const props = { userId: user.id, email: user.email, packageName: pkg.name, app: true, graphPackages: graph.packages }
 	const worker = env.LOADER.get(isolateName, () => ({
 		compatibilityDate: '2026-01-01',
 		compatibilityFlags: ['nodejs_compat'],
