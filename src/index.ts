@@ -398,6 +398,8 @@ function blobResponse(
 	return new Response(body, {
 		headers: {
 			'content-type': record.contentType,
+			'content-disposition': 'attachment',
+			'content-security-policy': "sandbox; default-src 'none'",
 			'content-length': String(record.size),
 			etag: `"${record.etag}"`,
 			'x-kody-sha256': record.sha256,
