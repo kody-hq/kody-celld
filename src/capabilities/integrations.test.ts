@@ -7,6 +7,7 @@ import { buildMasterKeyring } from '../lib/crypto.ts'
 import { KodyError } from '../lib/errors.ts'
 import type { CapabilityContext } from './define.ts'
 import { integrationSave, integrationSetUsage } from './integrations.ts'
+import { forwardedTarget } from '../../tools/egress-test-fixture.ts'
 
 /** Just enough of Durable Object `SqlStorage` for the store (same shim as integrations/store.test.ts). */
 function memorySql() {
@@ -26,8 +27,6 @@ function memorySql() {
 	} as unknown as SqlStorage
 }
 
-const resolverOrigin = 'https://dns.test'
-
 async function setup() {
 	const sql = memorySql()
 	sql.exec(integrationSchema)
@@ -38,13 +37,9 @@ async function setup() {
 		sql,
 		userId: () => 'user_1',
 		keyring: async () => ring,
-		hostPolicy: { allowPrivateHosts: [], dnsResolverUrl: `${resolverOrigin}/dns-query` },
-		fetch: async (input) => {
-			const url = new URL(String(input))
-			if (url.origin === resolverOrigin) {
-				const type = url.searchParams.get('type')
-				return Response.json({ Status: 0, Answer: type === 'A' ? [{ type: 1, data: '93.184.216.34' }] : [] })
-			}
+		hostPolicy: { allowPrivateHosts: [] },
+		fetch: async (input, init) => {
+			const url = forwardedTarget(input, init)
 			tokenRequests.push(url.href)
 			return Response.json({ access_token: `at-${tokenRequests.length}`, token_type: 'Bearer' })
 		},

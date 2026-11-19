@@ -1,5 +1,6 @@
 import { parseIntegrationUsage, usagePermits, type IntegrationUsage } from '../integrations/oauth.ts'
 import { KodyError } from '../lib/errors.ts'
+import { assertOutboundUrlAllowed } from '../lib/resolved-host-guard.ts'
 import type { OAuthDiscoveryState } from '@modelcontextprotocol/sdk/client/auth.js'
 import type { OAuthClientInformationMixed, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js'
 import {
@@ -26,7 +27,6 @@ import {
 import { oauthAttemptIdentityMatches } from './oauth-identity.ts'
 import type { McpOAuthClient, McpOAuthClientMode, McpOAuthPending } from './oauth-store.ts'
 import { assertMcpServerName, assertMcpUrl, normalizeBearerToken, type McpConfig } from './policy.ts'
-import { assertResolvedHostAllowed } from './resolve.ts'
 import {
 	publicMcpServer,
 	type McpDiscoveryOutcome,
@@ -229,7 +229,10 @@ export async function addMcpServer(
 	const existing = input.replace === true ? await deps.cell.mcpServerGet(name) : null
 	if (existing && requested) assertUsageNotLooser(name, existing.usage, requested)
 	const usage: IntegrationUsage = requested ?? existing?.usage ?? { mode: 'any' }
-	await assertResolvedHostAllowed(url, deps.config, deps.fetch ?? fetch)
+	await assertOutboundUrlAllowed(url, deps.config, {
+		fetch: deps.fetch,
+		refuse: (message) => new KodyError('mcp_host_not_allowed', message, { status: 403 }),
+	})
 	const saved = await deps.cell.mcpServerSave({
 		name,
 		url: url.href,

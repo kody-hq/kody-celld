@@ -73,7 +73,6 @@ import {
 	type TokenResolution,
 } from '../integrations/store.ts'
 import { privateHostsFromEnv } from '../lib/private-hosts-env.ts'
-import { dnsResolverUrlFromEnv } from '../lib/resolved-host-guard.ts'
 import { normalizeSecretHost } from '../secrets/host-policy.ts'
 import type { SecretScope } from '../secrets/placeholders.ts'
 import {
@@ -658,7 +657,7 @@ export class UserCell extends DurableObject<Env> {
 			sql: this.ctx.storage.sql,
 			userId: () => this.userId,
 			keyring: () => this.keyring(),
-			hostPolicy: { allowPrivateHosts: privateHostsFromEnv(env), dnsResolverUrl: dnsResolverUrlFromEnv(env) },
+			hostPolicy: { allowPrivateHosts: privateHostsFromEnv(env) },
 			fetch: (input, init) => fetch(input, init),
 		})
 		this.secretProviders = new SecretProviderStore(this.ctx.storage.sql)

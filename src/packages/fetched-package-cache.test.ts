@@ -7,18 +7,12 @@ import {
 	urlFetchedPackageCacheTtlMs,
 } from './fetched-package-cache.ts'
 import { parsePackageSource, type FetchLike } from './install.ts'
+import { forwardedTarget } from '../../tools/egress-test-fixture.ts'
 
 const sha = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-const dnsResolverUrl = 'https://dns.test/dns-query'
 
-/** Answers the guard's DNS-over-HTTPS lookups with a public address; everything else goes to `fetchImpl`. */
-function withDns(fetchImpl: FetchLike): FetchLike {
-	return async (input, init) => {
-		const url = new URL(input)
-		if (url.origin + url.pathname !== dnsResolverUrl) return fetchImpl(input, init)
-		const answer = url.searchParams.get('type') === 'A' ? [{ type: 1, data: '93.184.216.34' }] : []
-		return Response.json({ Status: 0, Answer: answer })
-	}
+function withEgress(fetchImpl: FetchLike): FetchLike {
+	return async (input, init) => fetchImpl(forwardedTarget(input, init).href, init)
 }
 const manifest = JSON.stringify({
 	name: '@t/cached',
@@ -47,13 +41,11 @@ describe('fetchPackageSourceCached', () => {
 		const source = parsePackageSource('https://example.com/pkg.json')
 		const first = await fetchPackageSourceCached(source, {
 			allowedHosts: ['example.com'],
-			dnsResolverUrl,
-			fetch: withDns(fetchImpl),
+			fetch: withEgress(fetchImpl),
 		})
 		const second = await fetchPackageSourceCached(source, {
 			allowedHosts: ['example.com'],
-			dnsResolverUrl,
-			fetch: withDns(fetchImpl),
+			fetch: withEgress(fetchImpl),
 		})
 		assert.equal(calls, 1)
 		assert.equal(first.files['main.js'], second.files['main.js'])
@@ -75,13 +67,11 @@ describe('fetchPackageSourceCached', () => {
 		const source = parsePackageSource('https://example.com/pkg.json')
 		const a = fetchPackageSourceCached(source, {
 			allowedHosts: ['example.com'],
-			fetch: withDns(fetchImpl),
-			dnsResolverUrl,
+			fetch: withEgress(fetchImpl),
 		})
 		const b = fetchPackageSourceCached(source, {
 			allowedHosts: ['example.com'],
-			fetch: withDns(fetchImpl),
-			dnsResolverUrl,
+			fetch: withEgress(fetchImpl),
 		})
 		release()
 		assert.equal((await a).files['main.js'], (await b).files['main.js'])
@@ -108,16 +98,14 @@ describe('fetchPackageSourceCached', () => {
 		const unpinned = parsePackageSource('github:o/hello')
 		const first = await fetchPackageSourceCached(unpinned, {
 			allowedHosts: hosts,
-			fetch: withDns(fetchImpl),
-			dnsResolverUrl,
+			fetch: withEgress(fetchImpl),
 		})
 		assert.equal(first.commit, sha)
 		assert.equal(tarballCalls, 1)
 		// A later unpinned visit must not reuse the old tree (mutable key is not cached).
 		const second = await fetchPackageSourceCached(unpinned, {
 			allowedHosts: hosts,
-			fetch: withDns(fetchImpl),
-			dnsResolverUrl,
+			fetch: withEgress(fetchImpl),
 		})
 		assert.equal(tarballCalls, 2)
 		assert.equal(second.files['main.js'], 'export const n = 2\n')
@@ -125,8 +113,7 @@ describe('fetchPackageSourceCached', () => {
 		const pinned = parsePackageSource(`github:o/hello#${sha}`)
 		const third = await fetchPackageSourceCached(pinned, {
 			allowedHosts: hosts,
-			fetch: withDns(fetchImpl),
-			dnsResolverUrl,
+			fetch: withEgress(fetchImpl),
 		})
 		assert.equal(tarballCalls, 2)
 		assert.equal(third.files['main.js'], second.files['main.js'])
@@ -152,16 +139,14 @@ describe('fetchPackageSourceCached', () => {
 		for (const host of ['a.example', 'b.example', 'c.example', 'd.example']) {
 			await fetchPackageSourceCached(parsePackageSource(`https://${host}/pkg.json`), {
 				allowedHosts: ['*.example'],
-				dnsResolverUrl,
-				fetch: withDns(fetchImpl),
+				fetch: withEgress(fetchImpl),
 			})
 		}
 		assert.equal(fetchedPackageCacheSize(), 3)
 		assert.equal(n, 4)
 		await fetchPackageSourceCached(parsePackageSource('https://a.example/pkg.json'), {
 			allowedHosts: ['*.example'],
-			dnsResolverUrl,
-			fetch: withDns(fetchImpl),
+			fetch: withEgress(fetchImpl),
 		})
 		assert.equal(n, 5)
 	})
@@ -184,24 +169,21 @@ describe('fetchPackageSourceCached', () => {
 			const source = parsePackageSource('https://example.com/pkg.json')
 			const first = await fetchPackageSourceCached(source, {
 				allowedHosts: ['example.com'],
-				dnsResolverUrl,
-				fetch: withDns(fetchImpl),
+				fetch: withEgress(fetchImpl),
 			})
 			assert.equal(calls, 1)
 			assert.equal(first.files['main.js'], 'export const n = 1\n')
 			mock.timers.tick(urlFetchedPackageCacheTtlMs - 1)
 			const warm = await fetchPackageSourceCached(source, {
 				allowedHosts: ['example.com'],
-				dnsResolverUrl,
-				fetch: withDns(fetchImpl),
+				fetch: withEgress(fetchImpl),
 			})
 			assert.equal(calls, 1)
 			assert.equal(warm.files['main.js'], 'export const n = 1\n')
 			mock.timers.tick(2)
 			const refreshed = await fetchPackageSourceCached(source, {
 				allowedHosts: ['example.com'],
-				dnsResolverUrl,
-				fetch: withDns(fetchImpl),
+				fetch: withEgress(fetchImpl),
 			})
 			assert.equal(calls, 2)
 			assert.equal(refreshed.files['main.js'], 'export const n = 2\n')

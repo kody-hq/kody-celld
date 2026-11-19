@@ -4,6 +4,7 @@ import { describe, it } from 'node:test'
 import { buildMasterKeyring } from '../lib/crypto.ts'
 import { lastUsedWriteIntervalMs } from '../lib/last-used.ts'
 import { parseIntegrationConfig } from './oauth.ts'
+import { forwardedTarget, forwarderRefusal } from '../../tools/egress-test-fixture.ts'
 import { ensureIntegrationColumns, IntegrationStore, integrationSchema } from './store.ts'
 
 /** Just enough of Durable Object `SqlStorage` for the store (same shim as oauth-store.test.ts). */
@@ -35,28 +36,23 @@ async function makeStore(sql = memorySql(), allowPrivateHosts: Array<string> = [
 		sql,
 		userId: () => 'user_1',
 		keyring: async () => ring,
-		hostPolicy: { allowPrivateHosts, dnsResolverUrl: `${resolverOrigin}/dns-query` },
+		hostPolicy: { allowPrivateHosts },
 		fetch: async (input, init) => {
-			const url = new URL(String(input))
-			if (url.origin === resolverOrigin) return dnsAnswer(url)
+			const url = forwardedTarget(input, init)
+			const refusal = forwarderRefusal(
+				url.hostname,
+				[url.hostname === 'internal.acme.example' ? '10.0.0.7' : '93.184.216.34'],
+				allowPrivateHosts,
+			)
+			if (refusal) return refusal
 			const headers = new Headers(init?.headers)
-			requests.push({ url: String(input), body: String(init?.body ?? ''), authorization: headers.get('authorization') })
+			requests.push({ url: url.href, body: String(init?.body ?? ''), authorization: headers.get('authorization') })
 			return new Response(JSON.stringify({ access_token: `at-${requests.length}`, token_type: 'Bearer' }), {
 				headers: { 'content-type': 'application/json' },
 			})
 		},
 	})
 	return { store, sql, requests }
-}
-
-const resolverOrigin = 'https://dns.test'
-
-/** DNS-over-HTTPS answers: internal.acme.example is a LAN name, everything else is public. */
-function dnsAnswer(url: URL) {
-	const name = url.searchParams.get('name')
-	const type = url.searchParams.get('type')
-	const address = name === 'internal.acme.example' ? '10.0.0.7' : '93.184.216.34'
-	return Response.json({ Status: 0, Answer: type === 'A' ? [{ type: 1, data: address }] : [] })
 }
 
 const oldSecret = 'old-client-secret-value'

@@ -314,12 +314,12 @@ The same preview → install / fork flow is on the account **Packages** page. Ru
   Loopback/private/link-local addresses and `.local` / `.internal` /
   single-label names are refused unless listed there — do that for a
   Gitea/Forgejo/GitLab on your LAN. Every redirect hop is re-checked (max 3).
-- Every hop's hostname (including the built-in GitHub hosts and the GitHub
-  commit lookup) is also resolved through `KODY_DNS_RESOLVER_URL`, and the hop
-  is refused with `package_source_refused` if any answer is a private address
-  that no IP/CIDR entry of `KODY_PRIVATE_HOSTS` allows, or if the lookup fails.
-  Names listed by name or `*.suffix` skip the lookup. The fast-rebinding limit
-  in [mcp-servers.md](./mcp-servers.md) applies here too.
+- Every hop (including the built-in GitHub hosts and the GitHub commit
+  lookup) uses the local connected-IP forwarder and the container's system
+  resolver. A hop is refused with `package_source_refused` if any private
+  answer is not allowed by `KODY_PRIVATE_HOSTS`, or the lookup fails or is
+  empty. The forwarder connects to a validated address. Exact host and
+  `*.suffix` entries allow that name's addresses.
 - Limits: 8 MiB download, 24 MiB after gunzip / unpacked git tree, 400 files,
   20 s. `.git/` and `node_modules/` are skipped; non-UTF-8 files are kept as
   [binary files](#binary-files), except code and JSON modules, `README.md` and

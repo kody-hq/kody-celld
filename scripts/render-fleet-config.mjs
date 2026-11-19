@@ -11,6 +11,10 @@ import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { forwardedOperatorVars } from './fleet-vars.mjs'
+import { assertNoRemovedPrivateHostEnv, warnUnusedDnsResolverEnv } from '../src/lib/private-hosts-env.ts'
+
+assertNoRemovedPrivateHostEnv(process.env)
+warnUnusedDnsResolverEnv(process.env)
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outFile = path.join(root, 'wrangler.fleet.jsonc')

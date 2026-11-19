@@ -19,7 +19,7 @@
     "node": ">=24.3"
   },
   "scripts": {
-    "dev": "node tools/dev/ensure-dev-vars.ts && npm run build:client && celld dev . --port 8787",
+    "dev": "node tools/dev/ensure-dev-vars.ts && npm run build:client && node docker/with-egress.mjs --dev celld dev . --port 8787",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.client.json && tsc -p tsconfig.start.json",
     "lint": "oxlint src client start universal smoke examples scripts tools mail-bridge",
     "format": "prettier --write .",

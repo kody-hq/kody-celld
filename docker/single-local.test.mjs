@@ -188,6 +188,8 @@ describe('single-local helpers', () => {
 	it('entrypoint starts the online cleanup loop beside the single node', () => {
 		const body = readFileSync(new URL('./entrypoint.sh', import.meta.url), 'utf8')
 		const loop = body.indexOf('single-local.mjs ltx-gc-loop --state "$single_state" &')
-		assert.ok(loop > 0 && loop < body.indexOf('exec celld \\\n\t\t--no-control-plane'))
+		assert.ok(
+			loop > 0 && loop < body.indexOf('exec node "$script_dir/with-egress.mjs" celld \\\n\t\t--no-control-plane'),
+		)
 	})
 })

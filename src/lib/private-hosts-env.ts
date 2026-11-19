@@ -16,6 +16,7 @@ export const removedPrivateHostEnvKeys = [
 
 export type PrivateHostsEnv = {
 	KODY_PRIVATE_HOSTS?: string
+	KODY_DNS_RESOLVER_URL?: string
 	KODY_MCP_ALLOW_PRIVATE_HOSTS?: string
 	KODY_BROWSER_ALLOW_PRIVATE_HOSTS?: string
 	KODY_PACKAGE_SOURCE_HOSTS?: string
@@ -30,6 +31,14 @@ export function assertNoRemovedPrivateHostEnv(env: PrivateHostsEnv): void {
 		if (env[key] !== undefined) {
 			throw new Error(`${key} was removed; set ${privateHostsEnvKey} instead (see ${noticeUrl}).`)
 		}
+	}
+}
+
+export function warnUnusedDnsResolverEnv(env: PrivateHostsEnv): void {
+	if (env.KODY_DNS_RESOLVER_URL !== undefined) {
+		console.warn(
+			'[kody-celld] KODY_DNS_RESOLVER_URL is no longer used and is ignored; the system resolver is used for outbound policy.',
+		)
 	}
 }
 

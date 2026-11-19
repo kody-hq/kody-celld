@@ -5,7 +5,7 @@ import { KODY_CELLD_VERSION } from '../env.ts'
 import { KodyError } from '../lib/errors.ts'
 import { redactApiTokens } from '../lib/api-token-format.ts'
 import { assertMcpUrl, type McpConfig } from './policy.ts'
-import { assertResolvedHostAllowed, type DnsMemo } from './resolve.ts'
+import { outboundFetch } from '../lib/resolved-host-guard.ts'
 
 export type McpTool = {
 	name: string
@@ -104,8 +104,6 @@ export type PolicyFetchOptions = {
 /** Fetch that enforces the URL policy on every hop, follows redirects by hand and keeps Authorization on the first origin. */
 export function createPolicyFetch(config: McpConfig, options: PolicyFetchOptions): typeof fetch {
 	const base = options.base ?? fetch
-	// One fetch is built per call (or OAuth flow), so this memo lives exactly as long as that call (#47).
-	const dnsMemo: DnsMemo = new Map()
 	const fail = (kody: KodyError) => {
 		options.onPolicyError?.(kody)
 		return kody
@@ -118,14 +116,21 @@ export function createPolicyFetch(config: McpConfig, options: PolicyFetchOptions
 		for (let hop = 0; ; hop++) {
 			try {
 				url = assertMcpUrl(url.href, config)
-				await assertResolvedHostAllowed(url, config, base, dnsMemo)
 			} catch (error) {
 				throw fail(KodyError.fromUnknown(error)!)
 			}
 			const headers = new Headers(init.headers)
 			if (authorization && url.origin === origin) headers.set('authorization', authorization)
 			else headers.delete('authorization')
-			const response = await base(url.href, { ...init, headers, redirect: 'manual' })
+			let response: Response
+			try {
+				response = await outboundFetch(url, { ...init, headers, redirect: 'manual' }, config, {
+					fetch: base,
+					refuse: (message) => new KodyError('mcp_host_not_allowed', message, { status: 403 }),
+				})
+			} catch (error) {
+				throw fail(KodyError.fromUnknown(error) ?? new KodyError('mcp_call_failed', String(error), { status: 502 }))
+			}
 			if (response.status === 401) {
 				const challenge = response.headers.get('www-authenticate')
 				if (challenge) options.onChallenge?.(challenge)

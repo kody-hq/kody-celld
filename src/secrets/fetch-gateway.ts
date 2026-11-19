@@ -7,7 +7,7 @@ import { integrationEventPayload, type IntegrationRecord } from '../integrations
 import { dispatchTopic } from '../packages/subscriptions.ts'
 import { KodyError } from '../lib/errors.ts'
 import { privateHostsFromEnv } from '../lib/private-hosts-env.ts'
-import { assertOutboundUrlAllowed, dnsResolverUrlFromEnv, type DnsMemo } from '../lib/resolved-host-guard.ts'
+import { assertLiteralHostAllowed, outboundFetch } from '../lib/resolved-host-guard.ts'
 import { secretApprovalUrl } from './usage.ts'
 import { isCredentialTransportAllowed, isHostApproved, requestHost } from './host-policy.ts'
 import {
@@ -94,10 +94,28 @@ export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 		// Redirects are followed here, never by fetch(), so every hop gets the
 		// full gateway decision before anything placeholder-derived is sent.
 		let hop: GatewayHop = { url: new URL(request.url), method: request.method, headers, body, redirect: 0 }
-		const dnsMemo: DnsMemo = new Map()
 		for (;;) {
 			const current = hop
-			let result = await this.sendHop(current, dnsMemo, (event) => record(current, event))
+			const send = async (
+				target: GatewayHop,
+				recordHop: (event: GatewayRecordEvent) => Promise<void>,
+			): Promise<HopResult> => {
+				try {
+					return await this.sendHop(target, recordHop)
+				} catch (error) {
+					if (error instanceof KodyError && error.code === 'private_host_refused') {
+						return denied({
+							status: 403,
+							code: error.code,
+							message: error.message,
+							details: { host: requestHost(target.url) },
+							secrets: [],
+						})
+					}
+					throw error
+				}
+			}
+			let result = await send(current, (event) => record(current, event))
 			if (result.kind === 'denied' && current.redirect > 0 && !destinationDenials.has(result.denial.code)) {
 				// A redirect target that fails the decision gets no secret: drop the
 				// headers that carried placeholders and send only if the URL and
@@ -106,7 +124,7 @@ export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 				if (!inspectHop(stripped).hasPlaceholders) {
 					const reason = `placeholder_headers_dropped:${result.denial.code}`
 					hop = stripped
-					result = await this.sendHop(stripped, dnsMemo, (event) => record(stripped, { reason, ...event }))
+					result = await send(stripped, (event) => record(stripped, { reason, ...event }))
 				}
 			}
 			if (result.kind === 'denied') {
@@ -139,11 +157,7 @@ export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 	 * One request, no redirect following: the gateway decision for this exact
 	 * URL, then forward (placeholders replaced) or a denial for the caller.
 	 */
-	private async sendHop(
-		hop: GatewayHop,
-		dnsMemo: DnsMemo,
-		record: (event: GatewayRecordEvent) => Promise<void>,
-	): Promise<HopResult> {
+	private async sendHop(hop: GatewayHop, record: (event: GatewayRecordEvent) => Promise<void>): Promise<HopResult> {
 		const { url, headers } = hop
 		const host = requestHost(url)
 		if (this.isOwnAdminSurface(url)) {
@@ -155,13 +169,13 @@ export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 				secrets: [],
 			})
 		}
-		const privateHost = await this.privateHostDenial(url, dnsMemo)
+		const privateHost = await this.privateHostDenial(url)
 		if (privateHost) return denied(privateHost)
 
 		const { urlText, bodyText, combined, hasPlaceholders } = inspectHop(hop)
 
 		if (!hasPlaceholders) {
-			const response = await forward(hop, url, headers, hop.body)
+			const response = await forward(hop, url, headers, hop.body, privateHostsFromEnv(this.env))
 			await record({ outcome: 'forwarded', status: response.status, secrets: [] })
 			return { kind: 'sent', response }
 		}
@@ -335,7 +349,7 @@ export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 				hop.body !== null && bodyText !== null
 					? (replaceBodyPlaceholders(hop.body, jsonBody ? jsonStringEscaped(replacements) : replacements) ?? hop.body)
 					: hop.body
-			return forward(hop, injectedUrl, injectedHeaders, injectedBody)
+			return forward(hop, injectedUrl, injectedHeaders, injectedBody, privateHostsFromEnv(this.env))
 		}
 
 		try {
@@ -354,6 +368,7 @@ export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 			await record({ outcome: 'injected', status: response.status, secrets })
 			return { kind: 'sent', response }
 		} catch (error) {
+			if (error instanceof KodyError && error.code === 'private_host_refused') throw error
 			if (error instanceof InjectionError) {
 				return denied({
 					status: 400,
@@ -496,10 +511,9 @@ export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 	}
 
 	/** The shared private-host policy for this hop; KODY_PRIVATE_HOSTS is the only opt-in. */
-	private async privateHostDenial(url: URL, memo: DnsMemo): Promise<GatewayDenial | null> {
-		const policy = { allowPrivateHosts: privateHostsFromEnv(this.env), dnsResolverUrl: dnsResolverUrlFromEnv(this.env) }
+	private async privateHostDenial(url: URL): Promise<GatewayDenial | null> {
 		try {
-			await assertOutboundUrlAllowed(url, policy, { memo })
+			assertLiteralHostAllowed(url, privateHostsFromEnv(this.env))
 			return null
 		} catch (error) {
 			if (!(error instanceof KodyError)) throw error
@@ -687,8 +701,21 @@ function redactValues(text: string, replacements: ReadonlyMap<string, string>) {
 	return next
 }
 
-async function forward(hop: GatewayHop, url: URL, headers: Headers, body: BodyInit | null) {
+async function forward(
+	hop: GatewayHop,
+	url: URL,
+	headers: Headers,
+	body: BodyInit | null,
+	allowPrivateHosts: Array<string>,
+) {
 	const init: RequestInit = { method: hop.method, headers, redirect: 'manual' }
 	if (body !== null && sendsBody(hop.method)) init.body = body
-	return fetch(url, init)
+	return outboundFetch(
+		url,
+		init,
+		{ allowPrivateHosts },
+		{
+			refuse: (message) => new KodyError('private_host_refused', message, { status: 403 }),
+		},
+	)
 }

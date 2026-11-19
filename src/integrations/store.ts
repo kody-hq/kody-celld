@@ -7,7 +7,7 @@ import {
 	type MasterKeyring,
 } from '../lib/crypto.ts'
 import { KodyError } from '../lib/errors.ts'
-import { assertOutboundUrlAllowed, type ResolvedHostPolicy } from '../lib/resolved-host-guard.ts'
+import { outboundFetch, type ResolvedHostPolicy } from '../lib/resolved-host-guard.ts'
 import { lastUsedStaleBefore } from '../lib/last-used.ts'
 import { isCredentialTransportAllowed, isHostApproved } from '../secrets/host-policy.ts'
 import {
@@ -116,7 +116,7 @@ export type IntegrationStoreHost = {
 	sql: SqlStorage
 	userId: () => string
 	keyring: () => Promise<MasterKeyring>
-	/** KODY_PRIVATE_HOSTS + DNS resolver: the shared private-host policy for token endpoints. */
+	/** KODY_PRIVATE_HOSTS: the shared private-host policy for token endpoints. */
 	hostPolicy: ResolvedHostPolicy
 	fetch: typeof fetch
 }
@@ -571,10 +571,6 @@ export class IntegrationStore {
 		if (!isCredentialTransportAllowed(tokenUrl, this.host.hostPolicy.allowPrivateHosts)) {
 			throw new KodyError('integration_requires_https', `tokenUrl ${tokenUrl.origin} must use https.`, { status: 403 })
 		}
-		await assertOutboundUrlAllowed(tokenUrl, this.host.hostPolicy, {
-			fetch: (input, init) => this.host.fetch(input, init),
-			refuse: (message) => new KodyError('private_host_refused', message, { status: 403 }),
-		})
 		const stored = storedSecretFor(row, record)
 		if (stored.kind === 'unbound') {
 			throw new KodyError(
@@ -589,14 +585,23 @@ export class IntegrationStore {
 		const request = buildTokenRequest({ config: record, clientSecret, grant })
 		let response: Response
 		try {
-			response = await this.host.fetch(request.url, {
-				method: request.method,
-				headers: request.headers,
-				body: request.body,
-				signal: AbortSignal.timeout(tokenRequestTimeoutMs),
-				redirect: 'manual',
-			})
+			response = await outboundFetch(
+				request.url,
+				{
+					method: request.method,
+					headers: request.headers,
+					body: request.body,
+					signal: AbortSignal.timeout(tokenRequestTimeoutMs),
+					redirect: 'manual',
+				},
+				this.host.hostPolicy,
+				{
+					fetch: (input, init) => this.host.fetch(input, init),
+					refuse: (message) => new KodyError('private_host_refused', message, { status: 403 }),
+				},
+			)
 		} catch (error) {
+			if (error instanceof KodyError && error.code === 'private_host_refused') throw error
 			throw new KodyError(
 				'oauth_token_error',
 				`Token endpoint unreachable: ${error instanceof Error ? error.message : String(error)}`,
