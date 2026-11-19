@@ -89,6 +89,25 @@ test('connect uses the validated address and a later private answer is refused',
 	assert.deepEqual(pinned, ['93.184.216.34'])
 })
 
+test('connect falls back from a refused IPv6 address to the next validated address', async (t) => {
+	const upstream = await listen(
+		t,
+		http.createServer((request, response) => {
+			assert.equal(request.headers.host, `fallback.example:${new URL(upstream).port}`)
+			response.end('fallback')
+		}),
+	)
+	const origin = await listen(t, createEgressForwarder({ KODY_PRIVATE_HOSTS: 'fallback.example' }))
+	const lookup = t.mock.method(dns, 'lookup', async () => [
+		{ address: '::1', family: 6 },
+		{ address: '127.0.0.1', family: 4 },
+	])
+	const response = await send(origin, `http://fallback.example:${new URL(upstream).port}/`)
+	assert.equal(response.status, 200)
+	assert.equal(await response.text(), 'fallback')
+	assert.equal(lookup.mock.callCount(), 1)
+})
+
 test('allowlisted private names and ranges pass with original headers and streamed bytes', async (t) => {
 	let received
 	const upstream = await listen(

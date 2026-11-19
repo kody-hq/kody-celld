@@ -50,7 +50,7 @@ async function resolveTarget(url, allowed) {
 			)
 		}
 	}
-	return addresses[0]
+	return addresses
 }
 
 export function createEgressForwarder(env) {
@@ -81,7 +81,7 @@ export function createEgressForwarder(env) {
 			if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
 				throw new Refused('Outbound targets must be http(s) URLs without credentials.')
 			}
-			const address = await resolveTarget(url, allowed)
+			const addresses = await resolveTarget(url, allowed)
 			if (response.destroyed) return
 			if (request.url === '/resolve') {
 				response.writeHead(204).end()
@@ -93,9 +93,10 @@ export function createEgressForwarder(env) {
 				method: request.method,
 				headers,
 				agent: false,
+				autoSelectFamily: true,
 				lookup: (_host, options, callback) => {
-					if (options.all) callback(null, [address])
-					else callback(null, address.address, address.family)
+					if (options.all) callback(null, addresses)
+					else callback(null, addresses[0].address, addresses[0].family)
 				},
 			})
 			upstream.setTimeout(120_000, () => upstream.destroy(new Error('Outbound request timed out.')))
