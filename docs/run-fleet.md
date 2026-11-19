@@ -55,18 +55,28 @@ nothing restarts. Re-run `fleet:deploy` for every code change.
 
 ## 4. Start nodes
 
-On each node (same env as step 2; the Worker vars are already baked into the
-deployed version, so nodes only need bucket access):
+On each node, install Node 24 and keep a checkout of this repository alongside
+celld. Use the same bucket environment as step 2 and the same
+`KODY_PRIVATE_HOSTS` value used for deployment. Other Worker vars are already
+baked into the deployed version. Run this command from the checkout:
 
 ```sh
 export CELLD_WATCH=/var/lib/celld
 export CELLD_NODE=node-a                      # stable per node and disk; see below
-celld --bucket $CELLD_BUCKET \
-      --listen 0.0.0.0:8080 \                 # public Worker listener (behind TLS terminator)
-      --internal-listen 10.0.0.5:9000 \       # private NIC only
-      --advertise 10.0.0.5:9000 \             # what peers dial
-      --trust-forwarded-headers               # only if the proxy sets X-Forwarded-Host/Proto
+node docker/with-egress.mjs celld --bucket "$CELLD_BUCKET" \
+      --listen 0.0.0.0:8080 \
+      --internal-listen 10.0.0.5:9000 \
+      --advertise 10.0.0.5:9000 \
+      --trust-forwarded-headers
 ```
+
+The wrapper starts and supervises the loopback outbound forwarder before
+starting celld. Bare-metal installations upgrading from a direct `celld`
+command must update their service to use this wrapper; otherwise outbound
+requests fail with `egress_unavailable`. Keep the checkout updated with the
+deployed Worker. Use a private NIC for the internal listener and advertise the
+address peers can dial. Enable `--trust-forwarded-headers` only when the TLS
+terminator sets `X-Forwarded-Host` and `X-Forwarded-Proto`.
 
 Repeat on further nodes with their own private addresses and their own
 `CELLD_NODE`. The cron trigger
@@ -77,12 +87,15 @@ Systemd sketch:
 
 ```ini
 [Service]
-EnvironmentFile=/etc/kody-celld/node.env    # bucket + AWS_* + CELLD_NODE + CELLD_* (no KODY_* needed here)
-ExecStart=/usr/local/bin/celld --bucket ${CELLD_BUCKET} --listen 0.0.0.0:8080 --internal-listen ${PRIVATE_IP}:9000 --advertise ${PRIVATE_IP}:9000 --trust-forwarded-headers
+WorkingDirectory=/opt/kody-celld
+EnvironmentFile=/etc/kody-celld/node.env    # bucket + AWS_* + CELLD_NODE + CELLD_* + KODY_PRIVATE_HOSTS
+ExecStart=/usr/bin/node /opt/kody-celld/docker/with-egress.mjs /usr/local/bin/celld --bucket ${CELLD_BUCKET} --listen 0.0.0.0:8080 --internal-listen ${PRIVATE_IP}:9000 --advertise ${PRIVATE_IP}:9000 --trust-forwarded-headers
 Restart=always
 RestartSec=10s                               # at least CELLD_TTL_MS
 StartLimitIntervalSec=0                      # no attempt limit
 ```
+
+Adjust the checkout and binary paths to match each node's installation.
 
 ## Node identity and restarts
 
