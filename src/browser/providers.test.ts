@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { afterEach, describe, it, mock } from 'node:test'
 import { browserConfigFromEnv, describeBrowserConfig } from './config.ts'
 import { assertRenderableUrl, htmlTitle, htmlToText } from './providers.ts'
+import { forwardedTarget, forwarderRefusal } from '../../tools/egress-test-fixture.ts'
 
 const browserless = browserConfigFromEnv({
 	KODY_BROWSER_PROVIDER: 'browserless',
@@ -62,17 +63,18 @@ describe('browser config', () => {
 	})
 })
 
-/** Answers DNS-over-HTTPS JSON lookups from `answers` (unlisted names: `fallback`) and records them. */
-function dohStub(answers: Record<string, Array<string>> = {}, fallback = ['93.184.216.34']) {
+function resolutionStub(
+	answers: Record<string, Array<string>> = {},
+	fallback = ['93.184.216.34'],
+	allowed: Array<string> = [],
+) {
 	const queries: Array<string> = []
-	const stub = async (input: RequestInfo | URL) => {
-		const url = new URL(String(input))
-		const name = url.searchParams.get('name') ?? ''
-		const type = url.searchParams.get('type')
-		queries.push(`${name}/${type}`)
-		const addresses = answers[name] ?? fallback
-		const wanted = addresses.filter((address) => address.includes(':') === (type === 'AAAA'))
-		return Response.json({ Status: 0, Answer: wanted.map((data) => ({ type: type === 'AAAA' ? 28 : 1, data })) })
+	const stub = async (input: RequestInfo | URL, init?: RequestInit) => {
+		const url = forwardedTarget(input, init)
+		queries.push(url.hostname)
+		return (
+			forwarderRefusal(url.hostname, answers[url.hostname] ?? fallback, allowed) ?? new Response(null, { status: 204 })
+		)
 	}
 	return Object.assign(stub, { queries })
 }
@@ -80,8 +82,8 @@ function dohStub(answers: Record<string, Array<string>> = {}, fallback = ['93.18
 describe('assertRenderableUrl', () => {
 	const config = browserless!
 	afterEach(() => mock.restoreAll())
-	/** The DoH lookup uses the global fetch; answer it from `dns`. */
-	const check = (url: string, cfg = config, dns = dohStub()) => {
+	/** Browser resolution uses the shared forwarder. */
+	const check = (url: string, cfg = config, dns = resolutionStub()) => {
 		mock.method(globalThis, 'fetch', dns)
 		return assertRenderableUrl(url, cfg)
 	}
@@ -138,7 +140,7 @@ describe('assertRenderableUrl', () => {
 			'::ffff:7f00:1',
 		]) {
 			await assert.rejects(
-				check('https://public.example/', config, dohStub({ 'public.example': [address] })),
+				check('https://public.example/', config, resolutionStub({ 'public.example': [address] })),
 				(error: Error) => {
 					assert.equal(error.name, 'KodyError:browser_private_host:403')
 					assert.ok(error.message.includes(address), address)
@@ -146,28 +148,20 @@ describe('assertRenderableUrl', () => {
 				},
 			)
 		}
-		await assert.rejects(check('https://public.example/', config, dohStub({}, [])), /Could not resolve/)
+		await assert.rejects(check('https://public.example/', config, resolutionStub({}, [])), /Could not resolve/)
 	})
 
-	it('allows a private answer inside a KODY_PRIVATE_HOSTS range and skips the lookup for listed names', async () => {
-		const dns = dohStub({ 'ha.example': ['172.30.1.108'] })
+	it('allows private answers covered by KODY_PRIVATE_HOSTS', async () => {
+		const dns = resolutionStub({ 'ha.example': ['172.30.1.108'] }, undefined, ['172.30.0.0/16', 'dash.example'])
 		const cfg = { ...config, allowPrivateHosts: ['172.30.0.0/16', 'dash.example'] }
 		assert.equal(await check('http://ha.example:8123/', cfg, dns), 'http://ha.example:8123/')
 		assert.equal(await check('http://dash.example/', cfg, dns), 'http://dash.example/')
-		assert.deepEqual(dns.queries.sort(), ['ha.example/A', 'ha.example/AAAA'])
+		assert.deepEqual(dns.queries.sort(), ['dash.example', 'ha.example'])
 	})
 
-	it('reads KODY_DNS_RESOLVER_URL', () => {
-		assert.equal(config.dnsResolverUrl, 'https://cloudflare-dns.com/dns-query')
+	it('ignores the obsolete resolver setting', () => {
 		const env = { KODY_BROWSER_PROVIDER: 'browserless', KODY_BROWSER_URL: 'http://browserless:3000' }
-		assert.equal(
-			browserConfigFromEnv({ ...env, KODY_DNS_RESOLVER_URL: 'https://dns.lan/q' })?.dnsResolverUrl,
-			'https://dns.lan/q',
-		)
-		assert.throws(
-			() => browserConfigFromEnv({ ...env, KODY_DNS_RESOLVER_URL: 'http://dns.lan/q' }),
-			/KODY_DNS_RESOLVER_URL/,
-		)
+		assert.deepEqual(browserConfigFromEnv({ ...env, KODY_DNS_RESOLVER_URL: '' }), browserConfigFromEnv(env))
 	})
 })
 

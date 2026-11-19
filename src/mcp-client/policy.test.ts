@@ -9,16 +9,8 @@ describe('mcpConfigFromEnv', () => {
 		assert.deepEqual(mcpConfigFromEnv({}), {
 			allowPrivateHosts: [],
 			callTimeoutMs: 30_000,
-			dnsResolverUrl: 'https://cloudflare-dns.com/dns-query',
 		})
-		assert.equal(
-			mcpConfigFromEnv({ KODY_DNS_RESOLVER_URL: 'https://pihole.home/dns-query' }).dnsResolverUrl,
-			'https://pihole.home/dns-query',
-		)
-		assert.throws(
-			() => mcpConfigFromEnv({ KODY_DNS_RESOLVER_URL: 'http://1.1.1.1/dns-query' }),
-			/KODY_DNS_RESOLVER_URL/,
-		)
+		assert.deepEqual(mcpConfigFromEnv({ KODY_DNS_RESOLVER_URL: '' }), mcpConfigFromEnv({}))
 	})
 	it('reports bad values as config_error', () => {
 		assert.throws(() => mcpConfigFromEnv({ KODY_PRIVATE_HOSTS: '10.0.0.0/40' }), /config_error|KODY_PRIVATE_HOSTS/)

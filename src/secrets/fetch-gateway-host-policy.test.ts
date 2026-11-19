@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { registerHooks } from 'node:module'
 import test from 'node:test'
 import type { Env } from '../env.ts'
+import { forwardedTarget, forwarderRefusal } from '../../tools/egress-test-fixture.ts'
 
 const workerModule = `export class WorkerEntrypoint {
 	constructor(ctx, env) { this.ctx = ctx; this.env = env }
@@ -17,30 +18,22 @@ const hooks = registerHooks({
 const { FetchGateway } = await import('./fetch-gateway.ts')
 hooks.deregister()
 
-const resolverOrigin = 'https://dns.test'
-
 type Upstream = (url: URL) => Response
 
-/**
- * Stubs global fetch: DNS-over-HTTPS lookups answer from `dns` (unlisted names resolve to a
- * public address), everything else is an upstream request recorded in `sent`.
- */
+/** Records outbound hops and supplies forwarder responses. */
 function stubNetwork(
 	t: test.TestContext,
 	dns: Record<string, Array<string>> = {},
 	upstream: Upstream = () => new Response('ok'),
+	allowed: Array<string> = [],
 ) {
 	const sent: Array<string> = []
 	const lookups: Array<string> = []
-	t.mock.method(globalThis, 'fetch', async (input: RequestInfo | URL) => {
-		const url = new URL(input instanceof Request ? input.url : String(input))
-		if (url.origin === resolverOrigin) {
-			const name = url.searchParams.get('name') ?? ''
-			const type = url.searchParams.get('type')
-			lookups.push(`${name}/${type}`)
-			const answers = (dns[name] ?? ['93.184.216.34']).filter((a) => a.includes(':') === (type === 'AAAA'))
-			return Response.json({ Status: 0, Answer: answers.map((data) => ({ type: type === 'AAAA' ? 28 : 1, data })) })
-		}
+	t.mock.method(globalThis, 'fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+		const url = forwardedTarget(input, init)
+		lookups.push(url.hostname)
+		const refusal = forwarderRefusal(url.hostname, dns[url.hostname] ?? ['93.184.216.34'], allowed)
+		if (refusal) return refusal
 		sent.push(url.href)
 		return upstream(url)
 	})
@@ -59,7 +52,6 @@ function makeGateway(env: Record<string, string> = {}, packageName: string | nul
 	}
 	const fullEnv = {
 		KODY_PUBLIC_URL: 'https://cell.example.test',
-		KODY_DNS_RESOLVER_URL: `${resolverOrigin}/dns-query`,
 		USER: { getByName: () => userCell },
 		...env,
 	} as unknown as Env
@@ -108,12 +100,12 @@ for (const packageName of [null, 'fixture-package']) {
 
 test('a public name that resolves to a private address is refused', async (t) => {
 	const { sent } = stubNetwork(t, {
-		'rebind.example.com': ['10.0.0.5'],
+		'private-answer.example.com': ['10.0.0.5'],
 		'mapped.example.com': ['93.184.216.34', '::ffff:169.254.169.254'],
 		'ula.example.com': ['fd12:3456::1'],
 	})
 	const gateway = makeGateway()
-	for (const host of ['rebind.example.com', 'mapped.example.com', 'ula.example.com']) {
+	for (const host of ['private-answer.example.com', 'mapped.example.com', 'ula.example.com']) {
 		await assertRefused(await gateway.fetch(new Request(`https://${host}/`)))
 	}
 	assert.deepEqual(sent, [])
@@ -124,10 +116,10 @@ test('a public host is forwarded after its lookup', async (t) => {
 	const response = await makeGateway().fetch(new Request('https://api.example.com/data'))
 	assert.equal(response.status, 200)
 	assert.deepEqual(sent, ['https://api.example.com/data'])
-	assert.deepEqual(lookups.sort(), ['api.example.com/A', 'api.example.com/AAAA'])
+	assert.deepEqual(lookups.sort(), ['api.example.com'])
 })
 
-test('every fetch resolves again, so a later rebinding answer is refused', async (t) => {
+test('every fetch is checked again when the address changes', async (t) => {
 	const dns: Record<string, Array<string>> = { 'flip.example.com': ['93.184.216.34'] }
 	const { sent } = stubNetwork(t, dns)
 	const gateway = makeGateway()
@@ -138,8 +130,8 @@ test('every fetch resolves again, so a later rebinding answer is refused', async
 })
 
 test('a redirect into the private network is refused at that hop', async (t) => {
-	for (const target of ['http://169.254.169.254/latest/meta-data/', 'https://rebind.example.com/']) {
-		const { sent } = stubNetwork(t, { 'rebind.example.com': ['192.168.0.10'] }, (url) =>
+	for (const target of ['http://169.254.169.254/latest/meta-data/', 'https://private-answer.example.com/']) {
+		const { sent } = stubNetwork(t, { 'private-answer.example.com': ['192.168.0.10'] }, (url) =>
 			url.hostname === 'hop.example.com'
 				? new Response(null, { status: 302, headers: { location: target } })
 				: new Response('ok'),
@@ -162,7 +154,11 @@ test('a redirect into the private network is refused even with a placeholder-fre
 })
 
 test('KODY_PRIVATE_HOSTS is the operator opt-in for LAN hosts', async (t) => {
-	const { sent } = stubNetwork(t, { 'nas.example.com': ['192.168.1.20'] })
+	const { sent } = stubNetwork(t, { 'nas.example.com': ['192.168.1.20'] }, undefined, [
+		'127.0.0.1',
+		'192.168.1.0/24',
+		'*.lan',
+	])
 	const gateway = makeGateway({ KODY_PRIVATE_HOSTS: '127.0.0.1,192.168.1.0/24,*.lan' })
 	for (const url of ['http://127.0.0.1:8787/', 'http://printer.lan/', 'https://nas.example.com/']) {
 		assert.equal((await gateway.fetch(new Request(url))).status, 200, url)

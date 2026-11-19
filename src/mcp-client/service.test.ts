@@ -4,6 +4,7 @@ import { describe, it } from 'node:test'
 import { KodyError } from '../lib/errors.ts'
 import { buildMasterKeyring } from '../lib/crypto.ts'
 import { oauthPolicyFetch } from './client.ts'
+import { forwardedTarget } from '../../tools/egress-test-fixture.ts'
 import { refreshMcpTokens } from './oauth.ts'
 import { mcpConfigFromEnv } from './policy.ts'
 import {
@@ -328,7 +329,7 @@ async function consentAndHoldExchange(deps: McpDeps, server: ReturnType<typeof s
 	const gate = new Promise<void>((resolve) => (release = resolve))
 	deps.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
 		const request = new Request(input, init)
-		if (new URL(request.url).pathname === '/token') {
+		if (forwardedTarget(request).pathname === '/token') {
 			reached()
 			await gate
 		}

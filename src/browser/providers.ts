@@ -50,7 +50,7 @@ function refusePrivate(message: string) {
  * for a self-hosted sidecar is inside the compose network next to Kody, MinIO
  * and Qdrant. Refuse loopback / link-local / RFC1918 literals and `localhost`
  * names unless the operator listed the host in KODY_PRIVATE_HOSTS, then resolve
- * the hostname through KODY_DNS_RESOLVER_URL and refuse private answers.
+ * the hostname through the outbound forwarder and refuse private answers.
  * Only the URL Kody is given is checked: redirects, subresources and the
  * browser's own DNS lookup happen inside the browser (see docs/browser.md).
  */
@@ -68,11 +68,7 @@ export async function assertRenderableUrl(raw: unknown, config: NonNullable<Brow
 	if (url.username || url.password) {
 		throw new KodyError('invalid_args', 'URLs with embedded credentials cannot be rendered.')
 	}
-	await assertOutboundUrlAllowed(
-		url,
-		{ allowPrivateHosts: config.allowPrivateHosts, dnsResolverUrl: config.dnsResolverUrl },
-		{ refuse: refusePrivate },
-	)
+	await assertOutboundUrlAllowed(url, { allowPrivateHosts: config.allowPrivateHosts }, { refuse: refusePrivate })
 	return url.toString()
 }
 

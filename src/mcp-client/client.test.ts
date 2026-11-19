@@ -12,6 +12,7 @@ import {
 	type McpTool,
 } from './client.ts'
 import { mcpConfigFromEnv } from './policy.ts'
+import { forwardedTarget } from '../../tools/egress-test-fixture.ts'
 import { startTestMcpServer } from './test-server.ts'
 import { formatApiToken, generateApiTokenId, generateApiTokenSecret } from '../lib/api-token-format.ts'
 
@@ -203,7 +204,7 @@ describe('createPolicyFetch', () => {
 	function recorder(routes: Record<string, (init: RequestInit) => Response>) {
 		const seen: Array<{ url: string; method: string; authorization: string | null }> = []
 		const base = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
-			const requested = String(input)
+			const requested = forwardedTarget(input, init).href
 			seen.push({
 				url: requested,
 				method: (init.method ?? 'GET').toUpperCase(),
@@ -277,45 +278,17 @@ describe('redactSecrets / httpStatusOf', () => {
 	})
 })
 
-describe('DoH lookups per MCP call (#47)', () => {
-	it('a whole discovery makes one A and one AAAA query for its host, and the next call resolves again', async () => {
-		const server = startTestMcpServer({
-			bearer: 'tok',
-			tools: [{ name: 'ping', handler: () => ({ content: [], isError: false }) }],
-		})
-		const dns: Array<string> = []
-		const counted = (async (input: RequestInfo | URL, init?: RequestInit) => {
-			const u = new URL(input instanceof Request ? input.url : String(input))
-			if (u.hostname === 'cloudflare-dns.com') dns.push(`${u.searchParams.get('name')}/${u.searchParams.get('type')}`)
-			return server.fetch(input, init)
-		}) as typeof fetch
-		const publicConfig = mcpConfigFromEnv({})
-		const target = { url: 'https://mcp.example.com/mcp', authorization: 'Bearer tok' }
-		const found = await discoverServer(target, { config: publicConfig, fetch: counted })
-		assert.equal(found.tools.length, 1)
-		assert.ok(server.requests.length >= 2, 'discovery made several requests to the same host')
-		assert.deepEqual([...dns].sort(), ['mcp.example.com/A', 'mcp.example.com/AAAA'])
-		await discoverServer(target, { config: publicConfig, fetch: counted })
-		assert.equal(dns.length, 4, 'no caching across calls')
-	})
-})
-
-describe('DoH lookups across a redirect (#47)', () => {
-	it('a redirect back to the same host reuses the first hop answer', async () => {
-		const dns: Array<string> = []
-		const base = (async (input: RequestInfo | URL) => {
-			const u = new URL(input instanceof Request ? input.url : String(input))
-			if (u.hostname === 'cloudflare-dns.com') {
-				dns.push(`${u.searchParams.get('name')}/${u.searchParams.get('type')}`)
-				const type = u.searchParams.get('type')
-				return Response.json({ Status: 0, Answer: type === 'A' ? [{ type: 1, data: '93.184.216.34' }] : [] })
-			}
-			if (u.pathname === '/old') return new Response(null, { status: 307, headers: { location: '/new' } })
+describe('forwarder transport on redirects', () => {
+	it('forwards every hop independently', async () => {
+		const hops: Array<string> = []
+		const base = (async (input, init) => {
+			const url = forwardedTarget(input, init)
+			hops.push(url.href)
+			if (url.pathname === '/old') return new Response(null, { status: 307, headers: { location: '/new' } })
 			return new Response('ok')
 		}) as typeof fetch
 		const f = createPolicyFetch(mcpConfigFromEnv({}), { authorization: null, base })
-		const res = await f('https://mcp.example.com/old', { method: 'POST', body: '{}' })
-		assert.equal(await res.text(), 'ok')
-		assert.deepEqual([...dns].sort(), ['mcp.example.com/A', 'mcp.example.com/AAAA'])
+		assert.equal(await (await f('https://mcp.example.com/old', { method: 'POST', body: '{}' })).text(), 'ok')
+		assert.deepEqual(hops, ['https://mcp.example.com/old', 'https://mcp.example.com/new'])
 	})
 })

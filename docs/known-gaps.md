@@ -66,10 +66,9 @@ roadmap is now shipped; the roadmap below is kept as the change log.
 - **Installing from GitHub / URLs / kody.codes** downloads on the server: the
   host must be a built-in public source (GitHub hosts and `kody.codes`) or a
   private/LAN host listed in `KODY_PRIVATE_HOSTS`. Every hop's hostname is
-  also resolved through `KODY_DNS_RESOLVER_URL` and private answers are
-  refused, but `fetch` resolves the name again when it connects, so a name
-  that changes its answer between the check and the connect is not excluded
-  ([kody-celld#45](https://github.com/kody-hq/kody-celld/issues/45)). There is no signature/checksum
+  resolved by the local connected-IP forwarder using the system resolver.
+  Private answers not allowed by `KODY_PRIVATE_HOSTS` are refused, and the
+  forwarder connects to a validated address. There is no signature/checksum
   verification of what is downloaded. Public kody.codes packages are imported
   via read-only Git smart-HTTP on `…/@owner/leaf.git` (listing URLs rewrite to
   that); the HTML listing page is not an install API. Hosted upload-pack must
@@ -121,11 +120,11 @@ roadmap is now shipped; the roadmap below is kept as the change log.
   buffered in memory up to `KODY_BLOB_MAX_BYTES` (25 MiB default). Signed links
   are HMAC-based and tied to the master key: rotating it invalidates them.
 - **Browser rendering** is an operator-wide service, not per user. The SSRF
-  guard checks the supplied URL and resolves its hostname through
-  `KODY_DNS_RESOLVER_URL`, but it does not cover redirects, subresources,
-  `html` inputs or the browser's own DNS lookup ([browser.md](./browser.md)):
-  keep the browser on an isolated network (as the compose overlay does) if
-  untrusted users may render arbitrary URLs. Browser requests bypass the
+  guard checks the supplied URL through the local forwarder's system resolver
+  before rendering, not at connect time. Chromium makes the page connection
+  independently; redirects, subresources, page scripts and `html` inputs
+  retain the browser's network access ([browser.md](./browser.md)). Restrict
+  the browser's network to approved destinations. Browser requests bypass the
   secrets gateway by design.
 - **Email** is operator-configured per deployment (one domain, one outbound
   adapter); inbound authentication is the shared `KODY_EMAIL_INBOUND_TOKEN`, so keep the inbound routes behind

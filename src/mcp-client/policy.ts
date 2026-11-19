@@ -1,13 +1,12 @@
 import { KodyError } from '../lib/errors.ts'
 import { privateHostsEnvKey, privateHostsFromEnv, type PrivateHostsEnv } from '../lib/private-hosts-env.ts'
-import { assertLiteralHostAllowed, dnsResolverUrlFromEnv } from '../lib/resolved-host-guard.ts'
+import { assertLiteralHostAllowed } from '../lib/resolved-host-guard.ts'
 
 export type McpEnv = PrivateHostsEnv & {
 	KODY_MCP_CALL_TIMEOUT_MS?: string
-	KODY_DNS_RESOLVER_URL?: string
 }
 
-export type McpConfig = { allowPrivateHosts: Array<string>; callTimeoutMs: number; dnsResolverUrl: string }
+export type McpConfig = { allowPrivateHosts: Array<string>; callTimeoutMs: number }
 
 export const defaultMcpCallTimeoutMs = 30_000
 export const mcpServerNamePattern = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/
@@ -23,8 +22,7 @@ export function mcpConfigFromEnv(env: McpEnv): McpConfig {
 				throw new Error(`KODY_MCP_CALL_TIMEOUT_MS: expected an integer between 1000 and 600000, got "${raw}".`)
 			}
 		}
-		const dnsResolverUrl = dnsResolverUrlFromEnv(env)
-		return { allowPrivateHosts, callTimeoutMs, dnsResolverUrl }
+		return { allowPrivateHosts, callTimeoutMs }
 	} catch (error) {
 		throw new KodyError('config_error', error instanceof Error ? error.message : String(error), { status: 500 })
 	}

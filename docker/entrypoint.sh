@@ -8,6 +8,10 @@
 #   sh       drop into a shell
 set -euo pipefail
 
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+node --input-type=module -e 'import(process.argv[1]).then(({ assertNoRemovedPrivateHostEnv, warnUnusedDnsResolverEnv }) => { assertNoRemovedPrivateHostEnv(process.env); warnUnusedDnsResolverEnv(process.env) })' "$script_dir/../src/lib/private-hosts-env.ts"
+unset KODY_DNS_RESOLVER_URL
+
 mode="${1:-single}"
 shift || true
 state_dir="${KODY_STATE_DIR:-/data}"
@@ -22,7 +26,7 @@ done
 # Runtime limits / quota defaults (docs/operations.md) are plain KODY_* vars
 # that the Worker reads from its bindings; list the ones that are set.
 tunable_vars() {
-	compgen -v | grep -E '^KODY_(EXECUTE|RUN|RESPONSE|AUDIT|MCP|QUOTA|AI|SEARCH|VECTOR|QDRANT|BLOB|BROWSER|WEBHOOK|EMAIL|NPM|ESM|PACKAGE|DNS|PRIVATE|APP|DEBUG)_' || true
+	compgen -v | grep -E '^KODY_(EXECUTE|RUN|RESPONSE|AUDIT|MCP|QUOTA|AI|SEARCH|VECTOR|QDRANT|BLOB|BROWSER|WEBHOOK|EMAIL|NPM|ESM|PACKAGE|PRIVATE|APP|DEBUG)_' || true
 }
 
 random_hex() {
@@ -171,7 +175,7 @@ run_single() {
 
 	echo "[kody-celld] single node: MCP at $KODY_PUBLIC_URL/mcp (listening on 0.0.0.0:$port)"
 	echo "[kody-celld] single node: running celld directly against the local store (node=$CELLD_NODE, CELLD_LTX_RETENTION_SECS=$CELLD_LTX_RETENTION_SECS, CELLD_DURABILITY=${CELLD_DURABILITY:-fleet})"
-	exec celld \
+	exec node "$script_dir/with-egress.mjs" celld \
 		--no-control-plane \
 		--bucket celld-dev \
 		--listen "0.0.0.0:$port" \
@@ -211,7 +215,7 @@ run_node() {
 	local wait_s=$(((CELLD_TTL_MS + 999) / 1000))
 	echo "[kody-celld] node $CELLD_NODE: waiting one lease lifetime (${wait_s}s, CELLD_TTL_MS=$CELLD_TTL_MS) before starting celld"
 	sleep "$wait_s"
-	exec celld "$@"
+	exec node "$script_dir/with-egress.mjs" celld "$@"
 }
 
 case "$mode" in

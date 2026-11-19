@@ -26,6 +26,7 @@ import {
 	type FetchLike,
 } from './install.ts'
 import { gunzip, readTar } from './tar.ts'
+import { forwardedTarget, forwarderRefusal } from '../../tools/egress-test-fixture.ts'
 
 const manifest = JSON.stringify({ name: '@t/hello', version: '1.2.3', exports: { '.': './main.js' } })
 
@@ -53,35 +54,23 @@ const packageFiles = {
 	'legacy.js': new Uint8Array([0x2f, 0x2f, 0x20, 0xe9, 0x0a]),
 }
 
-const dnsResolverUrl = 'https://dns.test/dns-query'
-
-/**
- * Routes source URLs to canned responses (recorded in `calls`) and answers DNS-over-HTTPS
- * lookups at `dnsResolverUrl` from `dns` (recorded in `dnsQueries`). Unlisted names resolve
- * to a public address; `null` answers with an HTTP error.
- */
 function fetchFor(
 	routes: Record<string, () => Response>,
-	dns: Record<string, Array<string> | null> = {},
-): FetchLike & { calls: Array<string>; dnsQueries: Array<string> } {
+	addresses: Record<string, Array<string> | null> = {},
+): FetchLike & { calls: Array<string> } {
 	const calls: Array<string> = []
-	const dnsQueries: Array<string> = []
-	const impl: FetchLike = async (input) => {
-		const url = new URL(input)
-		if (url.origin + url.pathname === dnsResolverUrl) {
-			const name = url.searchParams.get('name') ?? ''
-			const type = url.searchParams.get('type')
-			dnsQueries.push(`${name}/${type}`)
-			const addresses = name in dns ? dns[name] : ['93.184.216.34']
-			if (!addresses) return new Response('down', { status: 502 })
-			const wanted = addresses.filter((address) => address.includes(':') === (type === 'AAAA'))
-			return Response.json({ Status: 0, Answer: wanted.map((data) => ({ type: type === 'AAAA' ? 28 : 1, data })) })
-		}
-		calls.push(input)
-		const route = routes[input]
+	const impl: FetchLike = async (input, init) => {
+		const url = forwardedTarget(input, init)
+		const refusal = forwarderRefusal(
+			url.hostname,
+			url.hostname in addresses ? addresses[url.hostname]! : ['93.184.216.34'],
+		)
+		if (refusal) return refusal
+		calls.push(url.href)
+		const route = routes[url.href]
 		return route ? route() : new Response('not found', { status: 404 })
 	}
-	return Object.assign(impl, { calls, dnsQueries })
+	return Object.assign(impl, { calls })
 }
 
 const tgzResponse = (bytes: Uint8Array) => () =>
@@ -252,7 +241,7 @@ describe('source host policy', () => {
 				new Response(null, { status: 302, headers: { location: 'http://169.254.169.254/latest' } }),
 			'https://github.com/a/b/loop': () => new Response(null, { status: 302, headers: { location: '/a/b/loop' } }),
 		})
-		const guard = createSourceHopGuard({ allowedHosts: defaultPackageSourceHosts, dnsResolverUrl, fetch: fetchImpl })
+		const guard = createSourceHopGuard({ allowedHosts: defaultPackageSourceHosts, fetch: fetchImpl })
 		const ok = await fetchAllowed('https://github.com/a/b/archive/main.tar.gz', guard, fetchImpl)
 		assert.equal(ok.url, 'https://codeload.github.com/a/b/tar.gz/main')
 		await assert.rejects(fetchAllowed('https://github.com/a/b/evil', guard, fetchImpl), /private host/)
@@ -265,18 +254,14 @@ describe('source host policy', () => {
 })
 
 describe('source host resolution', () => {
-	const base = { allowedHosts: ['*'], dnsResolverUrl }
+	const base = { allowedHosts: ['*'] }
 
-	it('reads KODY_DNS_RESOLVER_URL into the policy and refuses a non-https resolver', () => {
-		assert.equal(packageSourceHostPolicyFromEnv({}).dnsResolverUrl, 'https://cloudflare-dns.com/dns-query')
-		assert.equal(
-			packageSourceHostPolicyFromEnv({ KODY_DNS_RESOLVER_URL: 'https://dns.lan/dns-query' }).dnsResolverUrl,
-			'https://dns.lan/dns-query',
-		)
-		assert.throws(
-			() => packageSourceHostPolicyFromEnv({ KODY_DNS_RESOLVER_URL: 'http://dns.lan/dns-query' }),
-			/config_error.*KODY_DNS_RESOLVER_URL/,
-		)
+	it('uses KODY_PRIVATE_HOSTS and ignores the obsolete resolver setting', () => {
+		assert.deepEqual(packageSourceHostPolicyFromEnv({ KODY_PRIVATE_HOSTS: 'lan.home,10.0.0.0/8' }), {
+			allowedHosts: defaultPackageSourceHosts,
+			privateHosts: ['lan.home', '10.0.0.0/8'],
+		})
+		assert.deepEqual(packageSourceHostPolicyFromEnv({ KODY_DNS_RESOLVER_URL: '' }), packageSourceHostPolicyFromEnv({}))
 	})
 
 	it('refuses a public name that resolves to a private, loopback, link-local, CGNAT or mapped address', async () => {
@@ -308,7 +293,7 @@ describe('source host resolution', () => {
 			},
 			{ 'codeload.github.com': ['192.168.1.9'] },
 		)
-		const guard = createSourceHopGuard({ allowedHosts: defaultPackageSourceHosts, dnsResolverUrl, fetch: fetchImpl })
+		const guard = createSourceHopGuard({ allowedHosts: defaultPackageSourceHosts, fetch: fetchImpl })
 		await assert.rejects(
 			fetchAllowed('https://github.com/a/b/archive/main.tar.gz', guard, fetchImpl),
 			/codeload\.github\.com" resolves to private address 192\.168\.1\.9/,
@@ -316,34 +301,12 @@ describe('source host resolution', () => {
 		assert.deepEqual(fetchImpl.calls, ['https://github.com/a/b/archive/main.tar.gz'])
 	})
 
-	it('refuses when the lookup fails or returns nothing', async () => {
-		const failing = createSourceHopGuard({ ...base, fetch: fetchFor({}, { 'pkgs.example': null }) })
-		await assert.rejects(failing('https://pkgs.example/x.tgz'), /Could not resolve "pkgs\.example".*resolver HTTP 502/)
-		const empty = createSourceHopGuard({ ...base, fetch: fetchFor({}, { 'pkgs.example': [] }) })
-		await assert.rejects(empty('https://pkgs.example/x.tgz'), /no A\/AAAA records/)
-	})
-
-	it('lets KODY_PRIVATE_HOSTS allow a resolved range, and skips the lookup for listed names and IP literals', async () => {
-		const fetchImpl = fetchFor({}, { 'git.example': ['172.30.1.5'] })
-		const guard = createSourceHopGuard({
-			...base,
-			privateHosts: ['172.30.0.0/16', 'gitea.local', '192.168.1.20'],
-			fetch: fetchImpl,
-		})
-		assert.equal(await guard('https://git.example/x.tgz'), 'https://git.example/x.tgz')
-		assert.equal(await guard('http://gitea.local/x.tgz'), 'http://gitea.local/x.tgz')
-		assert.equal(await guard('http://192.168.1.20:3000/x.tgz'), 'http://192.168.1.20:3000/x.tgz')
-		assert.deepEqual(fetchImpl.dnsQueries.sort(), ['git.example/A', 'git.example/AAAA'])
-	})
-
-	it('reuses answers within one install only', async () => {
-		const fetchImpl = fetchFor({})
-		const guard = createSourceHopGuard({ ...base, fetch: fetchImpl })
-		await guard('https://pkgs.example/a.tgz')
-		await guard('https://pkgs.example/b.tgz')
-		assert.equal(fetchImpl.dnsQueries.length, 2)
-		await createSourceHopGuard({ ...base, fetch: fetchImpl })('https://pkgs.example/a.tgz')
-		assert.equal(fetchImpl.dnsQueries.length, 4)
+	it('refuses a failed or empty forwarder resolution', async () => {
+		for (const addresses of [null, []]) {
+			const baseFetch = fetchFor({}, { 'pkgs.example': addresses })
+			const guard = createSourceHopGuard({ ...base, fetch: baseFetch })
+			await assert.rejects(fetchAllowed('https://pkgs.example/x.tgz', guard, baseFetch), /Could not resolve/)
+		}
 	})
 
 	it('checks every hop of the GitHub commit lookup', async () => {
@@ -356,7 +319,7 @@ describe('source host resolution', () => {
 			'https://api.github.com/repositories/1/commits/HEAD': () => new Response(exampleCommit, { status: 200 }),
 		}
 		const source = { kind: 'github' as const, owner: 'o', repo: 'moved', ref: null, subdir: null }
-		const options = { allowedHosts: defaultPackageSourceHosts, dnsResolverUrl }
+		const options = { allowedHosts: defaultPackageSourceHosts }
 		assert.equal(await resolveGithubCommitSha(source, { ...options, fetch: fetchFor(routes) }), exampleCommit)
 		const privateApi = fetchFor(routes, { 'api.github.com': ['10.0.0.1'] })
 		assert.equal(await resolveGithubCommitSha(source, { ...options, fetch: privateApi }), undefined)
@@ -368,7 +331,6 @@ describe('source host resolution', () => {
 		await assert.rejects(
 			fetchPackageSource(parsePackageSource('kody:@t/hello'), {
 				allowedHosts: defaultPackageSourceHosts,
-				dnsResolverUrl,
 				fetch: fetchImpl,
 			}),
 			/kody\.codes" resolves to private address 127\.0\.0\.1/,
@@ -429,7 +391,6 @@ describe('fetchPackageSource', () => {
 		})
 		const result = await fetchPackageSource(parsePackageSource('github:o/hello'), {
 			allowedHosts: defaultPackageSourceHosts,
-			dnsResolverUrl,
 			fetch: fetchImpl,
 		})
 		assert.deepEqual(Object.keys(result.files).sort(), [
@@ -462,7 +423,6 @@ describe('fetchPackageSource', () => {
 		})
 		const result = await fetchPackageSource(parsePackageSource('github:o/hello'), {
 			allowedHosts: defaultPackageSourceHosts,
-			dnsResolverUrl,
 			fetch: fetchImpl,
 		})
 		assert.equal(result.commit, exampleCommit)
@@ -486,7 +446,6 @@ describe('fetchPackageSource', () => {
 		})
 		const result = await fetchPackageSource(parsePackageSource('github:o/hello'), {
 			allowedHosts: defaultPackageSourceHosts,
-			dnsResolverUrl,
 			fetch: fetchImpl,
 		})
 		assert.equal(result.commit, exampleCommit)
@@ -505,7 +464,6 @@ describe('fetchPackageSource', () => {
 		const fetchImpl = fetchFor({ 'https://codeload.github.com/o/mono/tar.gz/main': tgzResponse(tarball) })
 		const ok = await fetchPackageSource(parsePackageSource('github:o/mono/packages/hello#main'), {
 			allowedHosts: defaultPackageSourceHosts,
-			dnsResolverUrl,
 			fetch: fetchImpl,
 		})
 		assert.equal(ok.files['main.js'], packageFiles['main.js'])
@@ -513,7 +471,6 @@ describe('fetchPackageSource', () => {
 		await assert.rejects(
 			fetchPackageSource(parsePackageSource('github:o/mono#main'), {
 				allowedHosts: defaultPackageSourceHosts,
-				dnsResolverUrl,
 				fetch: fetchImpl,
 			}),
 			/package\.json was found in: packages\/hello, packages\/other/,
@@ -521,7 +478,6 @@ describe('fetchPackageSource', () => {
 		await assert.rejects(
 			fetchPackageSource(parsePackageSource('github:o/mono/nowhere#main'), {
 				allowedHosts: defaultPackageSourceHosts,
-				dnsResolverUrl,
 				fetch: fetchImpl,
 			}),
 			/package\.json was found in: packages\/hello, packages\/other/,
@@ -568,7 +524,6 @@ describe('fetchPackageSource', () => {
 		})
 		const result = await fetchPackageSource(parsePackageSource('https://raw.githubusercontent.com/o/r/main/pkg.json'), {
 			allowedHosts: defaultPackageSourceHosts,
-			dnsResolverUrl,
 			fetch: fetchImpl,
 		})
 		assert.equal(result.files['main.js'], 'x')
@@ -580,7 +535,6 @@ describe('fetchPackageSource', () => {
 		await assert.rejects(
 			fetchPackageSource(parsePackageSource('https://evil.example/pkg.tgz'), {
 				allowedHosts: defaultPackageSourceHosts,
-				dnsResolverUrl,
 				fetch: fetchImpl,
 			}),
 			/package_source_refused/,
@@ -634,7 +588,6 @@ describe('packageFileView', () => {
 		})
 		const preview = await previewPackageSource(parsePackageSource('github:o/hello'), {
 			allowedHosts: defaultPackageSourceHosts,
-			dnsResolverUrl,
 			fetch: fetchImpl,
 		})
 		assert.equal(packageFileView(preview.files, 'main.js').content, packageFiles['main.js'])

@@ -151,7 +151,7 @@ which celld uses to bundle the Worker).
 
 ```sh
 npm install
-npm run dev          # celld dev . --port 8787  (state persists in .celld/dev)
+npm run dev          # local forwarder + celld dev . --port 8787 (state persists in .celld/dev)
 ```
 
 In another terminal:

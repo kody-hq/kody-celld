@@ -119,8 +119,9 @@ Every outbound `fetch` from an isolate is routed through `FetchGateway`
 (`globalOutbound`). Every hop, redirects included and with or without
 placeholders, first passes the shared private-host policy: a loopback, private,
 link-local or metadata host (any IP literal form, or a name that resolves to
-one through `KODY_DNS_RESOLVER_URL`) is refused with `403 private_host_refused`
-unless it is listed in `KODY_PRIVATE_HOSTS`. For requests containing
+one through the system resolver) is refused with `403 private_host_refused`
+unless it is listed in `KODY_PRIVATE_HOSTS`. The local forwarder connects to
+an address validated by that policy, without a second name lookup. For requests containing
 placeholders:
 
 ```

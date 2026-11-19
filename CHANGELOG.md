@@ -5,6 +5,17 @@ Releases are now automated daily and their notes live in
 [GitHub Releases](https://github.com/kody-hq/kody-celld/releases); see
 [docs/contributing/releases.md](docs/contributing/releases.md).
 
+### Outbound private-host policy uses the connected address
+
+Sandbox fetches, integration token requests, MCP clients and package sources
+now use a local forwarder that resolves hosts with the system resolver and
+connects to a validated IP. `KODY_PRIVATE_HOSTS` remains the single policy.
+`KODY_DNS_RESOLVER_URL` is no longer used; if set, it is ignored with one
+startup warning. Names now
+resolve through the container's system resolver, so LAN and `.home` names
+use Docker's DNS configuration. Browser target checks use the same resolver
+before rendering, but Chromium's page connection is not checked at connect time.
+
 ### Fleet nodes keep a stable `CELLD_NODE` and wait one lease lifetime before each start
 
 Thanks to @aravindballa for the detailed report and logs (#193). After a
@@ -160,8 +171,7 @@ opener-granting `rel` on a real link.
 ### Package sources and browser rendering resolve hostnames
 
 Package installs and previews (every hop, including redirects) and browser
-rendering `url`s now resolve the hostname through `KODY_DNS_RESOLVER_URL`,
-like MCP servers already did, and refuse private answers that
+rendering `url`s gained resolved-address checks and refuse private answers that
 `KODY_PRIVATE_HOSTS` does not allow. If you install packages from, or render
 pages on, a LAN host by a public DNS name, list its address range in
 `KODY_PRIVATE_HOSTS` (or the name itself). See [docs/browser.md](./docs/browser.md)

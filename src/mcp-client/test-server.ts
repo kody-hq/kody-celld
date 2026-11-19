@@ -5,24 +5,13 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import type { McpToolResult } from './client.ts'
+import { forwardedTarget, forwarderRefusal } from '../../tools/egress-test-fixture.ts'
 
 export type TestTool = {
 	name: string
 	description?: string
 	inputSchema?: Record<string, unknown>
 	handler: (args: Record<string, unknown>) => McpToolResult | Promise<McpToolResult>
-}
-
-/** Fake DoH answers for `fetch` in tests: `*.example.com` resolves to a public address unless `dns` says otherwise. */
-function answerDns(url: URL, dns: Record<string, string>) {
-	const name = url.searchParams.get('name') ?? ''
-	const type = url.searchParams.get('type')
-	const address = dns[name] ?? (name.endsWith('.example.com') ? '93.184.216.34' : undefined)
-	const wanted = type === 'AAAA' ? address?.includes(':') : address && !address.includes(':')
-	return Response.json({
-		Status: 0,
-		Answer: wanted ? [{ name, type: type === 'AAAA' ? 28 : 1, TTL: 60, data: address }] : [],
-	})
 }
 
 export type TestOAuthOptions = {
@@ -247,9 +236,12 @@ export function startTestMcpServer(
 	}
 
 	const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit) => {
-		const request = new Request(input, init)
-		const url = new URL(request.url)
-		if (url.hostname === 'cloudflare-dns.com') return answerDns(url, dns)
+		const url = forwardedTarget(input, init)
+		const refusal = forwarderRefusal(url.hostname, [dns[url.hostname] ?? '93.184.216.34'])
+		if (refusal) return refusal
+		if (new URL(input instanceof Request ? input.url : String(input)).pathname === '/resolve')
+			return new Response(null, { status: 204 })
+		const request = new Request(url, input instanceof Request ? input : init)
 		requests.push({ url: request.url, authorization: request.headers.get('authorization') })
 		const custom = state.respond?.(url)
 		if (custom) return custom

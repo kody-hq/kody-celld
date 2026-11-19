@@ -2,7 +2,10 @@
 // binaries on PATH. Issue #193: Docker restarted fenced nodes at once under a
 // fresh random session ID, so the dead sessions' logs had no witness left.
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
+import http from 'node:http'
+import { once } from 'node:events'
+import { egressOrigin } from '../src/lib/egress-protocol.ts'
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -82,4 +85,63 @@ test('compose.fleet.yaml gives every node its own stable CELLD_NODE', () => {
 
 test('compose.fleet.yaml passes CELLD_TTL_MS through without a second default', () => {
 	assert.match(readCompose(), /^ {2}CELLD_TTL_MS: \$\{CELLD_TTL_MS:-\}$/m)
+})
+
+test('node startup ignores the obsolete resolver setting with one warning, including an empty value', () => {
+	for (const value of ['', 'https://resolver.example/']) {
+		const { status, stderr, calls } = runNode({ CELLD_NODE: 'node-a', KODY_DNS_RESOLVER_URL: value })
+		assert.equal(status, 0)
+		assert.match(stderr, /KODY_DNS_RESOLVER_URL is no longer used.*system resolver.*outbound policy/)
+		assert.equal(stderr.match(/KODY_DNS_RESOLVER_URL/g)?.length, 1)
+		assert.deepEqual(calls, ['sleep 10', 'celld node=node-a ttl=10000 args=--advertise node-a:9000'])
+	}
+})
+
+test('the application starts only after the forwarder listens and its exit code is preserved', () => {
+	const program = `const response = await fetch('${egressOrigin}/health'); process.exit(response.status === 204 ? 7 : 9)`
+	const result = spawnSync(
+		process.execPath,
+		[join(here, 'with-egress.mjs'), process.execPath, '--input-type=module', '-e', program],
+		{
+			env: { PATH: process.env.PATH },
+			encoding: 'utf8',
+			timeout: 10_000,
+		},
+	)
+	assert.equal(result.status, 7, result.stderr)
+})
+
+test('a forwarder listener failure stops startup instead of starting the application', async () => {
+	const address = new URL(egressOrigin)
+	const server = http.createServer()
+	server.listen(Number(address.port), address.hostname)
+	await once(server, 'listening')
+	try {
+		const child = spawn(
+			process.execPath,
+			[join(here, 'with-egress.mjs'), process.execPath, '-e', 'console.log("unexpected application start")'],
+			{
+				env: { PATH: process.env.PATH },
+				stdio: ['ignore', 'pipe', 'pipe'],
+			},
+		)
+		let output = ''
+		child.stdout.on('data', (chunk) => {
+			output += chunk
+		})
+		child.stderr.on('data', (chunk) => {
+			output += chunk
+		})
+		const [code] = await once(child, 'exit')
+		assert.equal(code, 1)
+		assert.match(output, /outbound forwarder failed/)
+		assert.doesNotMatch(output, /unexpected application start/)
+	} finally {
+		await new Promise((resolve) => server.close(resolve))
+	}
+})
+
+test('fleet nodes receive the private-host policy at runtime', () => {
+	const shared = readCompose().split('x-node-env: &node-env')[1].split('x-node: &node')[0]
+	assert.match(shared, /KODY_PRIVATE_HOSTS: \$\{KODY_PRIVATE_HOSTS:-\}/)
 })

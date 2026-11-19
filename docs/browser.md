@@ -97,24 +97,16 @@ compose `deploy` service). Every node uses the same service.
   `.local`/`.internal`/single-label names, or `file:`/`data:` schemes — unless
   the host is in `KODY_PRIVATE_HOSTS` (an exact host, or an IP
   literal inside a listed CIDR range such as `172.30.0.0/16`).
-- **Resolved addresses are checked.** Before Kody asks the browser to load a
-  `url`, it resolves the hostname through DNS-over-HTTPS
-  (`KODY_DNS_RESOLVER_URL`, the same check MCP servers get, see
-  [mcp-servers.md](./mcp-servers.md)) and refuses the URL with
-  `browser_private_host` if any A/AAAA answer is a private, loopback,
-  link-local, CGNAT or metadata address (IPv4 or IPv6, including IPv4-mapped
-  forms) that no IP/CIDR entry of `KODY_PRIVATE_HOSTS` allows, or if the lookup
-  fails. IP literals and names that match a name or `*.suffix` entry skip the
-  lookup.
-- **Limits of that check.** Only the URL Kody is given is checked. The browser
-  follows redirects, loads subresources and runs page scripts itself, and it
-  resolves the name again with its own resolver, so a redirect, a subresource,
-  an `html` input, or a name whose answer changes after the check can still
-  reach whatever the browser's network can reach. Keep the browser on an
-  isolated network (the compose overlay does this: the browser shares only the
-  compose network with Kody) if untrusted users can render arbitrary URLs.
-  Connect-time pinning is tracked in
-  [kody-celld#45](https://github.com/kody-hq/kody-celld/issues/45).
+- **Target addresses are checked before rendering, not at connect time.**
+  Kody asks the local outbound forwarder to resolve the supplied `url`
+  through the container's system resolver. It refuses an empty or failed lookup
+  and any private answer not allowed by `KODY_PRIVATE_HOSTS`, with
+  `browser_private_host`. Exact host and `*.suffix` entries allow that
+  name's addresses; IP/CIDR entries allow the matching addresses.
+- **Chromium connects independently.** The page connection does not use the
+  connected-IP forwarder. Redirects, subresources, page scripts and `html`
+  inputs run within the browser's network access. Deploy the browser on a
+  network restricted to the destinations your users may render.
 
 - **The browser is not the gateway.** Pages are fetched by Chromium, so
   `{{secret:…}}` placeholders are never resolved in browser requests and

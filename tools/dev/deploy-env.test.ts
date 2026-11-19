@@ -9,12 +9,7 @@ function read(relative: string): string {
 	return readFileSync(new URL(`../../${relative}`, import.meta.url), 'utf8')
 }
 
-const mcpVars = [
-	'KODY_PRIVATE_HOSTS',
-	'KODY_MCP_CALL_TIMEOUT_MS',
-	'KODY_DNS_RESOLVER_URL',
-	'KODY_QUOTA_MCP_SERVERS',
-] as const
+const mcpVars = ['KODY_PRIVATE_HOSTS', 'KODY_MCP_CALL_TIMEOUT_MS', 'KODY_QUOTA_MCP_SERVERS'] as const
 
 function tunableRegex(): RegExp {
 	const entrypoint = read('docker/entrypoint.sh')

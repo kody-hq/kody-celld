@@ -1,12 +1,6 @@
 import { KodyError } from '../lib/errors.ts'
 import { privateHostsFromEnv, type PrivateHostsEnv } from '../lib/private-hosts-env.ts'
-import {
-	assertLiteralHostAllowed,
-	assertResolvedHostAllowed,
-	dnsResolverUrlFromEnv,
-	type DnsMemo,
-	type DnsResolverEnv,
-} from '../lib/resolved-host-guard.ts'
+import { assertLiteralHostAllowed, outboundFetch, type ResolvedHostPolicy } from '../lib/resolved-host-guard.ts'
 import { hostMatchesApproval } from '../secrets/host-policy.ts'
 import { cloneGitSmartHttp, normalizeGitUrl } from './git-smart-http.ts'
 import { parsePackageManifest, type PackageFiles, type PackageManifest } from './manifest.ts'
@@ -25,14 +19,13 @@ import { gunzip, isGzip, readTar, type TarEntry } from './tar.ts'
  * `.tar.gz` / `.tgz` URL, or a JSON file map. The server fetches the source
  * itself, so every hop is checked against the built-in public defaults and
  * `KODY_PRIVATE_HOSTS` for private/LAN (SSRF guard), and the hop's hostname is
- * resolved through `KODY_DNS_RESOLVER_URL` so a name that points at a private
- * address is refused too. The result is a plain file
+ * resolved and checked by the connected-IP forwarder. The result is a plain file
  * map handed to `UserCell.packageSave`, so provenance, quotas and manifest
  * validation are exactly the same as for a hand-written package. Secrets are
  * never transferred.
  */
 
-export type PackageSourceEnv = PrivateHostsEnv & DnsResolverEnv
+export type PackageSourceEnv = PrivateHostsEnv
 
 export const defaultPackageSourceHosts = [
 	'github.com',
@@ -63,26 +56,17 @@ export function packageSourceHostsFromEnv(env: PackageSourceEnv): Array<string> 
 export type PackageSourceHostPolicy = {
 	allowedHosts: Array<string>
 	privateHosts: Array<string>
-	/** DoH JSON endpoint every hop's hostname is resolved through. */
-	dnsResolverUrl: string
 }
 
 export function packageSourceHostPolicyFromEnv(env: PackageSourceEnv): PackageSourceHostPolicy {
-	let dnsResolverUrl: string
-	try {
-		dnsResolverUrl = dnsResolverUrlFromEnv(env)
-	} catch (error) {
-		throw new KodyError('config_error', error instanceof Error ? error.message : String(error), { status: 500 })
-	}
-	return { allowedHosts: defaultPackageSourceHosts, privateHosts: privateHostsFromEnv(env), dnsResolverUrl }
+	return { allowedHosts: defaultPackageSourceHosts, privateHosts: privateHostsFromEnv(env) }
 }
 
 /** What a fetch of a package source needs: the host policy plus an optional fetch. */
 export type PackageSourceFetchOptions = {
 	allowedHosts: Array<string>
 	privateHosts?: Array<string> | undefined
-	dnsResolverUrl: string
-	/** Fetch for source downloads and DNS-over-HTTPS lookups; defaults to the global `fetch`. */
+	/** Fetch transport for source downloads; defaults to the global `fetch`. */
 	fetch?: FetchLike | undefined
 }
 
@@ -91,25 +75,17 @@ function refuseSource(message: string) {
 }
 
 /** Checks one hop (the first URL or a redirect target) and returns it normalized. */
-export type SourceHopGuard = (raw: string) => Promise<string>
+export type SourceHopGuard = ((raw: string) => Promise<string>) & { policy: ResolvedHostPolicy }
 
-/**
- * The hop guard for one install: literal host checks, then the resolved-address check. DNS
- * answers are reused for the rest of this install only.
- */
+/** Literal host policy for every source hop. */
 export function createSourceHopGuard(options: PackageSourceFetchOptions): SourceHopGuard {
 	const privateHosts = options.privateHosts ?? []
-	const memo: DnsMemo = new Map()
-	const policy = { allowPrivateHosts: privateHosts, dnsResolverUrl: options.dnsResolverUrl }
-	return async (raw) => {
-		const url = assertAllowedSourceUrl(raw, options.allowedHosts, privateHosts)
-		await assertResolvedHostAllowed(url, policy, {
-			fetch: options.fetch,
-			memo,
-			refuse: refuseSource,
-		})
-		return url.toString()
-	}
+	return Object.assign(
+		async (raw: string) => {
+			return assertAllowedSourceUrl(raw, options.allowedHosts, privateHosts).toString()
+		},
+		{ policy: { allowPrivateHosts: privateHosts } },
+	)
 }
 
 export type GithubSource = {
@@ -414,11 +390,16 @@ async function readBody(response: Response, maxBytes: number) {
 async function fetchGuarded(raw: string, guard: SourceHopGuard, fetchImpl: FetchLike, init: RequestInit) {
 	let current = await guard(raw)
 	for (let hop = 0; hop <= packageSourceLimits.maxRedirects; hop += 1) {
-		const response = await fetchImpl(current, {
-			...init,
-			redirect: 'manual',
-			signal: AbortSignal.timeout(packageSourceLimits.timeoutMs),
-		})
+		const response = await outboundFetch(
+			current,
+			{
+				...init,
+				redirect: 'manual',
+				signal: AbortSignal.timeout(packageSourceLimits.timeoutMs),
+			},
+			guard.policy,
+			{ fetch: fetchImpl as typeof fetch, refuse: refuseSource },
+		)
 		if (response.status >= 300 && response.status < 400) {
 			const location = response.headers.get('location')
 			await response.body?.cancel().catch(() => {})
@@ -607,7 +588,11 @@ export async function fetchPackageSource(
 		const cloned = await cloneGitSmartHttp(source.gitUrl, {
 			ref: source.ref,
 			subdir: source.subdir,
-			fetch: options.fetch,
+			fetch: (input, init) =>
+				outboundFetch(String(input), init ?? {}, guard.policy, {
+					fetch: options.fetch as typeof fetch | undefined,
+					refuse: refuseSource,
+				}),
 			limits: {
 				maxDownloadBytes: packageSourceLimits.maxDownloadBytes,
 				maxFiles: packageSourceLimits.maxFiles,
