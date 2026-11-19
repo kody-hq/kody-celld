@@ -325,7 +325,17 @@ export default async function main() { return await provider({ ref: 'alias', con
 		assert(revoked.deleted === true, 'revoke', revoked)
 		const pkgRevoked = await packageCall('alias')
 		assert(pkgRevoked.result.status === 403, 'revoked package is refused again', pkgRevoked.result)
-		await mcp.call('secretProviderLock', { providerId, locked: false })
+		const runtimeUnlock = await mcp.execute(
+			`import { kody } from 'kody:runtime'
+export default async function main(args) { return await kody.secretProviderLock(args) }`,
+			{ providerId, locked: false },
+		)
+		assert(
+			!runtimeUnlock.ok && /secret_provider_locked/.test(runtimeUnlock.error?.message ?? ''),
+			'execute code must not unlock a locked provider binding',
+			runtimeUnlock,
+		)
+		await mcp.callDirect('secretProviderLock', { providerId, locked: false })
 		const unlocked = await placeholderCall('alias')
 		assert(unlocked.ok && unlocked.result.status === 200, 'unlock restores ad hoc use', unlocked)
 		log('lock/grant/revoke', 'ok')
