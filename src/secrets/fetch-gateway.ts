@@ -5,7 +5,9 @@ import { executeRun } from '../execute/engine.ts'
 import type { RuntimeProps } from '../execute/runtime-host.ts'
 import { integrationEventPayload, type IntegrationRecord } from '../integrations/store.ts'
 import { dispatchTopic } from '../packages/subscriptions.ts'
+import { KodyError } from '../lib/errors.ts'
 import { privateHostsFromEnv } from '../lib/private-hosts-env.ts'
+import { assertOutboundUrlAllowed, dnsResolverUrlFromEnv, type DnsMemo } from '../lib/resolved-host-guard.ts'
 import { secretApprovalUrl } from './usage.ts'
 import { isCredentialTransportAllowed, isHostApproved, requestHost } from './host-policy.ts'
 import {
@@ -92,10 +94,11 @@ export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 		// Redirects are followed here, never by fetch(), so every hop gets the
 		// full gateway decision before anything placeholder-derived is sent.
 		let hop: GatewayHop = { url: new URL(request.url), method: request.method, headers, body, redirect: 0 }
+		const dnsMemo: DnsMemo = new Map()
 		for (;;) {
 			const current = hop
-			let result = await this.sendHop(current, (event) => record(current, event))
-			if (result.kind === 'denied' && current.redirect > 0 && result.denial.code !== 'admin_surface_blocked') {
+			let result = await this.sendHop(current, dnsMemo, (event) => record(current, event))
+			if (result.kind === 'denied' && current.redirect > 0 && !destinationDenials.has(result.denial.code)) {
 				// A redirect target that fails the decision gets no secret: drop the
 				// headers that carried placeholders and send only if the URL and
 				// body no longer reference one.
@@ -103,7 +106,7 @@ export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 				if (!inspectHop(stripped).hasPlaceholders) {
 					const reason = `placeholder_headers_dropped:${result.denial.code}`
 					hop = stripped
-					result = await this.sendHop(stripped, (event) => record(stripped, { reason, ...event }))
+					result = await this.sendHop(stripped, dnsMemo, (event) => record(stripped, { reason, ...event }))
 				}
 			}
 			if (result.kind === 'denied') {
@@ -136,7 +139,11 @@ export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 	 * One request, no redirect following: the gateway decision for this exact
 	 * URL, then forward (placeholders replaced) or a denial for the caller.
 	 */
-	private async sendHop(hop: GatewayHop, record: (event: GatewayRecordEvent) => Promise<void>): Promise<HopResult> {
+	private async sendHop(
+		hop: GatewayHop,
+		dnsMemo: DnsMemo,
+		record: (event: GatewayRecordEvent) => Promise<void>,
+	): Promise<HopResult> {
 		const { url, headers } = hop
 		const host = requestHost(url)
 		if (this.isOwnAdminSurface(url)) {
@@ -148,6 +155,8 @@ export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 				secrets: [],
 			})
 		}
+		const privateHost = await this.privateHostDenial(url, dnsMemo)
+		if (privateHost) return denied(privateHost)
 
 		const { urlText, bodyText, combined, hasPlaceholders } = inspectHop(hop)
 
@@ -486,6 +495,24 @@ export class FetchGateway extends WorkerEntrypoint<Env, RuntimeProps> {
 		return null
 	}
 
+	/** The shared private-host policy for this hop; KODY_PRIVATE_HOSTS is the only opt-in. */
+	private async privateHostDenial(url: URL, memo: DnsMemo): Promise<GatewayDenial | null> {
+		const policy = { allowPrivateHosts: privateHostsFromEnv(this.env), dnsResolverUrl: dnsResolverUrlFromEnv(this.env) }
+		try {
+			await assertOutboundUrlAllowed(url, policy, { memo })
+			return null
+		} catch (error) {
+			if (!(error instanceof KodyError)) throw error
+			return {
+				status: 403,
+				code: 'private_host_refused',
+				message: error.message,
+				details: { host: requestHost(url) },
+				secrets: [],
+			}
+		}
+	}
+
 	private isOwnAdminSurface(url: URL) {
 		let publicUrl: URL
 		try {
@@ -567,6 +594,9 @@ type GatewayDenial = {
 	details: Record<string, unknown>
 	secrets: Array<string>
 }
+
+/** Denials about where the hop goes, not what it carries: dropping placeholders cannot fix them. */
+const destinationDenials = new Set(['admin_surface_blocked', 'private_host_refused'])
 
 type HopResult = { kind: 'denied'; denial: GatewayDenial } | { kind: 'sent'; response: Response }
 

@@ -3,10 +3,12 @@ import { hostMatchesAllowlist, isPrivateHostname, parseIpLiteral } from './host-
 import { privateHostsEnvKey } from './private-hosts-env.ts'
 
 /**
- * Resolved-address check shared by every server-side outbound URL guard (MCP servers, package
- * sources, browser rendering). The literal-host checks in each guard catch private names and IP
- * literals; this one looks the name up through DNS-over-HTTPS and refuses any private answer that
- * no IP/CIDR entry of KODY_PRIVATE_HOSTS allows, so a public name pointing into the LAN is refused.
+ * The one private-host policy for every server-side outbound URL (sandbox fetches through the
+ * FetchGateway, integration token endpoints, MCP servers, package sources, browser rendering).
+ * `assertLiteralHostAllowed` refuses private names and IP literals (URL parsing already turned
+ * decimal/octal/hex IPv4 into dotted form); `assertResolvedHostAllowed` looks the name up through
+ * DNS-over-HTTPS and refuses any private answer that no IP/CIDR entry of KODY_PRIVATE_HOSTS allows,
+ * so a public name pointing into the LAN is refused. `assertOutboundUrlAllowed` runs both.
  */
 
 export const dnsResolverEnvKey = 'KODY_DNS_RESOLVER_URL'
@@ -71,6 +73,36 @@ async function resolveAddresses(host: string, resolverUrl: string, fetchImpl: Dn
 
 export function defaultRefuseHost(message: string): Error {
 	return new KodyError('host_not_allowed', message, { status: 403 })
+}
+
+/**
+ * Literal-host check: true when the host is listed in KODY_PRIVATE_HOSTS (callers may then relax
+ * other rules such as plain http), false for a public name or IP; throws for an unlisted private
+ * name or literal.
+ */
+export function assertLiteralHostAllowed(
+	url: URL,
+	allowPrivateHosts: ReadonlyArray<string>,
+	refuse: RefuseHost = defaultRefuseHost,
+): boolean {
+	const host = url.hostname.toLowerCase()
+	if (hostMatchesAllowlist(host, allowPrivateHosts)) return true
+	if (isPrivateHostname(host)) {
+		throw refuse(
+			`"${host}" is a loopback/private host. Add it (or its CIDR range) to ${privateHostsEnvKey} on the server to allow it.`,
+		)
+	}
+	return false
+}
+
+/** Literal then resolved-address check for one hop (the first request or a redirect target). */
+export async function assertOutboundUrlAllowed(
+	url: URL,
+	policy: ResolvedHostPolicy,
+	options: { fetch?: DnsFetch | undefined; memo?: DnsMemo | undefined; refuse?: RefuseHost | undefined } = {},
+): Promise<void> {
+	assertLiteralHostAllowed(url, policy.allowPrivateHosts, options.refuse)
+	await assertResolvedHostAllowed(url, policy, options)
 }
 
 /**

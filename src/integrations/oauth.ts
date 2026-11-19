@@ -1,5 +1,5 @@
 import { KodyError } from '../lib/errors.ts'
-import { normalizeSecretHost } from '../secrets/host-policy.ts'
+import { hostMatchesApproval, normalizeSecretHost } from '../secrets/host-policy.ts'
 
 // OAuth 2.0 / 2.1 plumbing shared by the connect routes and the UserCell.
 // Pure functions only: no storage, no fetch, so they run under node --test.
@@ -181,6 +181,19 @@ export function parseIntegrationUsage(raw: unknown): IntegrationUsage {
 	}
 	if (out.length === 0) throw new KodyError('invalid_args', 'usage.packages must list at least one package.')
 	return { mode: 'packages', packages: out }
+}
+
+/** Entries of `next` that no entry of `stored` already covers: the token may reach a new host. */
+export function addedAllowedHosts(stored: ReadonlyArray<string>, next: ReadonlyArray<string>) {
+	return next.filter((host) => !stored.some((entry) => entry === host || hostMatchesApproval(host, entry)))
+}
+
+/** A looser usage unlocks a package-limited integration or grants a package it did not grant. */
+export function usageLoosening(stored: IntegrationUsage, next: IntegrationUsage): string | null {
+	if (stored.mode === 'any') return null
+	if (next.mode === 'any') return `is locked to package(s) ${stored.packages.join(', ')}; unlocking it`
+	const granted = next.packages.filter((p) => !stored.packages.includes(p))
+	return granted.length === 0 ? null : `does not grant package(s) ${granted.join(', ')}; granting them`
 }
 
 /** Ad hoc execute has no package name; a locked integration refuses it. */

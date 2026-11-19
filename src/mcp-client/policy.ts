@@ -1,7 +1,6 @@
-import { hostMatchesAllowlist, isPrivateHostname } from '../lib/host-allowlist.ts'
 import { KodyError } from '../lib/errors.ts'
 import { privateHostsEnvKey, privateHostsFromEnv, type PrivateHostsEnv } from '../lib/private-hosts-env.ts'
-import { dnsResolverUrlFromEnv } from '../lib/resolved-host-guard.ts'
+import { assertLiteralHostAllowed, dnsResolverUrlFromEnv } from '../lib/resolved-host-guard.ts'
 
 export type McpEnv = PrivateHostsEnv & {
 	KODY_MCP_CALL_TIMEOUT_MS?: string
@@ -31,6 +30,10 @@ export function mcpConfigFromEnv(env: McpEnv): McpConfig {
 	}
 }
 
+function refuseMcpHost(message: string) {
+	return new KodyError('mcp_host_not_allowed', message, { status: 403 })
+}
+
 /** The URL policy for every hop (first URL and each redirect). */
 export function assertMcpUrl(raw: string, config: McpConfig): URL {
 	let url: URL
@@ -46,15 +49,8 @@ export function assertMcpUrl(raw: string, config: McpConfig): URL {
 		throw new KodyError('invalid_args', 'MCP server URLs must not contain credentials; pass bearerToken instead.')
 	}
 	url.hash = ''
+	if (assertLiteralHostAllowed(url, config.allowPrivateHosts, refuseMcpHost)) return url
 	const host = url.hostname.toLowerCase()
-	if (hostMatchesAllowlist(host, config.allowPrivateHosts)) return url
-	if (isPrivateHostname(host)) {
-		throw new KodyError(
-			'mcp_host_not_allowed',
-			`"${host}" is a loopback/private host. Add it (or its CIDR range) to ${privateHostsEnvKey} on the server to use it.`,
-			{ status: 403 },
-		)
-	}
 	if (url.protocol === 'http:') {
 		throw new KodyError(
 			'mcp_host_not_allowed',

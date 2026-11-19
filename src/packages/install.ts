@@ -1,7 +1,7 @@
 import { KodyError } from '../lib/errors.ts'
-import { hostMatchesAllowlist, isPrivateHostname } from '../lib/host-allowlist.ts'
-import { privateHostsEnvKey, privateHostsFromEnv, type PrivateHostsEnv } from '../lib/private-hosts-env.ts'
+import { privateHostsFromEnv, type PrivateHostsEnv } from '../lib/private-hosts-env.ts'
 import {
+	assertLiteralHostAllowed,
 	assertResolvedHostAllowed,
 	dnsResolverUrlFromEnv,
 	type DnsMemo,
@@ -86,6 +86,10 @@ export type PackageSourceFetchOptions = {
 	fetch?: FetchLike | undefined
 }
 
+function refuseSource(message: string) {
+	return new KodyError('package_source_refused', message, { status: 403 })
+}
+
 /** Checks one hop (the first URL or a redirect target) and returns it normalized. */
 export type SourceHopGuard = (raw: string) => Promise<string>
 
@@ -102,7 +106,7 @@ export function createSourceHopGuard(options: PackageSourceFetchOptions): Source
 		await assertResolvedHostAllowed(url, policy, {
 			fetch: options.fetch,
 			memo,
-			refuse: (message) => new KodyError('package_source_refused', message, { status: 403 }),
+			refuse: refuseSource,
 		})
 		return url.toString()
 	}
@@ -363,16 +367,9 @@ export function assertAllowedSourceUrl(raw: string, allowedHosts: Array<string>,
 	if (url.username || url.password) {
 		throw new KodyError('package_source_refused', 'Sources may not embed credentials.', { status: 403 })
 	}
-	const host = url.hostname.toLowerCase()
 	// KODY_PRIVATE_HOSTS wins for any matching host (LAN names, CIDRs, …). Unlisted private/loopback hosts refuse.
-	if (hostMatchesAllowlist(host, privateHosts)) return url
-	if (isPrivateHostname(host)) {
-		throw new KodyError(
-			'package_source_refused',
-			`"${host}" is a loopback/private host; list it in ${privateHostsEnvKey} to allow it.`,
-			{ status: 403 },
-		)
-	}
+	if (assertLiteralHostAllowed(url, privateHosts, refuseSource)) return url
+	const host = url.hostname.toLowerCase()
 	const allowed = allowedHosts.some((entry) => entry === '*' || hostMatchesApproval(host, entry))
 	if (!allowed) {
 		throw new KodyError(

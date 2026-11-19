@@ -7,9 +7,11 @@ import {
 	type MasterKeyring,
 } from '../lib/crypto.ts'
 import { KodyError } from '../lib/errors.ts'
+import { assertOutboundUrlAllowed, type ResolvedHostPolicy } from '../lib/resolved-host-guard.ts'
 import { lastUsedStaleBefore } from '../lib/last-used.ts'
 import { isCredentialTransportAllowed, isHostApproved } from '../secrets/host-policy.ts'
 import {
+	addedAllowedHosts,
 	buildAuthorizeUrl,
 	buildTokenRequest,
 	connectTicketTtlMs,
@@ -114,7 +116,8 @@ export type IntegrationStoreHost = {
 	sql: SqlStorage
 	userId: () => string
 	keyring: () => Promise<MasterKeyring>
-	insecureAllowance: ReadonlyArray<string>
+	/** KODY_PRIVATE_HOSTS + DNS resolver: the shared private-host policy for token endpoints. */
+	hostPolicy: ResolvedHostPolicy
 	fetch: typeof fetch
 }
 
@@ -291,8 +294,9 @@ export class IntegrationStore {
 	/**
 	 * Creates or updates the app + connection description. `clientSecret`
 	 * undefined keeps the stored secret, null clears it (public PKCE client),
-	 * a string replaces it. Changing token endpoints or client id invalidates
-	 * the stored tokens, so the connection drops back to pending. A new client
+	 * a string replaces it. Changing token endpoints or client id, or adding an
+	 * allowed host, invalidates the stored tokens, so the connection drops back
+	 * to pending. A new client
 	 * id or token URL also drops the stored secret unless a new one comes with
 	 * it, so a secret never reaches an endpoint it was not saved for.
 	 */
@@ -323,7 +327,8 @@ export class IntegrationStore {
 			endpointChanged ||
 			previous.flow !== config.flow ||
 			previous.authorizeUrl !== config.authorizeUrl ||
-			(previous.scopes.join(' ') !== config.scopes.join(' ') && config.flow === 'authorization_code')
+			(previous.scopes.join(' ') !== config.scopes.join(' ') && config.flow === 'authorization_code') ||
+			addedAllowedHosts(previous.allowedHosts, config.allowedHosts).length > 0
 		if (secret === undefined && !endpointChanged) {
 			this.host.sql.exec(
 				'UPDATE integrations SET config_json = ?, updated_at = ? WHERE name = ?',
@@ -563,9 +568,13 @@ export class IntegrationStore {
 		if (!row)
 			throw new KodyError('integration_not_found', `Integration "${record.name}" was not found.`, { status: 404 })
 		const tokenUrl = new URL(record.tokenUrl)
-		if (!isCredentialTransportAllowed(tokenUrl, this.host.insecureAllowance)) {
+		if (!isCredentialTransportAllowed(tokenUrl, this.host.hostPolicy.allowPrivateHosts)) {
 			throw new KodyError('integration_requires_https', `tokenUrl ${tokenUrl.origin} must use https.`, { status: 403 })
 		}
+		await assertOutboundUrlAllowed(tokenUrl, this.host.hostPolicy, {
+			fetch: (input, init) => this.host.fetch(input, init),
+			refuse: (message) => new KodyError('private_host_refused', message, { status: 403 }),
+		})
 		const stored = storedSecretFor(row, record)
 		if (stored.kind === 'unbound') {
 			throw new KodyError(

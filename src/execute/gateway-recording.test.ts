@@ -50,6 +50,7 @@ for (const outcome of ['forwarded', 'injected', 'denied', 'error'] as const) {
 		}
 		const env = {
 			KODY_PUBLIC_URL: 'https://cell.example.test',
+			KODY_DNS_RESOLVER_URL: 'https://dns.test/dns-query',
 			USER: { getByName: () => userCell },
 		} as unknown as Env
 		const ctx = {
@@ -58,7 +59,12 @@ for (const outcome of ['forwarded', 'injected', 'denied', 'error'] as const) {
 				void promise.catch(() => {})
 			},
 		} as unknown as ExecutionContext
-		const forwarded = t.mock.method(globalThis, 'fetch', async () => {
+		let upstreamCalls = 0
+		t.mock.method(globalThis, 'fetch', async (input: RequestInfo | URL) => {
+			if (String(input).startsWith('https://dns.test/')) {
+				return Response.json({ Status: 0, Answer: [{ type: 1, data: '93.184.216.34' }] })
+			}
+			upstreamCalls += 1
 			if (outcome === 'error') throw new TypeError('fixture network failure')
 			return new Response('ok')
 		})
@@ -97,7 +103,7 @@ for (const outcome of ['forwarded', 'injected', 'denied', 'error'] as const) {
 		}
 		assert.equal(events.length, 1)
 		assert.equal(events[0]?.outcome, outcome)
-		assert.equal(forwarded.mock.callCount(), outcome === 'denied' ? 0 : 1)
+		assert.equal(upstreamCalls, outcome === 'denied' ? 0 : 1)
 		assert.equal(JSON.stringify(events).includes('fixture-only'), false)
 	})
 }

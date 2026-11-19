@@ -361,8 +361,22 @@ export default async function main() { return await kody.integrationList() }`,
 			params: { integration: name, url: apiUrl },
 		})
 		assert(pkgStill.ok && pkgStill.result.status === 200, 'granted package still works', pkgStill)
-		await mcp.call('integrationSetUsage', { name, usage: { mode: 'any' } })
-		log('usage grant', { adHoc: adHocLocked.result.body.error, package: pkgStill.result.status })
+		const runtimeUnlock = await mcp.execute(
+			`import { kody } from 'kody:runtime'
+export default async function main(args) { return await kody.integrationSetUsage(args) }`,
+			{ name, usage: { mode: 'any' } },
+		)
+		assert(
+			!runtimeUnlock.ok && /integration_locked/.test(runtimeUnlock.error?.message ?? ''),
+			'execute code must not unlock a package-limited integration',
+			runtimeUnlock,
+		)
+		await mcp.callDirect('integrationSetUsage', { name, usage: { mode: 'any' } })
+		log('usage grant', {
+			adHoc: adHocLocked.result.body.error,
+			package: pkgStill.result.status,
+			runtimeUnlock: 'integration_locked',
+		})
 
 		// --- refresh on expiry: reconnect with a short-lived token (inside the 60s skew => expired at once).
 		state.expiresIn = 30

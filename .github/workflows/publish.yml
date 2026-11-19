@@ -111,7 +111,8 @@ jobs:
       KODY_IMAGE: ghcr.io/${{ github.repository }}@${{ needs.image.outputs.digest }}
       KODY_PORT: 8080
       KODY_PUBLIC_URL: http://localhost:8080
-      KODY_PRIVATE_HOSTS: 127.0.0.1,localhost,host.docker.internal
+      # 172.16.0.0/12: the Docker bridge address the secrets scenario redirects to as a second host.
+      KODY_PRIVATE_HOSTS: 127.0.0.1,localhost,host.docker.internal,172.16.0.0/12
       # Same throwaway values as ci.yml: a container on the runner's loopback.
       KODY_ADMIN_TOKEN: publish-admin-token-${{ github.run_id }}
       KODY_MASTER_KEY: publish-master-key-${{ github.run_id }}-${{ github.run_attempt }}

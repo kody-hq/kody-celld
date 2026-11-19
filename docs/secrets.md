@@ -116,10 +116,16 @@ Placeholders are recognised in the URL (path, query, also URL-encoded
 ## The gateway decision
 
 Every outbound `fetch` from an isolate is routed through `FetchGateway`
-(`globalOutbound`). For requests containing placeholders:
+(`globalOutbound`). Every hop, redirects included and with or without
+placeholders, first passes the shared private-host policy: a loopback, private,
+link-local or metadata host (any IP literal form, or a name that resolves to
+one through `KODY_DNS_RESOLVER_URL`) is refused with `403 private_host_refused`
+unless it is listed in `KODY_PRIVATE_HOSTS`. For requests containing
+placeholders:
 
 ```
 admin surface?          → 403 admin_surface_blocked
+private host not in KODY_PRIVATE_HOSTS? → 403 private_host_refused
 not https (and host not in KODY_PRIVATE_HOSTS)? → 403 insecure_scheme
 {{secret:…}} and host not approved? → 403 secret_host_not_approved  { approvalUrl }
 user secret locked to another package? → 403 secret_locked { approvalUrl }
