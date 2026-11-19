@@ -105,8 +105,10 @@ and the user id, so:
 - rotating the master key (see [secrets.md](./secrets.md#master-key-rotation))
   invalidates outstanding links — mint new ones.
 
-Responses carry `content-type`, `etag`, `x-kody-sha256`,
-`cache-control: private, no-store` and `x-content-type-options: nosniff`.
+Blob downloads use `content-disposition: attachment`,
+`content-security-policy: sandbox; default-src 'none'`, and
+`x-content-type-options: nosniff`. Responses also carry the stored
+`content-type`, `etag`, `x-kody-sha256`, and `cache-control: private, no-store`.
 
 ## Safety properties
 

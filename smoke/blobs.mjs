@@ -93,6 +93,27 @@ export default async function main({ text, base64 }) {
 	assert((await fetch(expired)).status === 403, 'expired signed link must fail')
 	log('signed url', { expiresAt: link.expiresAt, tampered: 403, expired: 403 })
 
+	for (const [name, contentType, content] of [
+		['document.html', 'text/html', '<!doctype html><title>Document</title>'],
+		['drawing.svg', 'image/svg+xml', '<svg xmlns="http://www.w3.org/2000/svg"><title>Drawing</title></svg>'],
+	]) {
+		const key = `downloads/${name}`
+		await mcp.call('blobPut', { key, contentType, content })
+		const { url } = await mcp.call('blobUrl', { key })
+		for (const method of ['GET', 'HEAD']) {
+			const response = await fetch(url, { method })
+			const label = `${method} ${name}`
+			assert(response.status === 200, `${label} status`, response.status)
+			assert(response.headers.get('content-type') === contentType, `${label} content type`)
+			assert(response.headers.get('content-disposition') === 'attachment', `${label} disposition`)
+			assert(response.headers.get('x-content-type-options') === 'nosniff', `${label} content type options`)
+			assert(response.headers.get('content-security-policy') === "sandbox; default-src 'none'", `${label} policy`)
+			assert((await response.text()) === (method === 'GET' ? content : ''), `${label} body`)
+		}
+		await mcp.call('blobDelete', { key })
+	}
+	log('signed download headers', 'HTML and SVG GET and HEAD')
+
 	// 4. isolation: another user sees nothing and cannot read by key
 	const other = await bootstrapUser('blob-other')
 	await other.mcp.initialize()
