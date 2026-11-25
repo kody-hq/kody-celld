@@ -233,8 +233,11 @@ async function stopProcess(child, { host, port } = {}) {
 			await delay(100)
 		}
 		if (child.exitCode == null && child.signalCode == null) {
+			// celld.dev bounds its own node's shutdown well inside this window, so
+			// reaching it means the drain was cut short: fail the start loudly.
 			signalProcessTree(child.pid, 'SIGKILL')
 			await delay(200)
+			throw new Error('celld.dev did not stop within 40 s of SIGTERM and was killed; see .last-deploy.log')
 		}
 	}
 	if (host != null && port != null) {

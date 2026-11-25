@@ -88,11 +88,16 @@ Systemd sketch:
 ```ini
 [Service]
 WorkingDirectory=/opt/kody-celld
-EnvironmentFile=/etc/kody-celld/node.env    # bucket + AWS_* + CELLD_NODE + CELLD_* + KODY_PRIVATE_HOSTS
+# bucket + AWS_* + CELLD_NODE + CELLD_* + KODY_PRIVATE_HOSTS
+EnvironmentFile=/etc/kody-celld/node.env
 ExecStart=/usr/bin/node /opt/kody-celld/docker/with-egress.mjs /usr/local/bin/celld --bucket ${CELLD_BUCKET} --listen 0.0.0.0:8080 --internal-listen ${PRIVATE_IP}:9000 --advertise ${PRIVATE_IP}:9000 --trust-forwarded-headers
 Restart=always
-RestartSec=10s                               # at least CELLD_TTL_MS
-StartLimitIntervalSec=0                      # no attempt limit
+# at least CELLD_TTL_MS
+RestartSec=10s
+# no attempt limit
+StartLimitIntervalSec=0
+# above CELLD_SHUTDOWN_TOTAL_MS (40 s default)
+TimeoutStopSec=60s
 ```
 
 Adjust the checkout and binary paths to match each node's installation.

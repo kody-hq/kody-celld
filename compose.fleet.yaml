@@ -35,6 +35,9 @@ x-node: &node
   image: ${KODY_IMAGE:-ghcr.io/kody-hq/kody-celld:latest}
   init: true
   restart: unless-stopped
+  # celld hands its cells off on SIGTERM within CELLD_SHUTDOWN_TOTAL_MS (40 s
+  # default). Docker's 10 s default would SIGKILL it mid-drain.
+  stop_grace_period: 60s
   extra_hosts:
     - 'host.docker.internal:host-gateway'
   depends_on:
