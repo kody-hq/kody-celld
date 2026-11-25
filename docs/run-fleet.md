@@ -93,6 +93,7 @@ ExecStart=/usr/bin/node /opt/kody-celld/docker/with-egress.mjs /usr/local/bin/ce
 Restart=always
 RestartSec=10s                               # at least CELLD_TTL_MS
 StartLimitIntervalSec=0                      # no attempt limit
+TimeoutStopSec=60s                           # above CELLD_SHUTDOWN_TOTAL_MS (40 s default)
 ```
 
 Adjust the checkout and binary paths to match each node's installation.

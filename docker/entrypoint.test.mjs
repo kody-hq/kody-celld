@@ -141,6 +141,62 @@ test('a forwarder listener failure stops startup instead of starting the applica
 	}
 })
 
+function spawnWrapped(program) {
+	const child = spawn(
+		process.execPath,
+		[join(here, 'with-egress.mjs'), process.execPath, '--input-type=module', '-e', program],
+		{
+			env: { PATH: process.env.PATH },
+			stdio: ['ignore', 'pipe', 'pipe'],
+		},
+	)
+	let output = ''
+	child.stdout.on('data', (chunk) => {
+		output += chunk
+	})
+	child.stderr.on('data', (chunk) => {
+		output += chunk
+	})
+	const ready = new Promise((resolve) => child.stdout.on('data', () => output.includes('app ready') && resolve()))
+	return { child, ready, output: () => output }
+}
+
+// Issue #200: the wrapper SIGKILLed celld 5 s after forwarding SIGTERM, cutting
+// its shutdown handoff short, and still exited 0.
+test('a stop signal waits for a drain longer than 5 s, keeps the forwarder up, and propagates the exit code', async () => {
+	const program = [
+		"process.on('SIGTERM', () => setTimeout(async () => {",
+		`	const response = await fetch('${egressOrigin}/health')`,
+		"	console.log('drained')",
+		'	process.exit(response.status === 204 ? 3 : 9)',
+		'}, 6_000))',
+		"console.log('app ready')",
+		'setInterval(() => {}, 1_000)',
+	].join('\n')
+	const { child, ready, output } = spawnWrapped(program)
+	await ready
+	const started = Date.now()
+	child.kill('SIGTERM')
+	const [code, signal] = await once(child, 'exit')
+	assert.ok(Date.now() - started >= 6_000)
+	assert.deepEqual({ code, signal }, { code: 3, signal: null }, output())
+	assert.match(output(), /drained/)
+})
+
+test('an application killed by a signal is reported as that signal, never as a clean exit', async () => {
+	const { child, ready, output } = spawnWrapped("console.log('app ready'); setInterval(() => {}, 1_000)")
+	await ready
+	child.kill('SIGTERM')
+	const [code, signal] = await once(child, 'exit')
+	assert.deepEqual({ code, signal }, { code: null, signal: 'SIGTERM' }, output())
+})
+
+test('compose gives celld a stop grace above its 40 s shutdown bound', () => {
+	assert.match(readFileSync(join(here, '..', 'compose.yaml'), 'utf8'), /^ {4}stop_grace_period: 60s$/m)
+	const node = readCompose().split('x-node: &node')[1].split('services:')[0]
+	assert.match(node, /^ {2}stop_grace_period: 60s$/m)
+})
+
 test('fleet nodes receive the private-host policy at runtime', () => {
 	const shared = readCompose().split('x-node-env: &node-env')[1].split('x-node: &node')[0]
 	assert.match(shared, /KODY_PRIVATE_HOSTS: \$\{KODY_PRIVATE_HOSTS:-\}/)

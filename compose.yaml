@@ -20,6 +20,9 @@ services:
     command: ['single']
     init: true
     restart: unless-stopped
+    # celld hands its cells off on SIGTERM within CELLD_SHUTDOWN_TOTAL_MS (40 s
+    # default). Docker's 10 s default would SIGKILL it mid-drain.
+    stop_grace_period: 60s
     ports:
       - '${KODY_PORT:-8080}:8080'
     environment:

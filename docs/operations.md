@@ -42,6 +42,20 @@ unchanged. Optional: `CELLD_DEV_FLAGS` is forwarded to the short deploy-step
 (default `600000`) caps how long the deploy step may take before failing
 loudly with a path to `/data/celld/dev/.last-deploy.log`.
 
+### Stopping a node
+
+On `SIGTERM` celld drains: accepted requests finish, every cell passes a final
+durability barrier and is handed off, and the node logs
+`drain_token_released` before it exits. celld bounds that drain itself with
+`CELLD_SHUTDOWN_TOTAL_MS` (40 s by default). `docker/with-egress.mjs` only
+forwards the signal, keeps the outbound forwarder up until celld exits, and
+exits with celld's exit code or signal. The supervisor's stop grace is the one
+hard deadline, so it must be above celld's bound: `compose.yaml` and
+`compose.fleet.yaml` set `stop_grace_period: 60s`. Keep any `docker compose
+stop -t` or `docker stop -t` above 40 s too. A node that Docker has to kill
+exits non-zero (137), so a cut-short drain never looks like a clean stop. Stop
+before a cold backup of `/data` and check that the exit code is 0.
+
 ### LTX epoch retention (single node)
 
 Threshold compaction only folds L0 segments **within the current epoch**.
