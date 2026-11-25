@@ -53,8 +53,11 @@ exits with celld's exit code or signal. The supervisor's stop grace is the one
 hard deadline, so it must be above celld's bound: `compose.yaml` and
 `compose.fleet.yaml` set `stop_grace_period: 60s`. Keep any `docker compose
 stop -t` or `docker stop -t` above 40 s too. A node that Docker has to kill
-exits non-zero (137), so a cut-short drain never looks like a clean stop. Stop
-before a cold backup of `/data` and check that the exit code is 0.
+exits non-zero (137), so a cut-short drain never looks like a clean stop. Exit
+0 alone does not prove the handoff finished: celld logs
+`shutdown_handoff_stalled` and still exits 0 when its own bound runs out.
+Before a cold backup of `/data`, stop the node and check both the exit code and
+that the last lines of `docker compose logs kody` show `drain_token_released`.
 
 ### LTX epoch retention (single node)
 
