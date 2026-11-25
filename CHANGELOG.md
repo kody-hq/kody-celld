@@ -5,6 +5,19 @@ Releases are now automated daily and their notes live in
 [GitHub Releases](https://github.com/kody-hq/kody-celld/releases); see
 [docs/contributing/releases.md](docs/contributing/releases.md).
 
+### Stopping a node waits for celld's whole shutdown drain
+
+Thanks to @brandonperfetti for the careful report and timelines (#200). Since
+0.2.18, `docker/with-egress.mjs` sent `SIGKILL` to celld 5 s after forwarding
+`SIGTERM`, which cut celld's shutdown drain short before it released the fleet
+drain token, and the wrapper still exited 0. The wrapper now only forwards the
+signal, keeps the outbound forwarder up until celld exits, and exits with
+celld's own exit code or signal. The hard deadline is the supervisor's stop
+grace: `compose.yaml` and `compose.fleet.yaml` set `stop_grace_period: 60s`,
+above celld's 40 s `CELLD_SHUTDOWN_TOTAL_MS` (Docker's default is 10 s).
+**Custom compose files should set `stop_grace_period` above 40 s, and systemd
+units need `TimeoutStopSec` above 40 s** (systemd's 90 s default already is).
+
 ### Outbound private-host policy uses the connected address
 
 Sandbox fetches, integration token requests, MCP clients and package sources
