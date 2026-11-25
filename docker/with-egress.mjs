@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
+import { constants } from 'node:os'
 import { parseEnv } from 'node:util'
 import { createEgressForwarder } from './egress-forwarder.mjs'
 import { egressOrigin } from '../src/lib/egress-protocol.ts'
@@ -40,8 +41,11 @@ function finish(code, signal) {
 	server.close()
 	if (failed) process.exitCode = 1
 	else if (signal) {
-		// Report the child's signal death as our own, never as a clean exit.
+		// Report the child's signal death as our own, never as a clean exit. As
+		// PID 1 (no init) the kernel ignores the re-raised signal, so the shell
+		// convention 128 + signal number is the fallback exit code.
 		for (const name of forwardedSignals) process.removeAllListeners(name)
+		process.exitCode = 128 + constants.signals[signal]
 		process.kill(process.pid, signal)
 	} else process.exitCode = code ?? 1
 }
