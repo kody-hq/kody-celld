@@ -141,26 +141,6 @@ test('a forwarder listener failure stops startup instead of starting the applica
 	}
 })
 
-function spawnWrapped(program) {
-	const child = spawn(
-		process.execPath,
-		[join(here, 'with-egress.mjs'), process.execPath, '--input-type=module', '-e', program],
-		{
-			env: { PATH: process.env.PATH },
-			stdio: ['ignore', 'pipe', 'pipe'],
-		},
-	)
-	let output = ''
-	child.stdout.on('data', (chunk) => {
-		output += chunk
-	})
-	child.stderr.on('data', (chunk) => {
-		output += chunk
-	})
-	const ready = new Promise((resolve) => child.stdout.on('data', () => output.includes('app ready') && resolve()))
-	return { child, ready, output: () => output }
-}
-
 // Issue #200: the wrapper SIGKILLed celld 5 s after forwarding SIGTERM, cutting
 // its shutdown handoff short, and still exited 0.
 test('a stop signal waits for a drain longer than 5 s, keeps the forwarder up, and propagates the exit code', async () => {
@@ -173,22 +153,63 @@ test('a stop signal waits for a drain longer than 5 s, keeps the forwarder up, a
 		"console.log('app ready')",
 		'setInterval(() => {}, 1_000)',
 	].join('\n')
-	const { child, ready, output } = spawnWrapped(program)
-	await ready
+	const child = spawn(
+		process.execPath,
+		[join(here, 'with-egress.mjs'), process.execPath, '--input-type=module', '-e', program],
+		{
+			env: { PATH: process.env.PATH },
+			stdio: ['ignore', 'pipe', 'pipe'],
+		},
+	)
+	let output = ''
+	child.stderr.on('data', (chunk) => {
+		output += chunk
+	})
+	const exited = once(child, 'exit')
+	await Promise.race([
+		new Promise((resolve) =>
+			child.stdout.on('data', (chunk) => {
+				output += chunk
+				if (output.includes('app ready')) resolve()
+			}),
+		),
+		exited.then(() => assert.fail(`wrapper exited before the app was ready:\n${output}`)),
+	])
 	const started = Date.now()
 	child.kill('SIGTERM')
-	const [code, signal] = await once(child, 'exit')
+	const [code, signal] = await exited
 	assert.ok(Date.now() - started >= 6_000)
-	assert.deepEqual({ code, signal }, { code: 3, signal: null }, output())
-	assert.match(output(), /drained/)
+	assert.deepEqual({ code, signal }, { code: 3, signal: null }, output)
+	assert.match(output, /drained/)
 })
 
 test('an application killed by a signal is reported as that signal, never as a clean exit', async () => {
-	const { child, ready, output } = spawnWrapped("console.log('app ready'); setInterval(() => {}, 1_000)")
-	await ready
+	const program = "console.log('app ready'); setInterval(() => {}, 1_000)"
+	const child = spawn(
+		process.execPath,
+		[join(here, 'with-egress.mjs'), process.execPath, '--input-type=module', '-e', program],
+		{
+			env: { PATH: process.env.PATH },
+			stdio: ['ignore', 'pipe', 'pipe'],
+		},
+	)
+	let output = ''
+	child.stderr.on('data', (chunk) => {
+		output += chunk
+	})
+	const exited = once(child, 'exit')
+	await Promise.race([
+		new Promise((resolve) =>
+			child.stdout.on('data', (chunk) => {
+				output += chunk
+				if (output.includes('app ready')) resolve()
+			}),
+		),
+		exited.then(() => assert.fail(`wrapper exited before the app was ready:\n${output}`)),
+	])
 	child.kill('SIGTERM')
-	const [code, signal] = await once(child, 'exit')
-	assert.deepEqual({ code, signal }, { code: null, signal: 'SIGTERM' }, output())
+	const [code, signal] = await exited
+	assert.deepEqual({ code, signal }, { code: null, signal: 'SIGTERM' }, output)
 })
 
 test('compose gives celld a stop grace above its 40 s shutdown bound', () => {
